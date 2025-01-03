@@ -43,7 +43,7 @@ class IFU extends Module with HasPerfCounters {
   val flushNow = io.redirect.valid && (!validBuffer || arValid || icache.io.out.valid)
   val flushFin = flushNow || (flushBuffer && icache.io.out.fire)
   flushBuffer := Mux(
-    io.redirect.valid && !arValid && !icache.io.out.valid,
+    io.redirect.valid && validBuffer && !arValid && !icache.io.out.valid,
     true.B,
     Mux(icache.io.out.fire, false.B, flushBuffer)
   )  

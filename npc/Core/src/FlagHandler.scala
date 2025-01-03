@@ -9,6 +9,7 @@ class FlagHandlerIO extends CoreBundle {
   val OUT_flush = Bool()
   val OUT_CSRCtrl = new CSRCtrl
   val OUT_redirect = new RedirectSignal
+  val OUT_TLBFlush = Bool()
 }
 
 class CSRCtrl extends CoreBundle {
@@ -28,11 +29,13 @@ class FlagHandler extends CoreModule {
   val flag = io.IN_flagUop.bits.flag
 
   val flush = Reg(Bool())
+  val TLBFlush = Reg(Bool())
   val redirect = Reg(new RedirectSignal)
   val CSRCtrl = Reg(new CSRCtrl)
   val CSRCtrlNext = WireInit(0.U.asTypeOf(new CSRCtrl))
 
   flush := false.B
+  TLBFlush := false.B
   redirect.pc := 0.U
   redirect.valid := false.B
   CSRCtrl := CSRCtrlNext
@@ -83,9 +86,17 @@ class FlagHandler extends CoreModule {
       
       CSRCtrlNext.sret := true.B
     }
+    when(flag === FlagOp.SFENCE_VMA) {
+      redirect.valid := true.B
+      redirect.pc := io.IN_flagUop.bits.pc + 4.U
+      flush := true.B
+
+      TLBFlush := true.B
+    }
   }
 
   io.OUT_flush := flush
   io.OUT_redirect := redirect  
   io.OUT_CSRCtrl := CSRCtrl
+  io.OUT_TLBFlush := TLBFlush
 }

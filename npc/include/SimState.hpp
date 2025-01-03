@@ -24,7 +24,7 @@ public:
   uint32_t pReg[64] = {};
   uint32_t pc = 0;
   uint32_t lastCommit;
-  uint32_t retireCount = 0;
+  uint64_t instRetired = 0;
 
   void bindUops() {
     // * renameUop
@@ -89,6 +89,7 @@ public:
     char buf[512];
     for (int i = 0; i < 1; ++i) {
       if (*commitUop[i].valid && *commitUop[i].ready) {
+        ++instRetired;
         lastCommit = cycle;
         auto robIndex = *commitUop[i].robPtr_index;
         auto &inst = insts[robIndex];
@@ -202,6 +203,8 @@ public:
   uint32_t getPC() { return pc; }
 
   uint32_t getReg(int index) { return pReg[archTable[index]]; }
+
+  uint64_t getInstRetired() { return instRetired; }
 };
 
 #endif

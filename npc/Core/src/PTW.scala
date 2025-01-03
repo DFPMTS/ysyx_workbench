@@ -12,6 +12,7 @@ class PTWIO extends CoreBundle {
   val OUT_PTWResp = Valid(new PTWResp)
   val IN_writebackUop = Flipped(Valid(new WritebackUop)) // * Writeback uop
   val IN_VMCSR = Flipped(new VMCSR) // * Virtual memory CSR
+  val IN_TLBFlush = Flipped(Bool())
 
   val OUT_PTWUop = Decoupled(new PTWUop)
 }
@@ -22,8 +23,16 @@ class PTW extends CoreModule {
   val io = IO(new PTWIO)
 
   val sIdle :: sL1 :: sL0 :: Nil = Enum(3)
-
   val state = RegInit(sIdle)
+  val translateFin = Wire(Bool())
+  
+  val needFlush = RegInit(false.B)
+  when(io.IN_TLBFlush && state =/= sIdle) {
+    needFlush := true.B
+  }
+  when(translateFin) {
+    needFlush := false.B
+  }
 
   val vpn = Reg(UInt(PAGE_NR_LEN.W))
   val id  = Reg(UInt(1.W))
@@ -77,9 +86,9 @@ class PTW extends CoreModule {
   ptwReq.ready := state === sIdle
   val finOnL1 = state === sL1 && hasLoadRepl && !nextLevel
   val finOnL0 = state === sL0 && hasLoadRepl
-  val translateFin = finOnL1 || finOnL0
+  translateFin := finOnL1 || finOnL0
   
-  io.OUT_PTWResp.valid := translateFin
+  io.OUT_PTWResp.valid := translateFin && !needFlush
   io.OUT_PTWResp.bits.isSuper := finOnL1
   io.OUT_PTWResp.bits.pte := io.IN_writebackUop.bits.data.asTypeOf(new PTE)
   io.OUT_PTWResp.bits.vpn := vpn

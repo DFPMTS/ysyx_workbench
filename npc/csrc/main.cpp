@@ -86,38 +86,10 @@ int main(int argc, char *argv[]) {
     cpu_step();
     state.log(totalCycles);
     ++totalCycles;
-    // if (totalCycles > 23100000) {
-    //   begin_wave = true;
-    // }
-    //     ++totalCycles;
-    // #ifdef NVBOARD
-    //     nvboard_update();
-    // #endif
-    //     if (commit) {
-    //       // check the comments of PC / INST
-    // #ifdef DIFFTEST
-    //       difftest();
-    // #endif
-    //       commit = false;
-    //     }
-    //     if (isCommit()) {
-    //       commit = true;
-    //       trace(PC, INST);
-    //       if (PC == 0xa0000000) {
-    //         begin_wave = true;
-    //         printPerfCounters();
-    //         clearAllEventCount();
-    //         totalCycles = 0;
-    //         booted = true;
-    //       }
-    //     }
-    //     if (totalCycles % 10000000 == 0) {
-    //       std::cerr << "Total cycles: " << totalCycles << std::endl;
-    //       printPerfCounters();
-    //     }
   }
   std::cerr << "Simulation End" << std::endl;
-  printf("Total cycles: %lu\n", totalCycles);
+  printf("Total cycles:\t %lu\n", totalCycles);
+  printf("Total instructions:\t %lu\n", state.getInstRetired());
   state.printInsts();
   ++totalCycles;
   // a0

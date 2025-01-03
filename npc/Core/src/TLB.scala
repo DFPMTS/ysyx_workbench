@@ -5,8 +5,9 @@ import utils._
 class TLBIO extends CoreBundle {
   val IN_TLBReq = Flipped(Valid(new TLBReq))
   val OUT_TLBResp = Valid(new TLBResp)
-
   val IN_PTWResp = Flipped(Valid(new PTWResp))
+  
+  val IN_TLBFlush = Flipped(Bool())
 }
 
 
@@ -45,5 +46,9 @@ class TLB(size: Int, id: Int) extends CoreModule {
     entry(counter.value).vpn := io.IN_PTWResp.bits.vpn
     entry(counter.value).pte := io.IN_PTWResp.bits.pte
     entry(counter.value).isSuper := io.IN_PTWResp.bits.isSuper
+  }
+
+  when(io.IN_TLBFlush) {
+    entry.foreach(e => e.valid := false.B)
   }
 }

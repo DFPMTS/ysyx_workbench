@@ -53,6 +53,7 @@ class Core extends CoreModule {
   val flagHandler = Module(new FlagHandler)
   val flush = Wire(Bool())
   val redirect = Wire(new RedirectSignal)
+  val TLBFlush = Wire(Bool())
 
   // * rename
   val renameUop = Wire(Vec(ISSUE_WIDTH, new RenameUop))
@@ -94,6 +95,7 @@ class Core extends CoreModule {
   ifu.io.IN_PTWResp <> ptw.io.OUT_PTWResp
   ifu.io.IN_VMCSR <> csr.io.OUT_VMCSR
   itlb.io.IN_PTWResp <> ptw.io.OUT_PTWResp
+  itlb.io.IN_TLBFlush := TLBFlush
 
   // * DE
   idu.io.IN_inst <> ifu.io.out
@@ -130,6 +132,7 @@ class Core extends CoreModule {
   flagHandler.io.IN_flagUop <> flagUop
   flush := flagHandler.io.OUT_flush
   redirect := flagHandler.io.OUT_redirect
+  TLBFlush := flagHandler.io.OUT_TLBFlush
 
   // * Scheduler
   scheduler.io.IN_issueQueueValid := renameIQValid
@@ -195,8 +198,10 @@ class Core extends CoreModule {
   agu.io.IN_TLBResp <> dtlb.io.OUT_TLBResp
 
   dtlb.io.IN_PTWResp <> ptw.io.OUT_PTWResp
+  dtlb.io.IN_TLBFlush := TLBFlush
   ptw.io.IN_VMCSR := csr.io.OUT_VMCSR
   ptw.io.IN_writebackUop <> writebackUop(2)
+  ptw.io.IN_TLBFlush := TLBFlush
 
   agu.io.IN_VMCSR := csr.io.OUT_VMCSR
   agu.io.OUT_PTWReq <> ptw.io.IN_PTWReq(1)
