@@ -73,6 +73,7 @@ public:
 #define UOP_FIELDS FLAG_FIELDS
 
     REPEAT_1(BIND_FIELDS)
+    REPEAT_1(BIND_VALID)
   }
 
   void log(uint64_t cycle) {
@@ -84,6 +85,18 @@ public:
       running = false;
     }
     // * flag
+    for (int i = 0; i < 1; ++i) {
+      if (*flagUop[i].valid && *flagUop[i].ready) {
+        auto robIndex = *flagUop[i].robPtr_index;
+        if (begin_wave) {
+          printf("<%3d> flagUop\n", robIndex);
+          printf("      prd    = %d\n", *flagUop[i].prd);
+          printf("      flag   = %d\n", *flagUop[i].flag);
+          printf("      pc     = %d\n", *flagUop[i].pc);
+          printf("      target = %d\n", *flagUop[i].target);
+        }
+      }
+    }
 
     // * commit
     char buf[512];

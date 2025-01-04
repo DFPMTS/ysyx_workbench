@@ -197,6 +197,8 @@ struct FlagUop : Uop {
   CData *flag;
   IData *pc;
   IData *target;
+  CData *robPtr_flag;
+  CData *robPtr_index;
 };
 
 // * rename
@@ -234,8 +236,7 @@ struct FlagUop : Uop {
 // * flag
 #define V_FLAG_UOP(i, field)                                                   \
   top->rootp->npc_top__DOT__npc__DOT__flagUop_bits_##field
-#define V_FLAG_VALID(i, field)                                                 \
-  top->rootp->npc_top__DOT__npc__DOT__flagUop_bits_##field
+#define V_FLAG_VALID(i) top->rootp->npc_top__DOT__npc__DOT__flagUop_valid
 
 #define RENAME_FIELDS(X, i)                                                    \
   X(i, rd)                                                                     \
@@ -296,7 +297,9 @@ struct FlagUop : Uop {
   X(i, prd)                                                                    \
   X(i, flag)                                                                   \
   X(i, pc)                                                                     \
-  X(i, target)
+  X(i, target)                                                                 \
+  X(i, robPtr_flag)                                                            \
+  X(i, robPtr_index)
 
 #define BIND_ONE_FIELD(i, field)                                               \
   UOP[i].field = (decltype(UOP[i].field))&V_UOP(i, field);

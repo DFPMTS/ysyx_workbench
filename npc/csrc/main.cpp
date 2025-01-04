@@ -67,13 +67,6 @@ int main(int argc, char *argv[]) {
   nvboard_init(1);
 #endif
   Log("Simulation begin");
-  // begin_wave = true;
-  // int T = 1000000;
-  // while (true) {
-  //   trace_pc();
-  // }
-  // return 0;
-  // begin_wave = true;
   sim_speed.initTimer();
   int T = 400;
   atexit([]() {
@@ -82,6 +75,7 @@ int main(int argc, char *argv[]) {
     fst->close();
 #endif
   });
+  // begin_wave = true;
   while (running) {
     cpu_step();
     state.log(totalCycles);
