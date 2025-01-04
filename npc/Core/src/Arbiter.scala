@@ -147,11 +147,13 @@ class AXI_Arbiter extends Module {
 
   val mtime = RegInit(0.U(64.W))
   val mtimecmp = RegInit(0.U(64.W))
+  val msip =RegInit(0.U(1.W))
   mtime := mtime + 1.U
 
   val CLINT_BASE = 0x11000000L.U(32.W)
   val MTIME_OFFSET = 0xbff8.U
   val MTIMECMP_OFFSET = 0x4000.U
+  val MSIP_OFFSET = 0x0.U
 
   val mtimel = mtime(31, 0)
   val mtimeh = mtime(63, 32)
@@ -177,6 +179,8 @@ class AXI_Arbiter extends Module {
     readMMIOData := mtimecmpl
   }.elsewhen(raddr(31, 2) === (CLINT_BASE + MTIMECMP_OFFSET + 4.U)(31, 2)) {
     readMMIOData := mtimecmph
+  }.elsewhen(raddr(31, 2) === (CLINT_BASE + MSIP_OFFSET)(31, 2)) {
+    readMMIOData := msip
   }
 
   
@@ -206,6 +210,8 @@ class AXI_Arbiter extends Module {
     mtimecmp := Cat(mtimecmp(63, 32), win.w.bits.data)
   }.elsewhen(waddr(31, 2) === (CLINT_BASE + MTIMECMP_OFFSET + 4.U)(31, 2)) {
     mtimecmp := Cat(win.w.bits.data, mtimecmp(31, 0))
+  }.elsewhen(waddr(31, 2) === (CLINT_BASE + MSIP_OFFSET)(31, 2)) {
+    msip := win.w.bits.data(0)
   }
 
   // toWin <> toIn

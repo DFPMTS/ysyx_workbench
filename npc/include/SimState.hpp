@@ -82,7 +82,7 @@ public:
     }
     if (cycle > lastCommit + 100) {
       Log("CPU hangs");
-      running = false;
+      running.store(false);
     }
     // * flag
     for (int i = 0; i < 1; ++i) {
@@ -111,7 +111,8 @@ public:
         if (inst.fuType == FuType::LSU) {
           auto addr = inst.src1 + inst.imm;
           if (addr >= 0x11000000 + 0xbff8 && addr < 0x11000000 + 0xc000 ||
-              addr >= 0x11000000 + 0x4000 && addr < 0x11000000 + 0x4008) {
+              addr >= 0x11000000 + 0x4000 && addr < 0x11000000 + 0x4008 ||
+              addr >= 0x11000000 + 0x0000 && addr < 0x11000000 + 0x0004) {
             access_device = true;
           }
         }

@@ -1,3 +1,3 @@
 #include "status.hpp"
 
-bool running = false;
+std::atomic_bool running(false);

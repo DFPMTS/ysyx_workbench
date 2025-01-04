@@ -73,6 +73,7 @@ class Decode extends CoreModule {
   def sret       = BitPat("b0001000 00010 00000 000 00000 11100 11")
   def fence      = BitPat("b???? ???? ???? ????? 000 ????? 00011 11")
   def sfence_vma = BitPat("b0001001 ????? ????? 000 ????? 11100 11")
+  def wfi        = BitPat("b0001000 00101 00000 000 00000 11100 11")
   // * RV32M
   def mul        = BitPat("b0000001 ????? ????? 000 ????? 01100 11")
   def mulh       = BitPat("b0000001 ????? ????? 001 ????? 01100 11")
@@ -83,6 +84,8 @@ class Decode extends CoreModule {
   def rem        = BitPat("b0000001 ????? ????? 110 ????? 01100 11")
   def remu       = BitPat("b0000001 ????? ????? 111 ????? 01100 11")
   // * RV32A
+  def lr_w       = BitPat("b00010?? 00000 ????? 010 ????? 0101111")
+  def sc_w       = BitPat("b00011?? ????? ????? 010 ????? 0101111")
   def amoswap_w  = BitPat("b00001?? ????? ????? 010 ????? 0101111")
   def amoadd_w   = BitPat("b00000?? ????? ????? 010 ????? 0101111")
   def amoxor_w   = BitPat("b00100?? ????? ????? 010 ????? 0101111")
@@ -146,6 +149,7 @@ csrrsi     -> List(N, Y, SrcType.REG,  SrcType.ZERO, FuType.CSR,  CSROp.CSRRSI, 
 csrrci     -> List(N, Y, SrcType.REG,  SrcType.ZERO, FuType.CSR,  CSROp.CSRRCI,      ImmType.I),
 mret       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, FlagOp.MRET,       ImmType.X),
 sret       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, FlagOp.SRET,       ImmType.X),
+wfi        -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, FlagOp.NONE,       ImmType.X),
 mul        -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.MUL,  MULOp.MUL,         ImmType.X),// * RV32M begin
 mulh       -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.MUL,  MULOp.MULH,        ImmType.X),
 mulhsu     -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.MUL,  MULOp.MULHSU,      ImmType.X),
@@ -154,7 +158,9 @@ div        -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.DIV,  DIVOp.DIV,    
 divu       -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.DIV,  DIVOp.DIVU,        ImmType.X),
 rem        -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.DIV,  DIVOp.REM,         ImmType.X),
 remu       -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.DIV,  DIVOp.REMU,        ImmType.X),
-amoswap_w  -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.AMO,  AMOOp.SWAP_W,      ImmType.X),// * RV32A begin
+lr_w       -> List(N, Y, SrcType.REG,  SrcType.ZERO, FuType.AMO,  AMOOp.LR_W,        ImmType.X),// * RV32A begin
+sc_w       -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.AMO,  AMOOp.SC_W,        ImmType.X),
+amoswap_w  -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.AMO,  AMOOp.SWAP_W,      ImmType.X),
 amoadd_w   -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.AMO,  AMOOp.ADD_W,       ImmType.X),
 amoxor_w   -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.AMO,  AMOOp.XOR_W,       ImmType.X),
 amoand_w   -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.AMO,  AMOOp.AND_W,       ImmType.X),
@@ -163,6 +169,8 @@ amomin_w   -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.AMO,  AMOOp.MIN_W,  
 amomax_w   -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.AMO,  AMOOp.MAX_W,       ImmType.X),
 amominu_w  -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.AMO,  AMOOp.MINU_W,      ImmType.X),
 amomaxu_w  -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.AMO,  AMOOp.MAXU_W,      ImmType.X),
+
+
   )
   def listToBitPat(l: List[BitPat]) = {
     l.reduceLeft(_ ## _)

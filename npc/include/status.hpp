@@ -1,6 +1,8 @@
 #ifndef STATUS_HPP
 #define STATUS_HPP
 
-extern bool running;
+#include <atomic>
+
+extern std::atomic_bool running;
 
 #endif

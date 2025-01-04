@@ -20,6 +20,7 @@ target("Vtop")
   if get_config("sim_target") == "npc" then
     add_values("verilator.flags", "--trace-fst")
     add_values("verilator.flags", "-sv")
+    add_values("verilator.flags", "-O3")
   else 
     add_values("verilator.flags", "--trace-fst", "--timescale", "1ns/1ps", "--no-timing", "--top-module", "ysyxSoCFull", "--autoflush", "-Wno-WIDTHEXPAND")
     add_values("verilator.flags","-I../ysyxSoC/perip/uart16550/rtl")

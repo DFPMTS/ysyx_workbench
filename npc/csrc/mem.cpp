@@ -45,7 +45,7 @@ static uint32_t image[128] = {
 };
 
 bool access_device = false;
-uint8_t mem[MEM_SIZE];
+uint8_t *mem = nullptr;
 uint8_t sram[SRAM_SIZE];
 uint8_t mrom[MROM_SIZE];
 uint8_t flash[FLASH_SIZE];
@@ -56,9 +56,13 @@ uint8_t sdram[SDRAM_SIZE];
 
 static bool in_pmem(paddr_t addr) { return addr - MEM_BASE < MEM_SIZE; }
 static bool in_clock(paddr_t addr) {
+  return false;
   return addr == RTC_ADDR || addr == RTC_ADDR + 4;
 }
-static bool in_serial(paddr_t addr) { return addr == SERIAL_PORT; }
+static bool in_serial(paddr_t addr) {
+  return false;
+  return addr == SERIAL_PORT;
+}
 
 uint8_t uart_io_handler(uint32_t offset, int len, uint8_t wdata, bool is_write);
 bool in_uart(uint32_t addr);
@@ -85,6 +89,10 @@ void serial_write(paddr_t offset, mem_word_t wdata) {
 }
 
 void load_img(const char *img) {
+  // * first, allocate mem
+  mem = new uint8_t[MEM_SIZE];
+  assert(mem);
+  memset(mem, 0x23, MEM_SIZE);
   FILE *fd = NULL;
   if (img) {
     fd = fopen(img, "rb");
@@ -172,15 +180,15 @@ mem_word_t mem_read(paddr_t addr) {
   if (valid) {
     return retval;
   }
-  if (running) {
-    running = false;
+  if (running.load()) {
+    running.store(false);
     Log("Invalid read to 0x%08x\n", raw_addr);
   }
   return 0;
 }
 
 void mem_write(paddr_t addr, mem_word_t wdata, unsigned char wmask) {
-  if (!running)
+  if (!running.load())
     return;
   auto raw_addr = addr;
   addr &= ADDR_MASK;
@@ -209,12 +217,12 @@ void mem_write(paddr_t addr, mem_word_t wdata, unsigned char wmask) {
     return;
   }
   Log("Invalid write to 0x%08x\n", raw_addr);
-  running = false;
+  running.store(false);
 }
 
 mem_word_t inst_fetch(paddr_t pc) { return mem_read(pc); }
 
-void raise_ebreak() { running = 0; }
+void raise_ebreak() { running.store(false); }
 
 void raise_invalid_inst() {
   Log("Invalid instruction\n");

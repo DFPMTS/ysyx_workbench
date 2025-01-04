@@ -1,5 +1,7 @@
 #include "Vtop.h"
+#include "status.hpp"
 #include "verilated_vcd_c.h"
+#include <atomic>
 #include <cassert>
 #define WAVE
 #define SIM_T 10
@@ -19,7 +21,6 @@ static uint32_t image[128] = {
 
 Vtop *top;
 VerilatedVcdC *vcd;
-bool running = false;
 
 void cpu_step() {
   static uint64_t sim_time = 1;

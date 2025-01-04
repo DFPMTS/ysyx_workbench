@@ -8,6 +8,7 @@
 #include "monitor.hpp"
 #include "status.hpp"
 #include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstdlib>
 
@@ -19,19 +20,26 @@ static uint64_t totalCycles = 0;
 
 void printPerfCounters() {
   std::cout << "-----------------------------------" << std::endl;
-  std::cout << "ifuFinished" << " " << getEventCount("ifuFinished")
-            << std::endl;
-  std::cout << "icacheMiss" << " " << getEventCount("icacheMiss") << std::endl;
-  std::cout << "ifuStalled" << " " << getEventCount("ifuStalled") << std::endl;
+  std::cout << "ifuFinished"
+            << " " << getEventCount("ifuFinished") << std::endl;
+  std::cout << "icacheMiss"
+            << " " << getEventCount("icacheMiss") << std::endl;
+  std::cout << "ifuStalled"
+            << " " << getEventCount("ifuStalled") << std::endl;
 
-  std::cout << "iduBruInst" << " " << getEventCount("iduBruInst") << std::endl;
-  std::cout << "iduAluInst" << " " << getEventCount("iduAluInst") << std::endl;
-  std::cout << "iduMemInst" << " " << getEventCount("iduMemInst") << std::endl;
-  std::cout << "iduCsrInst" << " " << getEventCount("iduCsrInst") << std::endl;
+  std::cout << "iduBruInst"
+            << " " << getEventCount("iduBruInst") << std::endl;
+  std::cout << "iduAluInst"
+            << " " << getEventCount("iduAluInst") << std::endl;
+  std::cout << "iduMemInst"
+            << " " << getEventCount("iduMemInst") << std::endl;
+  std::cout << "iduCsrInst"
+            << " " << getEventCount("iduCsrInst") << std::endl;
 
-  std::cout << "memFinished" << " " << getEventCount("memFinished")
-            << std::endl;
-  std::cout << "memStalled" << " " << getEventCount("memStalled") << std::endl;
+  std::cout << "memFinished"
+            << " " << getEventCount("memFinished") << std::endl;
+  std::cout << "memStalled"
+            << " " << getEventCount("memStalled") << std::endl;
 
   std::cout << "Total cycles: " << totalCycles << std::endl;
 
@@ -69,14 +77,15 @@ int main(int argc, char *argv[]) {
   Log("Simulation begin");
   sim_speed.initTimer();
   int T = 400;
-  atexit([]() {
-    state.printInsts();
-#ifdef WAVE
-    fst->close();
-#endif
-  });
   // begin_wave = true;
-  while (running) {
+  signal(SIGINT, [](int) {
+    puts("Vtop: SIGINT received");
+    running.store(false);
+  });
+  while (running.load()) {
+    // if (state.getInstRetired() > 346000) {
+    //   begin_wave = true;
+    // }
     cpu_step();
     state.log(totalCycles);
     ++totalCycles;

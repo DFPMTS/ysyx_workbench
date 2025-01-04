@@ -1,47 +1,50 @@
 import chisel3._
 import chisel3.util._
 import utils._
-import Config.XLEN
-import chisel3.SpecifiedDirection.Flip
-import CSRList.{mip => mip}
-import CSRList.{mscratch => mscratch}
 
 object CSRList {
-  val sstatus        = 0x100.U
-  val sie            = 0x104.U
-  val stvec          = 0x105.U
-  val scounteren     = 0x106.U
+  // Define CSR addresses as a Map
+  val csrMap: Map[String, UInt] = Map(
+    "sstatus"    -> 0x100.U,
+    "sie"        -> 0x104.U,
+    "stvec"      -> 0x105.U,
+    "scounteren" -> 0x106.U,
 
-  val sscratch       = 0x140.U
-  val sepc           = 0x141.U
-  val scause         = 0x142.U
-  val stval          = 0x143.U
-  val sip            = 0x144.U
-  val satp           = 0x180.U
+    "sscratch"   -> 0x140.U,
+    "sepc"       -> 0x141.U,
+    "scause"     -> 0x142.U,
+    "stval"      -> 0x143.U,
+    "sip"        -> 0x144.U,
+    "satp"       -> 0x180.U,
 
-  val mstatus        = 0x300.U
-  val misa           = 0x301.U
-  val medeleg        = 0x302.U
-  val mideleg        = 0x303.U
-  val mie            = 0x304.U
-  val mtvec          = 0x305.U
-  val mcounteren     = 0x306.U
-  val menvcfg        = 0x30A.U
-  val mstatush       = 0x310.U
-  val menvcfgh       = 0x31A.U
-  val mscratch       = 0x340.U
-  val mepc           = 0x341.U
-  val mcause         = 0x342.U
-  val mtval          = 0x343.U
-  val mip            = 0x344.U
+    "mstatus"    -> 0x300.U,
+    "misa"       -> 0x301.U,
+    "medeleg"    -> 0x302.U,
+    "mideleg"    -> 0x303.U,
+    "mie"        -> 0x304.U,
+    "mtvec"      -> 0x305.U,
+    "mcounteren" -> 0x306.U,
+    "menvcfg"    -> 0x30A.U,
+    "mstatush"   -> 0x310.U,
+    "menvcfgh"   -> 0x31A.U,
+    "mscratch"   -> 0x340.U,
+    "mepc"       -> 0x341.U,
+    "mcause"     -> 0x342.U,
+    "mtval"      -> 0x343.U,
+    "mip"        -> 0x344.U,
 
-  val time           = 0xC01.U
-  val timeh          = 0xC81.U
+    "time"       -> 0xC01.U,
+    "timeh"      -> 0xC81.U,
 
-  val mvendorid      = 0xF11.U
-  val marchid        = 0xF12.U
-  val mipid          = 0xF13.U
-  val mhartid        = 0xF14.U
+    "mvendorid"  -> 0xF11.U,
+    "marchid"    -> 0xF12.U,
+    "mipid"      -> 0xF13.U,
+    "mhartid"    -> 0xF14.U
+  )
+
+  def apply(name: String): UInt = csrMap(name)
+  // Function to check if a value matches any CSR
+  def exists(value: UInt): Bool = csrMap.map(_._2 === value).reduce(_ || _)
 }
 
 object Priv {
@@ -125,7 +128,7 @@ class Menvcfg extends CoreBundle {
   val FIOM    = UInt(1.W)
 }
 
-class CSR extends Module {
+class CSR extends CoreModule {
   val io = IO(new CSRIO)
 
   val priv    = RegInit(3.U(2.W))  
@@ -181,7 +184,7 @@ class CSR extends Module {
   val satp         = RegInit(0.U(32.W))                 // * 0x180
 
   val mstatus      = RegInit(0.U.asTypeOf(new Mstatus)) // * 0x300
-  // * misa       0x301
+  val misa         = RegInit(((1L << 30) | (1 << 0) | (1 << 2) | (1 << 3) | (1 << 5) | (1 << 8) | (1 << 12) | (1 << 18) | (1 << 20)).U(32.W)) // * 0x301
   val medeleg      = RegInit(0.U(XLEN.W))               // * 0x302
   val mideleg      = RegInit(0.U(XLEN.W))               // * 0x303
   val mie          = RegInit(0.U.asTypeOf(new Mipe))    // * 0x304
@@ -221,14 +224,21 @@ class CSR extends Module {
   }.elsewhen(inUop.opcode === CSROp.CSRRWI) {
     wdata := inUop.imm(16, 12)
   }.elsewhen(inUop.opcode === CSROp.CSRRSI) {
-    wdata := rdata | inUop.imm(16, 12)
+    wdata := rdata | Cat(0.U(27.W), inUop.imm(16, 12))
   }.elsewhen(inUop.opcode === CSROp.CSRRCI) {
-    wdata := rdata & ~inUop.imm(16, 12)
+    wdata := rdata & ~Cat(0.U(27.W), inUop.imm(16, 12))
   }
+  /* 
+  ! This does now work! the imm(16, 12) does not zero-extend before "~"
+  ! So need to zero-extend manually
+  .elsewhen(inUop.opcode === CSROp.CSRRCI) {
+    wdata := rdata & ~inUop.imm(16, 12)
+  } */
   
   val privError = addr(9, 8) > priv
   val roError   = wen && addr(11, 10) === 3.U
-  val illegal = privError || roError
+  val notExist  = !CSRList.exists(addr)
+  val illegal = privError || roError || notExist
   val doRead = ren && !illegal
   val doWrite = wen && !illegal
 
@@ -242,14 +252,17 @@ class CSR extends Module {
   val uopValid = RegInit(false.B)
 
   when(trapValid) {
+    // printf("------------trap: %x epc: %x\n",trapCause, trapPC)
     when(io.IN_CSRCtrl.delegate) {
+      // printf("--------------------------delegate\n")
+      // printf("--------------------------priv: %x\n",priv)
       scause := trapCause
       sepc := trapPC
       mstatus.SPIE := mstatus.SIE
       mstatus.SIE := 0.U
       mstatus.SPP := priv
       priv := Priv.S
-    }.otherwise {
+    }.otherwise {      
       mcause := trapCause
       mepc := trapPC
       mstatus.MPIE := mstatus.MIE
@@ -260,6 +273,7 @@ class CSR extends Module {
   }
 
   when(mret) {
+    // printf("--------------------------mret\n")
     when(mstatus.MPP < Priv.M) {
       mstatus.MPRV := 0.U
     }
@@ -270,6 +284,7 @@ class CSR extends Module {
   }
 
   when(sret) {
+    // printf("--------------------------sret\n")
     when(mstatus.SPP < Priv.M) {
       mstatus.MPRV := 0.U
     }
@@ -280,8 +295,8 @@ class CSR extends Module {
   }
 
   rdata := 0.U
-  when(doRead) {
-    when(addr === CSRList.sstatus) { // * 0x100
+  when(true.B) {
+    when(addr === CSRList("sstatus")) { // * 0x100
       val sstatus = WireInit(0.U.asTypeOf(new Mstatus))
       sstatus.SD := mstatus.SD      
       sstatus.MXR := mstatus.MXR
@@ -293,93 +308,99 @@ class CSR extends Module {
       sstatus.SIE := mstatus.SIE
       rdata := sstatus.asUInt
     }
-    when(addr === CSRList.sie) { // * 0x104
+    when(addr === CSRList("sie")) { // * 0x104
       rdata := mie.asUInt
     }
-    when(addr === CSRList.stvec) { // * 0x105
+    when(addr === CSRList("stvec")) { // * 0x105
       rdata := stvec
     }
-    when(addr === CSRList.scounteren) { // * 0x106
+    when(addr === CSRList("scounteren")) { // * 0x106
       rdata := 0.U
     }
-    when(addr === CSRList.sscratch) { // * 0x140
+    when(addr === CSRList("sscratch")) { // * 0x140
       rdata := sscratch
     }
-    when(addr === CSRList.sepc) { // * 0x141
+    when(addr === CSRList("sepc")) { // * 0x141
       rdata := sepc
     }
-    when(addr === CSRList.scause) { // * 0x142
+    when(addr === CSRList("scause")) { // * 0x142
       rdata := scause
     }
-    when(addr === CSRList.stval) { // * 0x143
+    when(addr === CSRList("stval")) { // * 0x143
       rdata := stval
     }
-    when(addr === CSRList.sip) { // * 0x144
+    when(addr === CSRList("sip")) { // * 0x144
       rdata := mip.asUInt
     }
-    when(addr === CSRList.satp) { // * 0x180
+    when(addr === CSRList("satp")) { // * 0x180
       rdata := satp
     }
-    when(addr === CSRList.mstatus) { // * 0x300
+    when(addr === CSRList("mstatus")) { // * 0x300
       rdata := mstatus.asUInt
     }
-    when(addr === CSRList.medeleg) { // * 0x302
+    when(addr === CSRList("misa")) { // * 0x301
+      rdata := misa
+    }
+    when(addr === CSRList("medeleg")) { // * 0x302
       rdata := medeleg
     }
-    when(addr === CSRList.mideleg) { // * 0x303
+    when(addr === CSRList("mideleg")) { // * 0x303
       rdata := mideleg
     }
-    when(addr === CSRList.mie) { // * 0x304
+    when(addr === CSRList("mie")) { // * 0x304
       rdata := mie.asUInt
     }
-    when(addr === CSRList.mtvec) { // * 0x305
+    when(addr === CSRList("mtvec")) { // * 0x305
       rdata := mtvec
     }
-    when(addr === CSRList.mcounteren) { // * 0x306
+    when(addr === CSRList("mcounteren")) { // * 0x306
       rdata := 0.U
     }
-    when(addr === CSRList.menvcfg) { // * 0x30A
+    when(addr === CSRList("menvcfg")) { // * 0x30A
       rdata := menvcfg.asUInt
     }
-    when(addr === CSRList.mstatush) { // * 0x310
+    when(addr === CSRList("mstatush")) { // * 0x310
       rdata := 0.U
     }
-    when(addr === CSRList.menvcfgh) { // * 0x31A
+    when(addr === CSRList("menvcfgh")) { // * 0x31A
       rdata := 0.U
     }
-    when(addr === CSRList.mscratch) { // * 0x340
+    when(addr === CSRList("mscratch")) { // * 0x340
       rdata := mscratch
     }
-    when(addr === CSRList.mepc) { // * 0x341
+    when(addr === CSRList("mepc")) { // * 0x341
       rdata := mepc
     }
-    when(addr === CSRList.mcause) { // * 0x342
+    when(addr === CSRList("mcause")) { // * 0x342
       rdata := mcause
     }
-    when(addr === CSRList.mip) { // * 0x344
+    when(addr === CSRList("mip")) { // * 0x344
       rdata := mip.asUInt
     }
     
-    when(addr === CSRList.time) { // * 0xC01
+    when(addr === CSRList("time")) { // * 0xC01
       rdata := 0.U
     }
-    when(addr === CSRList.timeh) { // * 0xC81
+    when(addr === CSRList("timeh")) { // * 0xC81
       rdata := 0.U
     }
 
-    when(addr === CSRList.mvendorid) { // * 0xF11
+    when(addr === CSRList("mvendorid")) { // * 0xF11
       rdata := 0x79737978.U
     }
-    when(addr === CSRList.marchid) { // * 0xF12
+    when(addr === CSRList("marchid")) { // * 0xF12
       rdata := 23060238.U
     }
-    when(addr === CSRList.mhartid) { // * 0xF14
+    when(addr === CSRList("mhartid")) { // * 0xF14
       rdata := 0.U
     }
   }
 
   when(doWrite) {
-    when(addr === CSRList.sstatus) { // * 0x100
+    when(addr === CSRList("sstatus")) { // * 0x100
+      // printf("opcode %d sstatus: %x\n", inUop.opcode, wdata)
+      // printf("rdata: %x\n", rdata)
+      // printf("mstatus: %x\n", mstatus.asUInt)
       val status = WireInit(wdata.asTypeOf(new Mstatus))
       mstatus.MXR := status.MXR
       mstatus.SUM := status.SUM
@@ -390,35 +411,36 @@ class CSR extends Module {
       // * only FS can be non-zero
       mstatus.SD  := status.FS.orR
     }
-    when(addr === CSRList.sie) { // * 0x104
+    when(addr === CSRList("sie")) { // * 0x104
       mie := wdata.asTypeOf(new Mipe)
     }
-    when(addr === CSRList.stvec) { // * 0x105
+    when(addr === CSRList("stvec")) { // * 0x105
       stvec := wdata
     }
-    when(addr === CSRList.scounteren) { // * 0x106
+    when(addr === CSRList("scounteren")) { // * 0x106
       // * do nothing
     }
-    when(addr === CSRList.sscratch) { // * 0x140
+    when(addr === CSRList("sscratch")) { // * 0x140
       sscratch := wdata
     }
-    when(addr === CSRList.sepc) { // * 0x141
+    when(addr === CSRList("sepc")) { // * 0x141
       sepc := wdata
     }
-    when(addr === CSRList.scause) { // * 0x142
+    when(addr === CSRList("scause")) { // * 0x142
       scause := wdata
     }
-    when(addr === CSRList.stval) { // * 0x143
+    when(addr === CSRList("stval")) { // * 0x143
       stval := wdata
     }
-    when(addr === CSRList.sip) { // * 0x144
+    when(addr === CSRList("sip")) { // * 0x144
       mip := wdata.asTypeOf(new Mipe)
     }
-    when(addr === CSRList.satp) { // * 0x180
+    when(addr === CSRList("satp")) { // * 0x180
       satp := wdata
     }
-    when(addr === CSRList.mstatus) { // * 0x300
-      val status = WireInit(wdata.asTypeOf(new Mstatus))
+    when(addr === CSRList("mstatus")) { // * 0x300
+      // printf("write mstatus: %x\n", wdata)
+      val status = WireInit(wdata.asTypeOf(new Mstatus))      
       mstatus.TSR := status.TSR
       mstatus.TW := status.TW
       mstatus.TVM := status.TVM
@@ -435,36 +457,39 @@ class CSR extends Module {
       // * only FS can be non-zero
       mstatus.SD := status.FS.orR
     }
-    when(addr === CSRList.medeleg) { // * 0x302
-      medeleg := wdata
+    when(addr === CSRList("misa")) { // * 0x301
+      misa := wdata
     }
-    when(addr === CSRList.mideleg) { // * 0x303
-      mideleg := wdata
+    when(addr === CSRList("medeleg")) { // * 0x302
+      medeleg := wdata & 0xb7ff.U
     }
-    when(addr === CSRList.mie) { // * 0x304
+    when(addr === CSRList("mideleg")) { // * 0x303
+      mideleg := wdata & 0x222.U
+    }
+    when(addr === CSRList("mie")) { // * 0x304
       mie := wdata.asTypeOf(new Mipe)
     }
-    when(addr === CSRList.mtvec) { // * 0x305
+    when(addr === CSRList("mtvec")) { // * 0x305
       mtvec := wdata
     }
-    when(addr === CSRList.mcounteren) { // * 0x306
+    when(addr === CSRList("mcounteren")) { // * 0x306
       // * do nothing
     }
-    when(addr === CSRList.menvcfg) { // * 0x30A
+    when(addr === CSRList("menvcfg")) { // * 0x30A
       val envcfg = WireInit(wdata.asTypeOf(new Menvcfg))
       menvcfg.FIOM := envcfg.FIOM
     }
-    when(addr === CSRList.mscratch) { // * 0x340
-      printf("write mscratch: %x %x\n", inUop.src1, wdata)
+    when(addr === CSRList("mscratch")) { // * 0x340
+      // printf("write mscratch: %x write: %x\n", mscratch, wdata)
       mscratch := wdata
     }
-    when(addr === CSRList.mepc) { // * 0x341
+    when(addr === CSRList("mepc")) { // * 0x341
       mepc := wdata
     }
-    when(addr === CSRList.mcause) { // * 0x342
+    when(addr === CSRList("mcause")) { // * 0x342
       mcause := rdata
     }
-    when(addr === CSRList.mip) { // * 0x344
+    when(addr === CSRList("mip")) { // * 0x344
       mip := wdata.asTypeOf(new Mipe)
     }    
   }
@@ -495,7 +520,7 @@ class CSR extends Module {
   uop.dest := Dest.ROB
   uop.data := rdata
   uop.target := inUop.pc + 4.U
-  uop.flag := FlagOp.MISPREDICT
+  uop.flag := Mux(illegal, FlagOp.ILLEGAL_INST, FlagOp.MISPREDICT)
   uop.prd  := inUop.prd
   uop.robPtr := inUop.robPtr
   

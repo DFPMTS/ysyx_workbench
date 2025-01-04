@@ -141,11 +141,6 @@ object CSROp extends HasDecodeConfig {
   def CSRRWI = "b0100".U(OpcodeWidth.W)
   def CSRRSI = "b0101".U(OpcodeWidth.W)
   def CSRRCI = "b0110".U(OpcodeWidth.W)
-
-  def SRET = "b1000".U(OpcodeWidth.W)
-  def MRET = "b1001".U(OpcodeWidth.W)
-  def ECALL = "b1010".U(OpcodeWidth.W)
-  def EBREAK = "b1011".U(OpcodeWidth.W)
 }
 
 object MULOp extends HasDecodeConfig {

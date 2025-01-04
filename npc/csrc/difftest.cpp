@@ -91,7 +91,7 @@ void difftest() {
   if (!check_context(&ref, &dut)) {
     isa_reg_display(&dut);
     Log("Difftest failed\n");
-    running = false;
+    running.store(false);
   }
   // isa_reg_display(&ref);
 }

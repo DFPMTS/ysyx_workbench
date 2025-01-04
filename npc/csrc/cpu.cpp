@@ -130,7 +130,7 @@ void init_cpu() {
   while (T--) {
     cpu_step();
   }
-  running = 1;
+  running.store(true);
   top->reset = 0;
   top->eval();
 }

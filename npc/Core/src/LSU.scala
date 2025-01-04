@@ -41,26 +41,34 @@ class LSU extends CoreModule with HasLSUOps {
   val sIdle :: sWaitResp :: sWaitAmoSave :: Nil = Enum(3)
   val state = RegInit(sIdle)
 
+  // * reservation station
+  val reservation = Reg(UInt(XLEN.W))
+  val reservationValid = RegInit(false.B)
+
   val respValid = io.master.r.fire || io.master.b.fire
   val insert1 = (state === sIdle && io.IN_AGUUop.valid)
   val insert2 = (state === sWaitResp && respValid)
   val insert = insert1 || insert2
   val inUop = RegEnable(io.IN_AGUUop.bits, insert1)
   val opcode = inUop.opcode
+  val isLr = inUop.fuType === FuType.AMO && opcode === AMOOp.LR_W
+  val isSc = inUop.fuType === FuType.AMO && opcode === AMOOp.SC_W
+  val scFail = inUop.addr =/= reservation || !reservationValid
   
   io.IN_AGUUop.ready := state === sIdle
 
   state := MuxLookup(state, sIdle)(
     Seq(
       sIdle -> Mux(io.IN_AGUUop.valid, sWaitResp, sIdle),
-      sWaitResp -> Mux(respValid, Mux(
-        inUop.fuType === FuType.LSU, sIdle, sWaitAmoSave), sWaitResp),
+      sWaitResp -> Mux(respValid, 
+      Mux(inUop.fuType === FuType.LSU || isLr || isSc, 
+        sIdle, sWaitAmoSave), sWaitResp),
       sWaitAmoSave -> Mux(io.master.b.fire, sIdle, sWaitAmoSave)
     )
   )
-
-  val uopRead  = state === sWaitResp && ((inUop.fuType === FuType.LSU && opcode(3) === R) || inUop.fuType === FuType.AMO)
-  val uopWrite = (state === sWaitResp && (inUop.fuType === FuType.LSU && opcode(3) === W)) || 
+  
+  val uopRead  = state === sWaitResp && ((inUop.fuType === FuType.LSU && opcode(3) === R) || (inUop.fuType === FuType.AMO && opcode =/= AMOOp.SC_W))
+  val uopWrite = (state === sWaitResp && ((inUop.fuType === FuType.LSU && opcode(3) === W) || (isSc && !scFail))) || 
                  (state === sWaitAmoSave && inUop.fuType === FuType.AMO)
 
   val memLen     = Mux(inUop.fuType === FuType.LSU, opcode(2, 1), 2.U)
@@ -140,12 +148,20 @@ class LSU extends CoreModule with HasLSUOps {
   
   uopValid := state === sWaitResp && respValid
   
-  uop.data := sign_ext_data
+  uop.data := Mux(isSc, scFail, sign_ext_data)
   uop.prd := inUop.prd
   uop.robPtr := inUop.robPtr
   uop.flag := 0.U
   uop.target := 0.U
   uop.dest := inUop.dest
+  when(uopValid) {
+    when(isLr) {
+      reservation := addr
+      reservationValid := true.B
+    }.elsewhen(isSc) {
+      reservationValid := false.B
+    }
+  }
 
   io.OUT_writebackUop.bits := uop
   io.OUT_writebackUop.valid := uopValid
@@ -169,7 +185,7 @@ class AMOALU extends CoreModule {
   res := 0.U
 
   res := MuxLookup(opcode, src2)(
-    Seq(      
+    Seq(
       AMOOp.SWAP_W -> src2,
       AMOOp.ADD_W  -> (src1 + src2),
       AMOOp.AND_W  -> (src1 & src2),
