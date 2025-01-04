@@ -108,6 +108,7 @@ class Core extends CoreModule {
   rename.io.IN_issueQueueReady := scheduler.io.OUT_issueQueueReady
   rename.io.IN_robReady := renameRobReady
   rename.io.IN_flush := flush
+  rename.io.IN_robTailPtr := rob.io.OUT_robTailPtr
 
   rename.io.OUT_renameUop <> renameUop
   rename.io.OUT_robValid <> renameRobValid

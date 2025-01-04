@@ -35,7 +35,7 @@ class ROB extends CoreModule {
   val robTailPtr = RegInit(RingBufferPtr(size = ROB_SIZE, flag = 1.U, index = 0.U))
 
   // ** Control
-  val enqStall = io.IN_renameRobHeadPtr.isAheadOf(robTailPtr)
+  val enqStall = false.B // * ROB stall is handled in Rename stage
   for (i <- 0 until ISSUE_WIDTH) {
     io.OUT_renameUopReady := !enqStall
   }

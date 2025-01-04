@@ -8,6 +8,7 @@ class RenameIO extends CoreBundle {
   val OUT_renameUop = Vec(ISSUE_WIDTH, new RenameUop)
   
   val OUT_robValid = Vec(ISSUE_WIDTH, Output(Bool()))
+  val IN_robTailPtr = Input(RingBufferPtr(ROB_SIZE))
   val IN_robReady = Flipped(Bool())
 
   val OUT_issueQueueValid = Vec(ISSUE_WIDTH, Output(Bool()))  
@@ -35,9 +36,18 @@ class Rename extends CoreModule {
 
   // * Dataflow
 
+  // ** robPtr allocation
+  val robHeadPtr = RegInit(RingBufferPtr(size = ROB_SIZE, flag = 0.U, index = 0.U))
+  when (io.IN_flush) {
+    robHeadPtr := RingBufferPtr(size = ROB_SIZE, flag = 0.U, index = 0.U)
+  }.otherwise {
+    robHeadPtr := robHeadPtr + PopCount(io.IN_decodeUop.map(_.fire))  
+  }
+  io.OUT_robHeadPtr := robHeadPtr
+
   // ** Decode -> FreeList
   val allocatePReg = io.IN_decodeUop.map(decodeUop => decodeUop.fire && decodeUop.bits.rd =/= 0.U)
-  val renameStall = freeList.io.OUT_renameStall
+  val renameStall = freeList.io.OUT_renameStall || (robHeadPtr.distanceTo(io.IN_robTailPtr) < ISSUE_WIDTH.U)
   for (i <- 0 until ISSUE_WIDTH) {
     // * Allocate PReg
     freeList.io.IN_renameReqValid(i) := allocatePReg(i)
@@ -74,15 +84,6 @@ class Rename extends CoreModule {
     renamingTable.io.IN_commitPReg(i) := io.IN_commitUop(i).bits.prd
   }
 
-  // ** robPtr allocation
-  val robHeadPtr = RegInit(RingBufferPtr(size = ROB_SIZE, flag = 0.U, index = 0.U))
-  when (io.IN_flush) {
-    robHeadPtr := RingBufferPtr(size = ROB_SIZE, flag = 0.U, index = 0.U)
-  }.otherwise {
-    robHeadPtr := robHeadPtr + PopCount(io.IN_decodeUop.map(_.fire))  
-  }
-  io.OUT_robHeadPtr := robHeadPtr
-  
   // ** uopNext generation
   for (i <- 0 until ISSUE_WIDTH) {
     val decodeUop = io.IN_decodeUop(i).bits
