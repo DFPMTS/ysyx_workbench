@@ -16,6 +16,7 @@ class IFUIO extends Bundle {
   val OUT_PTWReq = Decoupled(new PTWReq)
   val IN_PTWResp = Flipped(Valid(new PTWResp))
   val IN_VMCSR   = Flipped(new VMCSR)
+  val IN_trapCSR = Flipped(new TrapCSR)
 
   // * AXI master interface
   val master = new AXI4(32, 32)
@@ -35,6 +36,7 @@ class IFU extends Module with HasPerfCounters {
   val pc          = Reg(UInt(32.W))
   val vpc1        = Reg(UInt(32.W))
   val pageFault   = Reg(Bool())
+  val interrupt   = Reg(Bool())
   val flushBuffer = RegInit(false.B)
   val validBuffer = RegInit(false.B)
   val arValid     = RegInit(false.B)
@@ -62,11 +64,13 @@ class IFU extends Module with HasPerfCounters {
     validBuffer := false.B
     arValid := false.B
     pageFault := false.B
+    interrupt := false.B
   }.otherwise {
     vpc := Mux(pcValidNext && insert, vpc + 4.U, vpc)
     validBuffer := Mux(insert, pcValidNext, validBuffer)
     arValid := Mux(insert, pcValidNext, Mux(icache.io.in.fire, false.B, arValid))
     pageFault := Mux(insert, doTranslate && io.IN_TLBResp.valid && io.IN_TLBResp.bits.executePermFail(io.IN_VMCSR), pageFault)
+    interrupt := Mux(insert, io.IN_trapCSR.interrupt, interrupt)
   }
 
   // ** PTW Req logic
@@ -90,17 +94,18 @@ class IFU extends Module with HasPerfCounters {
 
   io.master <> icache.io.master
 
-  icache.io.in.valid    := arValid && ~reset.asBool && !flush && !pageFault
+  icache.io.in.valid    := arValid && ~reset.asBool && !flush && !pageFault && !interrupt
   icache.io.in.bits     := pc
   icache.io.flushICache := io.flushICache
 
   val addrOffset = pc(2)
   val retData    = icache.io.out.bits
-  io.out.valid             := validBuffer && (icache.io.out.valid || pageFault) && !flush
+  io.out.valid             := validBuffer && (icache.io.out.valid || pageFault || interrupt) && !flush
   io.out.bits.pc           := vpc1
   io.out.bits.inst         := retData
   io.out.bits.access_fault := false.B
   io.out.bits.pageFault    := pageFault
+  io.out.bits.interrupt    := interrupt
 
   icache.io.out.ready := io.out.ready || flush
 

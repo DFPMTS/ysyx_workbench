@@ -87,7 +87,7 @@ class ROB extends CoreModule {
     flagUopNextValid := deqValid(i) && deqEntry(i).flag =/= FlagOp.NONE
     flagUopNext.target := deqEntry(i).target
     flagUopNext.flag := deqEntry(i).flag
-    flagUopNext.prd := deqEntry(i).prd
+    flagUopNext.rd := deqEntry(i).rd
     flagUopNext.pc := deqEntry(i).pc
     flagUopNext.robPtr := robTailPtr + i.U
     when(flagUopNextValid && deqEntry(i).flag =/= FlagOp.MISPREDICT) {
@@ -96,7 +96,7 @@ class ROB extends CoreModule {
     }
   }
 
-  robStall := flagUopNextValid
+  robStall := !robStall && flagUopNextValid
   flagUop := flagUopNext
 
   flagUopValid := flagUopNextValid

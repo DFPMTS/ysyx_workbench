@@ -67,6 +67,7 @@ class InstSignal extends Bundle {
   val inst         = UInt(32.W)
   val access_fault = Bool()
   val pageFault    = Bool()
+  val interrupt    = Bool()
 }
 
 class ControlSignal extends Bundle {

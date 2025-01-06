@@ -41,16 +41,28 @@ object FlagOp extends HasDecodeConfig {
   val STORE_ADDR_MISALIGNED = 6.U(FlagWidth.W)
   val STORE_ACCESS_FAULT    = 7.U(FlagWidth.W)
   // * custom begin
-  val ECALL                 = 8.U(FlagWidth.W)
-  val MRET                  = 9.U(FlagWidth.W)
-  val SRET                  = 10.U(FlagWidth.W)
-  val SFENCE_VMA            = 11.U(FlagWidth.W)
+  val DECODE_FLAG           = 8.U(FlagWidth.W) // * rd field stores DecodeFlagOp
+  val INTERRUPT             = 9.U(FlagWidth.W)
   // * custom end
   val INST_PAGE_FAULT       = 12.U(FlagWidth.W)
   val LOAD_PAGE_FAULT       = 13.U(FlagWidth.W)
   // * temporary jump
   val MISPREDICT            = 14.U(FlagWidth.W)
   val STORE_PAGE_FAULT      = 15.U(FlagWidth.W)
+}
+
+object DecodeFlagOp extends HasDecodeConfig {
+  val ECALL      = 0.U(FlagWidth.W)
+  val EBREAK     = 1.U(FlagWidth.W)
+  val MRET       = 2.U(FlagWidth.W)
+  val SRET       = 3.U(FlagWidth.W)
+  val FENCE      = 4.U(FlagWidth.W)
+  val FENCE_I    = 5.U(FlagWidth.W)
+  val WFI        = 6.U(FlagWidth.W)
+  val SFENCE_VMA = 7.U(FlagWidth.W)
+
+
+  val NONE    = 15.U(FlagWidth.W)
 }
 
 object Dest extends HasDecodeConfig {
@@ -273,7 +285,7 @@ class ReadRegUop extends CoreBundle {
 }
 
 class FlagUop extends CoreBundle {
-  val prd  = UInt(PREG_IDX_W)
+  val rd   = UInt(PREG_IDX_W)
   val flag = UInt(FLAG_W)
   val pc   = UInt(XLEN.W)
   val target = UInt(XLEN.W)

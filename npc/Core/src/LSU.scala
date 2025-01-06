@@ -41,11 +41,7 @@ class LSU extends CoreModule with HasLSUOps {
   val sIdle :: sWaitResp :: sWaitAmoSave :: Nil = Enum(3)
   val state = RegInit(sIdle)
 
-  // * reservation station
-  val reservation = Reg(UInt(XLEN.W))
-  val reservationValid = RegInit(false.B)
-
-  val respValid = io.master.r.fire || io.master.b.fire
+  val respValid = Wire(Bool())
   val insert1 = (state === sIdle && io.IN_AGUUop.valid)
   val insert2 = (state === sWaitResp && respValid)
   val insert = insert1 || insert2
@@ -53,7 +49,12 @@ class LSU extends CoreModule with HasLSUOps {
   val opcode = inUop.opcode
   val isLr = inUop.fuType === FuType.AMO && opcode === AMOOp.LR_W
   val isSc = inUop.fuType === FuType.AMO && opcode === AMOOp.SC_W
+
+  // * reservation station
+  val reservation = Reg(UInt(XLEN.W))
+  val reservationValid = RegInit(false.B)
   val scFail = inUop.addr =/= reservation || !reservationValid
+  respValid := (io.master.r.fire || io.master.b.fire) || (isSc && scFail)
   
   io.IN_AGUUop.ready := state === sIdle
 
@@ -92,9 +93,10 @@ class LSU extends CoreModule with HasLSUOps {
   io.master.ar.bits.burst := "b01".U
 
   val rdata = io.master.r.bits.data
+  val rdataReg = RegEnable(rdata, io.master.r.fire)
   io.master.r.ready := true.B
 
-  amoALU.io.IN_src1 := rdata
+  amoALU.io.IN_src1 := rdataReg
   amoALU.io.IN_src2 := inUop.wdata
   amoALU.io.IN_opcode := opcode
 

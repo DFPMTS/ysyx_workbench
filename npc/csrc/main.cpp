@@ -93,6 +93,7 @@ int main(int argc, char *argv[]) {
   std::cerr << "Simulation End" << std::endl;
   printf("Total cycles:\t %lu\n", totalCycles);
   printf("Total instructions:\t %lu\n", state.getInstRetired());
+  state.printCommited();
   state.printInsts();
   ++totalCycles;
   // a0
@@ -112,5 +113,5 @@ int main(int argc, char *argv[]) {
 #endif
   printPerfCounters();
   sim_speed.printSimulationSpeed(totalCycles);
-  return retval;
+  return retval != 0;
 }

@@ -89,6 +89,9 @@ class AXI_Arbiter extends Module {
     val IFUMaster = Flipped(new AXI4(32, 32))
     val LSUMaster = Flipped(new AXI4(32, 32))
     val winMaster = new AXI4(32, 32)
+
+    val OUT_mtime = UInt(64.W)
+    val OUT_MTIP = Bool()
   })
 
   val sIdle :: sIFU :: sLSU :: Nil = Enum(3)
@@ -147,7 +150,7 @@ class AXI_Arbiter extends Module {
 
   val mtime = RegInit(0.U(64.W))
   val mtimecmp = RegInit(0.U(64.W))
-  val msip =RegInit(0.U(1.W))
+  val msip = RegInit(0.U(1.W))
   mtime := mtime + 1.U
 
   val CLINT_BASE = 0x11000000L.U(32.W)
@@ -222,4 +225,7 @@ class AXI_Arbiter extends Module {
   // dontTouch(toIn)
   // io.winMaster :>= toIn
   io.winMaster :<= toOut
+
+  io.OUT_mtime := mtime
+  io.OUT_MTIP := mtime >= mtimecmp
 }

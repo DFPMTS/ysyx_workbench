@@ -1,6 +1,7 @@
 import chisel3._
 import chisel3.util._
 import utils._
+import FuType.FLAG
 
 class MMUResp extends CoreBundle {
   val isSuper = Bool()
@@ -76,6 +77,7 @@ class AGUIO extends CoreBundle {
 
   val OUT_AGUUop     = Decoupled(new AGUUop)
   val OUT_writebackUop = Valid(new WritebackUop)
+  val OUT_xtvalRec   = Valid(new XtvalRec)
 
   val IN_flush       = Flipped(Bool())
 }
@@ -93,9 +95,7 @@ class AGU extends CoreModule {
 
   val wbUop = Reg(new WritebackUop)
   val wbUopValid = RegInit(false.B)
-
-  val fault = Wire(UInt(FLAG_W))
-  fault := 1.U
+  val xtvalRec = Reg(new XtvalRec)
 
   io.IN_readRegUop.ready := tlbMissQueue.io.IN_uop.ready && (!uopValid || io.OUT_AGUUop.ready)
 
@@ -146,6 +146,17 @@ class AGU extends CoreModule {
   val ptwReqNextValid = WireInit(false.B)
   ptwReqNext.vpn := uopNext.addr(XLEN - 1, 12)
 
+  val fault = WireInit(0.U(FLAG_W))
+  when(inUop.fuType === FuType.AMO) {
+    fault := FlagOp.STORE_PAGE_FAULT
+  }.elsewhen(inUop.fuType === FuType.LSU) {
+    when(inUop.opcode(3)) {
+      fault := FlagOp.STORE_PAGE_FAULT
+    }.otherwise {
+      fault := FlagOp.LOAD_PAGE_FAULT
+    }
+  }
+
   wbUop.data := 0.U
   wbUopValid := false.B
   wbUop.dest := Dest.ROB
@@ -153,6 +164,9 @@ class AGU extends CoreModule {
   wbUop.flag := fault
   wbUop.prd  := ZERO
   
+  xtvalRec.tval := uopNext.addr
+  xtvalRec.robPtr := uopNext.robPtr
+
   when(io.OUT_AGUUop.ready) {
     uopValid := false.B
   }  
@@ -191,6 +205,9 @@ class AGU extends CoreModule {
 
   io.OUT_writebackUop.valid := wbUopValid
   io.OUT_writebackUop.bits := wbUop
+
+  io.OUT_xtvalRec.valid := wbUopValid
+  io.OUT_xtvalRec.bits := xtvalRec
 
   io.OUT_AGUUop.valid := uopValid
   io.OUT_AGUUop.bits := uop

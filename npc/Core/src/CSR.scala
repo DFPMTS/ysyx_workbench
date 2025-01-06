@@ -71,9 +71,9 @@ class Mstatus extends CoreBundle {
   val UBE     = UInt(1.W) /*  6:6 */
   val SPIE    = UInt(1.W) /*  5:5 */
   val _WPRI_2 = UInt(1.W) /*  4:4 */
-  val MIE     = UInt(1.W) /*  3:3 */
+  val MIE     = Bool()    /*  3:3 */
   val _WPRI_1 = UInt(1.W) /*  2:2 */
-  val SIE     = UInt(1.W) /*  1:1 */
+  val SIE     = Bool()    /*  1:1 */
   val _WPRI_0 = UInt(1.W) /*  0:0 */
 }
 
@@ -94,6 +94,10 @@ class TrapCSR extends CoreBundle {
   val mideleg = UInt(XLEN.W)
   val medeleg = UInt(XLEN.W)
   val priv    = UInt(2.W)
+
+  val interrupt      = Bool()
+  val interruptCause = UInt(4.W)
+  val interruptDeleg = Bool()
 }
 
 class CSRIO extends CoreBundle {
@@ -102,6 +106,9 @@ class CSRIO extends CoreBundle {
   val IN_CSRCtrl = Flipped(new CSRCtrl)
   val OUT_VMCSR = new VMCSR
   val OUT_trapCSR = new TrapCSR
+  val IN_mtime = Input(UInt(64.W))
+  val IN_MTIP = Flipped(Bool())
+  val IN_xtvalRec = Flipped(Valid(new XtvalRec))
 }
 
 /*typedef union {
@@ -116,11 +123,15 @@ class CSRIO extends CoreBundle {
 } Mipe; */
 
 class Mipe extends CoreBundle {
-  val _ZERO_2 = UInt(24.W)
-  val MTI = UInt(1.W)
+  val _ZERO_4 = UInt(24.W)
+  val MTI = Bool()
+  val _ZERO_3 = UInt(1.W)
+  val STI = Bool()
+  val _ZERO_2 = UInt(1.W)
+  val MSI = Bool()
   val _ZERO_1 = UInt(1.W)
-  val STI = UInt(1.W)
-  val _ZERO_0 = UInt(5.W)
+  val SSI = Bool()
+  val _ZERO_0 = UInt(1.W)
 }
 
 class Menvcfg extends CoreBundle {
@@ -234,7 +245,7 @@ class CSR extends CoreModule {
   .elsewhen(inUop.opcode === CSROp.CSRRCI) {
     wdata := rdata & ~inUop.imm(16, 12)
   } */
-  
+  // ! also check mret/sret, it maybe illegal inst
   val privError = addr(9, 8) > priv
   val roError   = wen && addr(11, 10) === 3.U
   val notExist  = !CSRList.exists(addr)
@@ -243,6 +254,7 @@ class CSR extends CoreModule {
   val doWrite = wen && !illegal
 
   val trapValid = io.IN_CSRCtrl.trap
+  val trapIntr  = io.IN_CSRCtrl.intr
   val trapCause = io.IN_CSRCtrl.cause
   val trapPC    = io.IN_CSRCtrl.pc
   val mret      = io.IN_CSRCtrl.mret
@@ -251,20 +263,27 @@ class CSR extends CoreModule {
   val uop = Reg(new WritebackUop)
   val uopValid = RegInit(false.B)
 
+  val xtval = Mux(trapIntr, 0.U, 
+                  Mux(trapCause === 12.U, 
+                      trapPC, 
+                      Mux(io.IN_xtvalRec.valid, io.IN_xtvalRec.bits.tval, 0.U)))
+
   when(trapValid) {
     // printf("------------trap: %x epc: %x\n",trapCause, trapPC)
     when(io.IN_CSRCtrl.delegate) {
       // printf("--------------------------delegate\n")
       // printf("--------------------------priv: %x\n",priv)
-      scause := trapCause
+      scause := Cat(trapIntr, 0.U(31.W)) | trapCause
       sepc := trapPC
+      stval := xtval
       mstatus.SPIE := mstatus.SIE
       mstatus.SIE := 0.U
       mstatus.SPP := priv
       priv := Priv.S
     }.otherwise {      
-      mcause := trapCause
+      mcause := Cat(trapIntr, 0.U(31.W)) | trapCause
       mepc := trapPC
+      mtval := xtval
       mstatus.MPIE := mstatus.MIE
       mstatus.MIE := 0.U
       mstatus.MPP := priv
@@ -374,15 +393,18 @@ class CSR extends CoreModule {
     when(addr === CSRList("mcause")) { // * 0x342
       rdata := mcause
     }
+    when(addr === CSRList("mtval")) { // * 0x343
+      rdata := mtval
+    }
     when(addr === CSRList("mip")) { // * 0x344
       rdata := mip.asUInt
     }
     
     when(addr === CSRList("time")) { // * 0xC01
-      rdata := 0.U
+      rdata := io.IN_mtime(31, 0)
     }
     when(addr === CSRList("timeh")) { // * 0xC81
-      rdata := 0.U
+      rdata := io.IN_mtime(63, 32)
     }
 
     when(addr === CSRList("mvendorid")) { // * 0xF11
@@ -487,12 +509,17 @@ class CSR extends CoreModule {
       mepc := wdata
     }
     when(addr === CSRList("mcause")) { // * 0x342
-      mcause := rdata
+      mcause := wdata
+    }
+    when(addr === CSRList("mtval")) { // * 0x343
+      mtval := wdata
     }
     when(addr === CSRList("mip")) { // * 0x344
       mip := wdata.asTypeOf(new Mipe)
     }    
   }
+
+  mip.MTI := io.IN_MTIP
 
   // * VM control
   io.OUT_VMCSR.mode := satp(31)
@@ -503,6 +530,48 @@ class CSR extends CoreModule {
   io.OUT_VMCSR.sum := mstatus.SUM
 
   // * Trap control
+  val hasInterrupt = WireInit(false.B)
+  val interruptCause = WireInit(0.U(4.W))
+  val interruptDeleg = WireInit(false.B)
+
+  // ** Interrupt pending?
+  val MTI = mip.MTI && mie.MTI
+  val STI = mip.STI && mie.STI
+  val MSI = mip.MSI && mie.MSI
+  val SSI = mip.SSI && mie.SSI
+  
+  when(priv < Priv.S || (priv === Priv.S && mstatus.SIE)) {
+    when(SSI && mideleg(1)) {
+      interruptCause := 1.U
+      hasInterrupt := true.B      
+      interruptDeleg := true.B
+    }.elsewhen(STI && mideleg(5)) {
+      interruptCause := 5.U
+      hasInterrupt := true.B
+      interruptDeleg := true.B
+    }
+  }
+  // * Override S-mode interrupt with M-mode interrupt
+  when(priv < Priv.M || mstatus.MIE) {
+    when(MSI && !mideleg(3)) {
+      interruptCause := 3.U
+      hasInterrupt := true.B
+      interruptDeleg := false.B
+    }.elsewhen(MTI && !mideleg(7)) {
+      interruptCause := 7.U
+      hasInterrupt := true.B
+      interruptDeleg := false.B
+    }.elsewhen(SSI && !mideleg(1)) {
+      interruptCause := 1.U
+      hasInterrupt := true.B
+      interruptDeleg := false.B
+    }.elsewhen(STI && !mideleg(5)) {
+      interruptCause := 5.U
+      hasInterrupt := true.B
+      interruptDeleg := false.B
+    }
+  }
+
   io.OUT_trapCSR.mtvec := mtvec
   io.OUT_trapCSR.mepc := mepc
   io.OUT_trapCSR.stvec := stvec
@@ -510,6 +579,9 @@ class CSR extends CoreModule {
   io.OUT_trapCSR.mideleg := mideleg
   io.OUT_trapCSR.medeleg := medeleg
   io.OUT_trapCSR.priv := priv
+  io.OUT_trapCSR.interrupt := hasInterrupt
+  io.OUT_trapCSR.interruptCause := interruptCause
+  io.OUT_trapCSR.interruptDeleg := interruptDeleg
 
   val error = Module(new Error)
   error.io.ebreak := trapValid && trapCause === FlagOp.BREAKPOINT

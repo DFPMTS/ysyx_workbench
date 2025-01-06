@@ -50,6 +50,7 @@ class Core extends CoreModule {
 
   val arbiter = Module(new AXI_Arbiter)
 
+  val xtvalRecoder = Module(new XtvalRecoder)
   val flagHandler = Module(new FlagHandler)
   val flush = Wire(Bool())
   val redirect = Wire(new RedirectSignal)
@@ -85,6 +86,10 @@ class Core extends CoreModule {
   val flagUop = Wire(Valid(new FlagUop))
   dontTouch(flagUop)
 
+  // * CSR ctrl
+  val CSRCtrl = Wire(new CSRCtrl)
+  dontTouch(CSRCtrl)
+
   // * IF
   ifu.io.redirect := redirect
   arbiter.io.winMaster.viewAs[AXI4ysyxSoC] <> io.master
@@ -94,6 +99,7 @@ class Core extends CoreModule {
   ifu.io.OUT_PTWReq <> ptw.io.IN_PTWReq(0)
   ifu.io.IN_PTWResp <> ptw.io.OUT_PTWResp
   ifu.io.IN_VMCSR <> csr.io.OUT_VMCSR
+  ifu.io.IN_trapCSR <> csr.io.OUT_trapCSR
   itlb.io.IN_PTWResp <> ptw.io.OUT_PTWResp
   itlb.io.IN_TLBFlush := TLBFlush
 
@@ -128,7 +134,7 @@ class Core extends CoreModule {
   rob.io.OUT_commitUop <> commitUop
 
   // * flag handler
-  flagHandler.io.OUT_CSRCtrl <> csr.io.IN_CSRCtrl
+  flagHandler.io.OUT_CSRCtrl <> CSRCtrl
   flagHandler.io.IN_trapCSR <> csr.io.OUT_trapCSR
   flagHandler.io.IN_flagUop <> flagUop
   flush := flagHandler.io.OUT_flush
@@ -171,6 +177,10 @@ class Core extends CoreModule {
   alu0.io.IN_readRegUop <> dispatcher(0).io.OUT_uop(0)
   mul.io.IN_readRegUop  <> dispatcher(0).io.OUT_uop(1)
   csr.io.IN_readRegUop  <> dispatcher(0).io.OUT_uop(2)
+  csr.io.IN_mtime := arbiter.io.OUT_mtime
+  csr.io.IN_MTIP := arbiter.io.OUT_MTIP
+  csr.io.IN_xtvalRec <> xtvalRecoder.io.OUT_tval
+  csr.io.IN_CSRCtrl <> CSRCtrl
 
   val port0wbsel = Module(new WritebackSel(3))
   port0wbsel.io.IN_uop(0) := alu0.io.OUT_writebackUop
@@ -211,6 +221,9 @@ class Core extends CoreModule {
   agu.io.IN_PTWResp <> ptw.io.OUT_PTWResp
   agu.io.IN_flush := flush
   
+  xtvalRecoder.io.IN_flush := flush
+  xtvalRecoder.io.IN_tval := agu.io.OUT_xtvalRec
+
   loadArb.io.IN_AGUUop <> agu.io.OUT_AGUUop
   loadArb.io.IN_PTWUop <> ptw.io.OUT_PTWUop
   

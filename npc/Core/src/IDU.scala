@@ -68,10 +68,23 @@ class IDU extends Module with HasDecodeConstants with HasPerfCounters {
 
   uopNext.inst      := inst
 
-  when(io.IN_inst.bits.pageFault) {
+  when(io.IN_inst.bits.interrupt) {
+    uopNext.fuType := FuType.FLAG
+    uopNext.opcode := FlagOp.INTERRUPT
+    uopNext.rd     := ZERO
+  }.elsewhen(io.IN_inst.bits.pageFault) {
     uopNext.fuType := FuType.FLAG
     uopNext.opcode := FlagOp.INST_PAGE_FAULT
     uopNext.rd     := ZERO
+  }.elsewhen(decodeSignal.fuType === FuType.FLAG) {
+    uopNext.fuType := FuType.FLAG
+    when(decodeSignal.opcode === DecodeFlagOp.NONE) {
+      uopNext.opcode := FlagOp.NONE
+      uopNext.rd     := ZERO
+    }.otherwise{
+      uopNext.opcode := FlagOp.DECODE_FLAG
+      uopNext.rd     := decodeSignal.opcode      
+    }
   }
   
   // * Control

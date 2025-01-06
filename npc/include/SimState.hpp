@@ -18,6 +18,7 @@ public:
   ReadRegUop readRegUop[4];
   CommitUop commitUop[4];
   FlagUop flagUop[1];
+  CSRCtrl csrCtrl[1];
 
   InstInfo insts[128];
   uint32_t archTable[32] = {};
@@ -25,6 +26,9 @@ public:
   uint32_t pc = 0;
   uint32_t lastCommit;
   uint64_t instRetired = 0;
+
+  InstInfo commited[32];
+  uint32_t commitedIndex = 0;
 
   void bindUops() {
     // * renameUop
@@ -74,6 +78,12 @@ public:
 
     REPEAT_1(BIND_FIELDS)
     REPEAT_1(BIND_VALID)
+
+#define UOP csrCtrl
+#define V_UOP V_CSR_CTRL
+#define UOP_FIELDS CSR_CTRL_FIELDS
+
+    REPEAT_1(BIND_FIELDS)
   }
 
   void log(uint64_t cycle) {
@@ -84,22 +94,64 @@ public:
       Log("CPU hangs");
       running.store(false);
     }
+    char buf[512];
     // * flag
     for (int i = 0; i < 1; ++i) {
       if (*flagUop[i].valid && *flagUop[i].ready) {
         auto robIndex = *flagUop[i].robPtr_index;
-        if (begin_wave) {
-          printf("<%3d> flagUop\n", robIndex);
-          printf("      prd    = %d\n", *flagUop[i].prd);
-          printf("      flag   = %d\n", *flagUop[i].flag);
-          printf("      pc     = %d\n", *flagUop[i].pc);
-          printf("      target = %d\n", *flagUop[i].target);
+        auto &inst = insts[robIndex];
+        auto flag = (FlagOp)*flagUop[i].flag;
+        auto decodeFlag = (DecodeFlagOp)*flagUop[i].rd;
+
+        if (flag != FlagOp::MISPREDICT) {
+          if (flag == FlagOp::DECODE_FLAG) {
+            if (decodeFlag == DecodeFlagOp::FENCE ||
+                decodeFlag == DecodeFlagOp::FENCE_I ||
+                decodeFlag == DecodeFlagOp::SFENCE_VMA) {
+              continue;
+            }
+          }
+          itrace_generate(buf, inst.pc, inst.inst);
+          fprintf(stderr, "\033[32m");
+          fprintf(stderr, "<%3d> %s\n", robIndex, buf);
+          fprintf(stderr, "      pc   = %x\n", *flagUop[i].pc);
+          fprintf(stderr, "      flag = %s\n", getFlagOpName(flag));
+          if (flag == FlagOp::DECODE_FLAG) {
+            fprintf(stderr, "      decodeFlag = %s\n",
+                    getDecodeFlagOpName(decodeFlag));
+          }
+          fprintf(stderr, "\033[0m");
         }
+      }
+    }
+    // * CSR Ctrl
+
+    {
+      auto pc = *csrCtrl[0].pc;
+      auto trap = *csrCtrl[0].trap;
+      auto intr = *csrCtrl[0].intr;
+      auto mret = *csrCtrl[0].mret;
+      auto sret = *csrCtrl[0].sret;
+      auto deleg = *csrCtrl[0].delegate;
+      if (trap || mret || sret) {
+        fprintf(stderr, "\033[33m");
+        if (trap) {
+          fprintf(stderr, "%s on PC: %x:\n", (intr ? "Interrupt" : "Exception"),
+                  pc);
+          fprintf(stderr, "      cause = %d\n", *csrCtrl[0].cause);
+          fprintf(stderr, "      delegate = %s\n", (deleg ? "yes" : "no"));
+        }
+        if (mret) {
+          fprintf(stderr, "mret on PC: %x\n", pc);
+        }
+        if (sret) {
+          fprintf(stderr, "sret on PC: %x\n", pc);
+        }
+        fprintf(stderr, "\033[0m");
       }
     }
 
     // * commit
-    char buf[512];
     for (int i = 0; i < 1; ++i) {
       if (*commitUop[i].valid && *commitUop[i].ready) {
         ++instRetired;
@@ -136,6 +188,11 @@ public:
           }
           archTable[*uop.rd] = *uop.prd;
         }
+        // * trace commited inst
+        commited[commitedIndex++] = inst;
+        if (commitedIndex >= 32) {
+          commitedIndex = 0;
+        }
         pc = inst.pc + 4;
 #ifdef DIFFTEST
         difftest();
@@ -158,7 +215,7 @@ public:
         }
         inst.result = *writebackUop[i].data;
         inst.executed = true;
-        inst.flag = (Flags)*writebackUop[i].flag;
+        inst.flag = (FlagOp)*writebackUop[i].flag;
       }
     }
 
@@ -195,11 +252,35 @@ public:
   }
 
   void printInsts() {
-    printf("============================================\n");
+    printf("=======================ROB=====================\n");
     char buf[512];
     for (int i = 0; i < 128; ++i) {
       if (insts[i].valid) {
         auto &inst = insts[i];
+        itrace_generate(buf, inst.pc, inst.inst);
+        printf("[%3d] %s\n", i, buf);
+        printf("      rd  = %2d  rs1  = %2d  rs2  = %2d\n", inst.rd, inst.rs1,
+               inst.rs2);
+        printf("      prd = %2d  prs1 = %2d  prs2 = %2d\n", inst.prd, inst.prs1,
+               inst.prs2);
+        printf("      src1   = %d/%u/0x%x\n", inst.src1, inst.src1, inst.src1);
+        printf("      src2   = %d/%u/0x%x\n", inst.src2, inst.src2, inst.src2);
+        printf("      result = %d/%u/0x%x\n", inst.result, inst.result,
+               inst.result);
+      }
+    }
+  }
+
+  void printCommited() {
+    printf("======================Commited======================\n");
+    char buf[512];
+    for (int i = 0; i < 32; ++i) {
+      int index = commitedIndex + i;
+      if (index >= 32) {
+        index -= 32;
+      }
+      if (commited[index].valid) {
+        auto &inst = commited[index];
         itrace_generate(buf, inst.pc, inst.inst);
         printf("[%3d] %s\n", i, buf);
         printf("      rd  = %2d  rs1  = %2d  rs2  = %2d\n", inst.rd, inst.rs1,

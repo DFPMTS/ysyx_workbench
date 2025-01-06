@@ -95,7 +95,116 @@ enum class CImmType : CData {
   X = 0xFF
 };
 
-enum class Flags : CData { NOTHING = 0, MISPREDICT = 1 };
+enum class FlagOp : CData {
+  NONE = 0,
+  INST_ACCESS_FAULT = 1,
+  ILLEGAL_INST = 2,
+  BREAKPOINT = 3,
+  LOAD_ADDR_MISALIGNED = 4,
+  LOAD_ACCESS_FAULT = 5,
+  STORE_ADDR_MISALIGNED = 6,
+  STORE_ACCESS_FAULT = 7,
+  DECODE_FLAG = 8,
+  INTERRUPT = 9,
+  /*
+  10,
+  11,
+  */
+  INST_PAGE_FAULT = 12,
+  LOAD_PAGE_FAULT = 13,
+  MISPREDICT = 14,
+  STORE_PAGE_FAULT = 15
+};
+
+inline const char *getFlagOpName(FlagOp flag) {
+  switch (flag) {
+  case FlagOp::NONE:
+    return "NONE";
+  case FlagOp::INST_ACCESS_FAULT:
+    return "INST_ACCESS_FAULT";
+  case FlagOp::ILLEGAL_INST:
+    return "ILLEGAL_INST";
+  case FlagOp::BREAKPOINT:
+    return "BREAKPOINT";
+  case FlagOp::LOAD_ADDR_MISALIGNED:
+    return "LOAD_ADDR_MISALIGNED";
+  case FlagOp::LOAD_ACCESS_FAULT:
+    return "LOAD_ACCESS_FAULT";
+  case FlagOp::STORE_ADDR_MISALIGNED:
+    return "STORE_ADDR_MISALIGNED";
+  case FlagOp::STORE_ACCESS_FAULT:
+    return "STORE_ACCESS_FAULT";
+  case FlagOp::DECODE_FLAG:
+    return "DECODE_FLAG";
+  case FlagOp::INTERRUPT:
+    return "INTERRUPT";
+  case FlagOp::INST_PAGE_FAULT:
+    return "INST_PAGE_FAULT";
+  case FlagOp::LOAD_PAGE_FAULT:
+    return "LOAD_PAGE_FAULT";
+  case FlagOp::MISPREDICT:
+    return "MISPREDICT";
+  case FlagOp::STORE_PAGE_FAULT:
+    return "STORE_PAGE_FAULT";
+  default:
+    return "UNKNOWN";
+  }
+}
+
+enum class DecodeFlagOp : CData {
+  ECALL = 0,
+  EBREAK = 1,
+  MRET = 2,
+  SRET = 3,
+  FENCE = 4,
+  FENCE_I = 5,
+  WFI = 6,
+  SFENCE_VMA = 7,
+  /*
+  8-14
+  */
+  NONE = 15
+};
+
+inline const char *getDecodeFlagOpName(DecodeFlagOp flag) {
+  switch (flag) {
+  case DecodeFlagOp::ECALL:
+    return "ECALL";
+  case DecodeFlagOp::EBREAK:
+    return "EBREAK";
+  case DecodeFlagOp::MRET:
+    return "MRET";
+  case DecodeFlagOp::SRET:
+    return "SRET";
+  case DecodeFlagOp::FENCE:
+    return "FENCE";
+  case DecodeFlagOp::FENCE_I:
+    return "FENCE_I";
+  case DecodeFlagOp::WFI:
+    return "WFI";
+  case DecodeFlagOp::SFENCE_VMA:
+    return "SFENCE_VMA";
+  case DecodeFlagOp::NONE:
+    return "NONE";
+  default:
+    return "UNKNOWN";
+  }
+}
+
+/*
+class CSRCtrl extends CoreBundle {
+  // * trap
+  val trap  = Bool()
+  val intr  = Bool()
+  val pc    = UInt(XLEN.W)
+  val cause = UInt(4.W)
+  val delegate = Bool()
+  // * mret/sret
+  val mret  = Bool()
+  val sret  = Bool()
+}
+
+*/
 
 inline CData True = 1;
 
@@ -121,7 +230,7 @@ struct InstInfo {
   IData imm;
 
   IData result;
-  Flags flag;
+  FlagOp flag;
 
   CData executed;
 };
@@ -181,7 +290,7 @@ struct WritebackUop : Uop {
   IData *data;
   CData *robPtr_flag;
   CData *robPtr_index;
-  Flags *flag;
+  FlagOp *flag;
   IData *target; // temporary
 };
 
@@ -193,12 +302,22 @@ struct CommitUop : Uop {
 };
 
 struct FlagUop : Uop {
-  CData *prd;
+  CData *rd;
   CData *flag;
   IData *pc;
   IData *target;
   CData *robPtr_flag;
   CData *robPtr_index;
+};
+
+struct CSRCtrl : Uop {
+  CData *trap;
+  CData *intr;
+  IData *pc;
+  CData *cause;
+  CData *delegate;
+  CData *mret;
+  CData *sret;
 };
 
 // * rename
@@ -237,6 +356,9 @@ struct FlagUop : Uop {
 #define V_FLAG_UOP(i, field)                                                   \
   top->rootp->npc_top__DOT__npc__DOT__flagUop_bits_##field
 #define V_FLAG_VALID(i) top->rootp->npc_top__DOT__npc__DOT__flagUop_valid
+
+// * CSRCtrl
+#define V_CSR_CTRL(i, field) top->rootp->npc_top__DOT__npc__DOT__CSRCtrl_##field
 
 #define RENAME_FIELDS(X, i)                                                    \
   X(i, rd)                                                                     \
@@ -294,12 +416,21 @@ struct FlagUop : Uop {
   X(i, compressed)
 
 #define FLAG_FIELDS(X, i)                                                      \
-  X(i, prd)                                                                    \
+  X(i, rd)                                                                     \
   X(i, flag)                                                                   \
   X(i, pc)                                                                     \
   X(i, target)                                                                 \
   X(i, robPtr_flag)                                                            \
   X(i, robPtr_index)
+
+#define CSR_CTRL_FIELDS(X, i)                                                  \
+  X(i, trap)                                                                   \
+  X(i, intr)                                                                   \
+  X(i, pc)                                                                     \
+  X(i, cause)                                                                  \
+  X(i, delegate)                                                               \
+  X(i, mret)                                                                   \
+  X(i, sret)
 
 #define BIND_ONE_FIELD(i, field)                                               \
   UOP[i].field = (decltype(UOP[i].field))&V_UOP(i, field);

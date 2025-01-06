@@ -57,6 +57,12 @@ class RingBufferPtr(size: Int) extends CoreBundle {
     }
     distance
   }
+
+  def isBefore(that: RingBufferPtr): Bool = {
+    val flagDiff = this.flag ^ that.flag
+    val indexBefore = this.index < that.index
+    (flagDiff ^ indexBefore).asBool
+  }
 }
 
 object RingBufferPtr {
