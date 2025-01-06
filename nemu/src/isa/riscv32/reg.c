@@ -38,6 +38,8 @@ static void print_csr(const char*name, word_t val)
 }
 
 void isa_reg_display() {
+  printf("============================================\n");
+  printf("priv:\t%d\n", cpu.priv);
   printf("pc\t%08X\n", cpu.pc);
   for (int i = 0; i < MUXDEF(CONFIG_RVE, 16, 32); ++i) {
     printf("%s\t%08X\t%d\n",reg_name(i),gpr(i),gpr(i));

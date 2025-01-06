@@ -62,13 +62,15 @@ static void exec_once(Decode *s, vaddr_t pc) {
 }
 
 static bool need_stop = false;
-static void SIGINT_handler(int sig)
+static void __attribute((unused)) SIGINT_handler(int sig)
 {
   need_stop = true;
 }
 
 static void execute(uint64_t n) {
+  #ifndef CONFIG_TARGET_SHARE
   signal(SIGINT, SIGINT_handler);
+  #endif
   Decode s;
   for (;n > 0; n --) {
     exec_once(&s, cpu.pc);

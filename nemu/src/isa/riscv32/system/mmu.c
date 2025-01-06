@@ -123,8 +123,8 @@ int isa_mmu_translate(vaddr_t vaddr, int len, int type, paddr_t *paddr) {
   bool X = BIT(PTE, PTE_X);
   // bool U = BIT(PTE, PTE_U);
   // bool G = BIT(PTE, PTE_G);
-  // bool A = BIT(PTE, PTE_A);
-  // bool D = BIT(PTE, PTE_D);
+  bool A = BIT(PTE, PTE_A);
+  bool D = BIT(PTE, PTE_D);
 
   // Assert(V, "vaddr: 0x%x -> paddr: 0x%x is not Valid", vaddr, paddr);
   if(!V) {
@@ -157,9 +157,9 @@ int isa_mmu_translate(vaddr_t vaddr, int len, int type, paddr_t *paddr) {
   }
 
   // // A D check (Svade)
-  // if (!A || (!D && type == MEM_TYPE_WRITE)) {
-  //   TRANSLATE_EXCEPTION;
-  // }
+  if (!A || (!D && type == MEM_TYPE_WRITE)) {
+    TRANSLATE_EXCEPTION;
+  }
 
   // TODO SUM 
 
