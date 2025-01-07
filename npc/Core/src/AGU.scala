@@ -102,6 +102,12 @@ class AGU extends CoreModule {
   val inUop = io.IN_readRegUop.bits
   val inValid = io.IN_readRegUop.valid
 
+  val memLen = Mux(inUop.fuType === FuType.AMO, 2.U, uopNext.opcode(2, 1))
+  val addrMisalign = MuxLookup(memLen, false.B)(Seq(
+                            "b00".U -> false.B,
+                            "b01".U -> uopNext.addr(0,0).orR,
+                            "b10".U -> uopNext.addr(1,0).orR,
+                            "b11".U -> false.B))
   val doTranslate = io.IN_VMCSR.mode === 1.U && io.IN_VMCSR.epm < Priv.M  
   // * calculate addr
   val addr = uopNext.addr;
@@ -113,7 +119,7 @@ class AGU extends CoreModule {
   val tlbHit = !doTranslate || io.IN_TLBResp.valid
 
   // * Need translate && TLB miss
-  tlbMissQueue.io.IN_uop.valid := inValid && !tlbHit
+  tlbMissQueue.io.IN_uop.valid := inValid && !addrMisalign && !tlbHit
   tlbMissQueue.io.IN_uop.bits := uopNext
   tlbMissQueue.io.IN_flush := io.IN_flush
 
@@ -146,14 +152,19 @@ class AGU extends CoreModule {
   val ptwReqNextValid = WireInit(false.B)
   ptwReqNext.vpn := uopNext.addr(XLEN - 1, 12)
 
-  val fault = WireInit(0.U(FLAG_W))
+  val misalignFault = WireInit(0.U(FLAG_W))
+  val pageFault = WireInit(0.U(FLAG_W))
+
   when(inUop.fuType === FuType.AMO) {
-    fault := FlagOp.STORE_PAGE_FAULT
+    misalignFault := FlagOp.STORE_ADDR_MISALIGNED
+    pageFault := FlagOp.STORE_PAGE_FAULT
   }.elsewhen(inUop.fuType === FuType.LSU) {
     when(inUop.opcode(3)) {
-      fault := FlagOp.STORE_PAGE_FAULT
+      misalignFault := FlagOp.LOAD_ADDR_MISALIGNED
+      pageFault := FlagOp.STORE_PAGE_FAULT
     }.otherwise {
-      fault := FlagOp.LOAD_PAGE_FAULT
+      misalignFault := FlagOp.STORE_ADDR_MISALIGNED
+      pageFault := FlagOp.LOAD_PAGE_FAULT
     }
   }
 
@@ -161,7 +172,7 @@ class AGU extends CoreModule {
   wbUopValid := false.B
   wbUop.dest := Dest.ROB
   wbUop.robPtr := uopNext.robPtr
-  wbUop.flag := fault
+  wbUop.flag := Mux(addrMisalign, misalignFault, pageFault)
   wbUop.prd  := ZERO
   
   xtvalRec.tval := uopNext.addr
@@ -173,7 +184,10 @@ class AGU extends CoreModule {
   wbUopValid := false.B
   tlbMissQueue.io.OUT_uop.ready := false.B
   when(uopNextValid) {
-    when(tlbHit) {
+    when(addrMisalign) {
+      wbUopValid := true.B
+      uopValid := false.B
+    }.elsewhen(tlbHit) {
       val isWrite = uopNext.opcode(3)
       val permFail = io.IN_TLBResp.bits.loadStorePermFail(isWrite, io.IN_VMCSR)
       when(!uopValid || io.OUT_AGUUop.ready) {
