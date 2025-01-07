@@ -32,7 +32,26 @@ void isa_reg_display(difftest_context_t *ctx) {
   for (int i = 0; i < 32; ++i) {
     printf("%s\t%08X\t%d\n", reg_name(i), ctx->gpr[i], ctx->gpr[i]);
   }
-  printf("============================================\n");
+  printf("------------------------\n");
+  printf("priv: %d\n", ctx->priv);
+  printf("stvec: %08X\n", ctx->stvec);
+  printf("sscratch: %08X\n", ctx->sscratch);
+  printf("sepc: %08X\n", ctx->sepc);
+  printf("scause: %08X\n", ctx->scause);
+  printf("stval: %08X\n", ctx->stval);
+  printf("satp: %08X\n", ctx->satp);
+  printf("mstatus: %08X\n", ctx->mstatus);
+  printf("medeleg: %08X\n", ctx->medeleg);
+  printf("mideleg: %08X\n", ctx->mideleg);
+  printf("mie: %08X\n", ctx->mie);
+  printf("mtvec: %08X\n", ctx->mtvec);
+  printf("menvcfg: %08X\n", ctx->menvcfg);
+  printf("mscratch: %08X\n", ctx->mscratch);
+  printf("mepc: %08X\n", ctx->mepc);
+  printf("mcause: %08X\n", ctx->mcause);
+  printf("mtval: %08X\n", ctx->mtval);
+  printf("mip: %08X\n", ctx->mip);
+  printf("========================\n");
 }
 const char *reg_name(int id) {
   check_gpr_bound(id);
@@ -70,6 +89,7 @@ void get_context(difftest_context_t *dut) {
     dut->gpr[i] = gpr(i);
   }
   dut->pc = PC();
+  dut->priv = *state.csr.priv;
   dut->stvec = *state.csr.stvec;
   dut->sscratch = *state.csr.sscratch;
   dut->sepc = *state.csr.sepc;

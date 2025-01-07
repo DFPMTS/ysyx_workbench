@@ -54,6 +54,7 @@ class Core extends CoreModule {
   val flagHandler = Module(new FlagHandler)
   val flush = Wire(Bool())
   val redirect = Wire(new RedirectSignal)
+  dontTouch(redirect)
   val TLBFlush = Wire(Bool())
 
   // * rename

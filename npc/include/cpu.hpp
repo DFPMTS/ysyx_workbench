@@ -24,6 +24,7 @@ static uint32_t dummy = 0;
 struct difftest_context_t {
   word_t gpr[32];
   word_t pc;
+  word_t priv;
   word_t stvec;
   word_t sscratch;
   word_t sepc;

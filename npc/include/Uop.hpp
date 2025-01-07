@@ -320,6 +320,10 @@ struct CSRCtrl : Uop {
   CData *sret;
 };
 
+// * redirect
+#define V_REDIRECT_VALID top->rootp->npc_top__DOT__npc__DOT__redirect_valid
+#define V_REDIRECT_PC top->rootp->npc_top__DOT__npc__DOT__redirect_pc
+
 // * rename
 #define V_RENAME_UOP(i, field)                                                 \
   top->rootp->npc_top__DOT__npc__DOT__renameUop_##i##_##field

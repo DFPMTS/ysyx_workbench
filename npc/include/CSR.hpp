@@ -47,6 +47,7 @@ using IData = uint32_t;
 
 class CSR {
 public:
+  CData *priv;
   IData *stvec;
   IData *sscratch;
   IData *sepc;
@@ -67,6 +68,7 @@ public:
 };
 
 #define CSR_FIELDS(X)                                                          \
+  X(priv, )                                                                    \
   X(stvec, )                                                                   \
   X(sscratch, )                                                                \
   X(sepc, )                                                                    \

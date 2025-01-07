@@ -91,6 +91,7 @@ class FlagHandler extends CoreModule {
         redirect.pc := io.IN_trapCSR.mepc
         flush := true.B
         
+        CSRCtrlNext.pc := io.IN_flagUop.bits.pc
         CSRCtrlNext.mret := true.B
       }
       when(decodeFlag === DecodeFlagOp.SRET) {
@@ -98,6 +99,7 @@ class FlagHandler extends CoreModule {
         redirect.pc := io.IN_trapCSR.sepc
         flush := true.B
         
+        CSRCtrlNext.pc := io.IN_flagUop.bits.pc
         CSRCtrlNext.sret := true.B
       }
       when(decodeFlag === DecodeFlagOp.SFENCE_VMA) {

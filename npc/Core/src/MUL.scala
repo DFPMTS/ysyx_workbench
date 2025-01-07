@@ -1,5 +1,6 @@
 import chisel3._
 import chisel3.util._
+import chisel3.util.experimental.decode._
 import utils._
 
 class MULIO extends CoreBundle {
@@ -63,3 +64,63 @@ class DummyMUL extends HasBlackBoxInline{
     |endmodule
     """.stripMargin)
 }
+
+class Multiplier extends CoreModule {
+  val io = IO(new Bundle {
+    val opcode = Input(UInt(8.W))
+    val src1 = Input(UInt(32.W))
+    val src2 = Input(UInt(32.W))
+    val out = Output(UInt(32.W))
+  })
+
+  val src1Signed = io.opcode === MULOp.MUL || io.opcode === MULOp.MULH || io.opcode === MULOp.MULHSU
+  val src2Signed = io.opcode === MULOp.MUL || io.opcode === MULOp.MULH 
+
+  val a = io.src1 // * multiplicand
+  val b = Cat(Mux(src2Signed, Fill(2, io.src2(31)), 0.U(2.W)), io.src2, 0.U(1.W)) // * multiplier
+  
+  val partialProd = (0 until 18).map { i =>
+    val boothEnc = Module(new BoothEncoder)
+    if(i == 0) {
+      boothEnc.io.mulBits := Cat(b(1, 0), 0.U(1.W))
+    } else {
+      boothEnc.io.mulBits := b(i * 2 + 1, i * 2 - 1)
+    }
+    val boothCode = boothEnc.io.code
+    val S = boothCode.sign
+    val E = random.XNOR(boothCode.sign, b(31))
+    val prod = WireInit(0.U(68.W))
+
+  }
+}
+
+class BoothCode extends CoreBundle {
+  val sign = Bool()
+  val two = Bool()
+  val one = Bool()
+  val zero = Bool()
+}
+
+class BoothEncoderIO extends CoreBundle {
+  val mulBits = Flipped(UInt(3.W)) // * multiplier bits
+  val code = new BoothCode
+}
+
+class BoothEncoder extends CoreModule {
+  val io = IO(new BoothEncoderIO)
+
+  val lut = Seq(
+    // *                     sign two one zero
+    BitPat("b000") -> BitPat("b0   0   0   1"), // * +0
+    BitPat("b001") -> BitPat("b0   0   1   0"), // * +1
+    BitPat("b010") -> BitPat("b0   0   1   0"), // * +1
+    BitPat("b011") -> BitPat("b0   1   0   0"), // * +2
+    BitPat("b100") -> BitPat("b1   1   0   0"), // * -2
+    BitPat("b101") -> BitPat("b1   0   1   0"), // * -1
+    BitPat("b110") -> BitPat("b1   0   1   0"), // * -1
+    BitPat("b111") -> BitPat("b1   0   0   1"), // * -0
+  )
+  val table = TruthTable(lut, BitPat("b000"))
+  io.code := decoder(io.mulBits, table).asTypeOf(new BoothCode)
+}
+

@@ -42,25 +42,25 @@ target("Vtop")
   add_options("itrace", "mtrace", "ftrace", "Waveform", "Difftest", "sim_target")
   add_configfiles("csrc/config.h.in")
 
-target("FreeList_tb")  
-  add_rules("verilator.binary")
-  set_toolchains("@verilator")
+-- target("FreeList_tb")  
+--   add_rules("verilator.binary")
+--   set_toolchains("@verilator")
 
-  add_values("verilator.flags", "--trace-fst")
+--   add_values("verilator.flags", "--trace-fst")
 
-  add_files("testbench/FreeList_tb.cpp")
-  add_files("vsrc/FreeList.sv")  
-  add_includedirs("$(buildir)")
+--   add_files("testbench/FreeList_tb.cpp")
+--   add_files("vsrc/FreeList.sv")  
+--   add_includedirs("$(buildir)")
 
-target("testRename_tb")  
-  add_rules("verilator.binary")
-  set_toolchains("@verilator")
+-- target("testRename_tb")  
+--   add_rules("verilator.binary")
+--   set_toolchains("@verilator")
 
-  add_values("verilator.flags", "--trace-fst")
+--   add_values("verilator.flags", "--trace-fst")
 
-  add_files("testbench/testRename_tb.cpp")
-  add_files("vsrc/*.sv")  
-  add_includedirs("$(buildir)")
+--   add_files("testbench/testRename_tb.cpp")
+--   add_files("vsrc/*.sv")  
+--   add_includedirs("$(buildir)")
 
 
 target("chisel")  

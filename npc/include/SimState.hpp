@@ -12,8 +12,6 @@
 #include <cstdint>
 #include <cstdio>
 
-extern bool skip_difftest;
-
 class SimState {
 public:
   RenameUop renameUop[4];
@@ -33,6 +31,9 @@ public:
 
   InstInfo commited[32];
   uint32_t commitedIndex = 0;
+
+  uint32_t difftestCountdown = 0;
+  bool waitDifftest = false;
 
   void bindUops() {
     // * renameUop
@@ -96,6 +97,10 @@ public:
   }
 
   void log(uint64_t cycle) {
+    --difftestCountdown;
+    // if (waitDifftest) {
+    //   printf("wait difftest: %d\n", difftestCountdown);
+    // }
     if (begin_wave) {
       printf("cycle: %ld\n", cycle);
     }
@@ -113,14 +118,11 @@ public:
         auto flag = (FlagOp)*flagUop[i].flag;
         auto decodeFlag = (DecodeFlagOp)*flagUop[i].rd;
 
-        if (flag != FlagOp::MISPREDICT) {
-          // * skip the difftest since inst has commited but CSR is not changed
-          // * for now
-          skip_difftest = true;
-          if (flag == FlagOp::INTERRUPT) {
-            // * override the difftest ref
-            access_device = true;
-          }
+        // * skip the difftest since inst has commited but CSR is not changed
+        // * for now / redirect signal is not fired
+        if (flag == FlagOp::INTERRUPT) {
+          // * override the difftest ref
+          access_device = true;
         }
 
         if (flag != FlagOp::MISPREDICT) {
@@ -144,8 +146,13 @@ public:
         }
       }
     }
-    // * CSR Ctrl
+    // * fix PC with redirect
+    if (V_REDIRECT_VALID) {
+      // printf("PC redirect to %x\n", V_REDIRECT_PC);
+      pc = V_REDIRECT_PC;
+    }
 
+    // * CSR Ctrl
     {
       auto pc = *csrCtrl[0].pc;
       auto trap = *csrCtrl[0].trap;
@@ -171,6 +178,11 @@ public:
       }
     }
 
+    if (waitDifftest && difftestCountdown == 0) {
+      difftest();
+      waitDifftest = false;
+    }
+
     // * commit
     for (int i = 0; i < 1; ++i) {
       if (*commitUop[i].valid && *commitUop[i].ready) {
@@ -179,7 +191,9 @@ public:
         auto robIndex = *commitUop[i].robPtr_index;
         auto &inst = insts[robIndex];
         auto &uop = commitUop[i];
-        // inst.valid = false;
+
+        waitDifftest = inst.flag != FlagOp::NONE;
+
         if (inst.fuType == FuType::LSU) {
           auto addr = inst.src1 + inst.imm;
           if (addr >= 0x11000000 + 0xbff8 && addr < 0x11000000 + 0xc000 ||
@@ -221,7 +235,12 @@ public:
         }
         pc = inst.pc + 4;
 #ifdef DIFFTEST
-        difftest();
+        if (!waitDifftest) {
+          difftest();
+        } else {
+          // printf("Wait difftest!\n");
+          difftestCountdown = 2;
+        }
 #endif
       }
     }
@@ -265,6 +284,9 @@ public:
         inst.opcode = *uop.opcode;
         inst.imm = *uop.imm;
         inst.pc = *uop.pc;
+        if (inst.fuType == FuType::FLAG) {
+          inst.flag = (FlagOp)*uop.opcode;
+        }
 
         inst.rd = *uop.rd;
         inst.rs1 = *uop.rs1;
