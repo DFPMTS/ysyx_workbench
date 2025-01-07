@@ -28,7 +28,24 @@ void init_uart();
 struct diff_context_t {
   word_t gpr[NR_GPR];
   word_t pc;
-  
+  word_t priv;
+  word_t stvec;
+  word_t sscratch;
+  word_t sepc;
+  word_t scause;
+  word_t stval;
+  word_t satp;
+  word_t mstatus;
+  word_t medeleg;
+  word_t mideleg;
+  word_t mie;
+  word_t mtvec;
+  word_t menvcfg;
+  word_t mscratch;
+  word_t mepc;
+  word_t mcause;
+  word_t mtval;
+  word_t mip;
 };
 
 static void difftest_set_regs(void *diff_context){
@@ -37,6 +54,24 @@ static void difftest_set_regs(void *diff_context){
     cpu.gpr[i] = context->gpr[i];
   }
   cpu.pc = context->pc;
+  cpu.priv = context->priv;
+  cpu.stvec = context->stvec;
+  cpu.sscratch = context->sscratch;
+  cpu.sepc = context->sepc;
+  cpu.scause = context->scause;
+  cpu.stval = context->stval;
+  cpu.satp = context->satp;
+  cpu.mstatus.val = context->mstatus;
+  cpu.medeleg = context->medeleg;
+  cpu.mideleg = context->mideleg;
+  cpu.mie.val = context->mie;
+  cpu.mtvec = context->mtvec;
+  cpu.menvcfg = context->menvcfg;
+  cpu.mscratch = context->mscratch;
+  cpu.mepc = context->mepc;
+  cpu.mcause = context->mcause;
+  cpu.mtval = context->mtval;
+  cpu.mip.val = context->mip;
 }
 
 static void difftest_get_regs(void *diff_context) {
@@ -45,6 +80,24 @@ static void difftest_get_regs(void *diff_context) {
     context->gpr[i] = cpu.gpr[i];
   }
   context->pc = cpu.pc;
+  context->priv = cpu.priv;
+  context->stvec = cpu.stvec;
+  context->sscratch = cpu.sscratch;
+  context->sepc = cpu.sepc;
+  context->scause = cpu.scause;
+  context->stval = cpu.stval;
+  context->satp = cpu.satp;
+  context->mstatus = cpu.mstatus.val;
+  context->medeleg = cpu.medeleg;
+  context->mideleg = cpu.mideleg;
+  context->mie = cpu.mie.val;
+  context->mtvec = cpu.mtvec;
+  context->menvcfg = cpu.menvcfg;
+  context->mscratch = cpu.mscratch;
+  context->mepc = cpu.mepc;
+  context->mcause = cpu.mcause;
+  context->mtval = cpu.mtval;
+  context->mip = cpu.mip.val;
 }
 
 __EXPORT void difftest_memcpy(paddr_t addr, void *buf, size_t n, bool direction) {

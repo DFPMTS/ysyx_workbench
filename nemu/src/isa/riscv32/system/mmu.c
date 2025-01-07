@@ -169,7 +169,7 @@ done:
     // Log("vaddr: %x paddr: %x\n", vaddr, translated_paddr);
     return 0;
   } else {
-    Log("vaddr: %x paddr: ERROR in translation\n", vaddr);
+    // Log("vaddr: %x paddr: ERROR in translation\n", vaddr);
     return -1;
   }
 }

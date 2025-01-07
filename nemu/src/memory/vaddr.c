@@ -14,6 +14,7 @@
 ***************************************************************************************/
 
 #include "debug.h"
+#include "isa-def.h"
 #include <isa.h>
 #include <memory/paddr.h>
 
@@ -58,14 +59,26 @@ static word_t vaddr_op(vaddr_t addr, int len, word_t data, int mem_type) {
   return 0;
 }
 
+inline bool addr_misalign(vaddr_t addr, int len) {
+  return addr & (len - 1);
+}
+
 word_t vaddr_ifetch(vaddr_t addr, int len) {
   return vaddr_op(addr, len, 0, MEM_TYPE_IFETCH);
 }
 
 word_t vaddr_read(vaddr_t addr, int len) {
+  if(addr_misalign(addr, len)){
+    isa_set_trap(LOAD_ADDR_MISALIGNED, addr);
+    return 0;
+  }
   return vaddr_op(addr, len, 0, MEM_TYPE_READ);
 }
 
 void vaddr_write(vaddr_t addr, int len, word_t data) {
+  if(addr_misalign(addr, len)){
+    isa_set_trap(STORE_AMO_ADDR_MISALIGNED, addr);
+    return;
+  }
   vaddr_op(addr, len, data, MEM_TYPE_WRITE);
 }

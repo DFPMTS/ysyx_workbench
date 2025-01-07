@@ -26,7 +26,11 @@ word_t isa_raise_intr(word_t NO, vaddr_t epc) {
    * Then return the address of the interrupt/exception vector.
    */  
   assert(NO);  
-  Log("priv: %d NO: 0x%x epc: 0x%x mtvec: 0x%x",cpu.priv, NO, epc, cpu.mtvec);
+  // if(!trap_is_intr(NO)){
+  //   if(NO == 2) {
+  //     Log("priv: %d NO: 0x%x epc: 0x%x mtvec: 0x%x",cpu.priv, NO, epc, cpu.mtvec);
+  //   }
+  // }
   //// always trap to M for now
   // check delegation
   bool delegate = false;
@@ -84,7 +88,9 @@ uint64_t read_mtime();
 uint64_t read_mtimecmp();
 
 word_t isa_query_intr() {
-  // return INTR_EMPTY;
+#ifdef CONFIG_TARGET_SHARE
+  return INTR_EMPTY;
+#endif
   // set mip/mie
   if (read_mtime() >= read_mtimecmp()) {
     cpu.mip.MTI = 1;

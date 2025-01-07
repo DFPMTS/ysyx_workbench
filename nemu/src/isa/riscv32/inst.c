@@ -223,7 +223,9 @@ static int decode_exec(Decode *s) {
   __VA_ARGS__ ; \
 }
 
+#ifndef CONFIG_TARGET_SHARE
   cycle_mtime();
+#endif
 
 
   // interrupt
@@ -282,7 +284,7 @@ static int decode_exec(Decode *s) {
   INSTPAT("0000000 ????? ????? 111 ????? 01100 11", and    , R, regW(rd) = src1 & src2);
   INSTPAT("???? ???? ???? ????? 000 ????? 00011 11", fence , R, ); // nop
   INSTPAT("0000000 00000 00000 000 00000 11100 11", ecall  , N, isa_set_trap(8 + cpu.priv, 0)); // ecall from M/S/U-mode
-  INSTPAT("0000000 00001 00000 000 00000 11100 11", ebreak , N, isa_set_trap(BREAKPOINT, regR(10))); // R(10) is $a0
+  INSTPAT("0000000 00001 00000 000 00000 11100 11", ebreak , N, NEMUTRAP(s->pc, regR(10))); // R(10) is $a0
 
   // -----------------------------------------------RV32M-----------------------------------------------
   INSTPAT("0000001 ????? ????? 000 ????? 01100 11", mul    , R, regW(rd) = src1 * src2);
@@ -379,7 +381,7 @@ static int decode_exec(Decode *s) {
   INSTPAT("110 ?????? ????? 10",     c.swsp,       CSS_SW,      Mw(regR(SP) + imm, 4, src2));
 
   // INVALID  
-  INSTPAT("??????? ????? ????? ??? ????? ????? ??", inv    , N, isa_set_trap(ILLEGAL_INST, current_inst));
+  INSTPAT("??????? ????? ????? ??? ????? ????? ??", inv    , N, isa_set_trap(ILLEGAL_INST, 0));
   INSTPAT_END();
   
   // exception

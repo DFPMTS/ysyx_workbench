@@ -109,10 +109,10 @@ int get_csr(word_t csr_addr, word_t **csr) {
     *csr = &cpu.menvcfg;
     break;
   case CSR_MSTATUSH:
-    *csr = &cpu.mstatush;
+    *csr = &temp;
     break;
   case CSR_MENVCFGH:
-    *csr = &cpu.menvcfgh;
+    *csr = &temp;
     break;
   case CSR_MSCRATCH: // mscratch
     *csr = &cpu.mscratch;
@@ -160,7 +160,7 @@ int get_csr(word_t csr_addr, word_t **csr) {
     succ = -1;
     // illegal instruction, it is interesting that:
     // https://github.com/riscv/riscv-isa-manual/issues/1116
-    isa_set_trap(ILLEGAL_INST, current_inst);
+    isa_set_trap(ILLEGAL_INST, 0);
     // difftest_skip_ref();
     break;
   }
@@ -236,6 +236,10 @@ void csr_write(word_t csr_addr, word_t value, word_t *csr)
 
   case CSR_MEDELEG:
     write_with_mask(csr, value, 0xb7ff);
+    break;
+
+  case CSR_MISA:
+    // * do nothing
     break;
 
   default:
