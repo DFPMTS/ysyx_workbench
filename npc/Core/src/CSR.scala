@@ -144,49 +144,10 @@ class CSR extends CoreModule {
 
   val priv    = RegInit(3.U(2.W))  
 
-/*
-  object CSRList {
-    val sstatus        = 0x100.U
-    val sie            = 0x104.U
-    val stvec          = 0x105.U
-    val scounteren     = 0x106.U
-  
-    val sscratch       = 0x140.U
-    val sepc           = 0x141.U
-    val scause         = 0x142.U
-    val stval          = 0x143.U
-    val sip            = 0x144.U
-    val satp           = 0x180.U
-  
-    val mstatus        = 0x300.U
-    val misa           = 0x301.U
-    val medeleg        = 0x302.U
-    val mideleg        = 0x303.U
-    val mie            = 0x304.U
-    val mtvec          = 0x305.U
-    val mcounteren     = 0x306.U
-    val menvcfg        = 0x30A.U
-    val mstatush       = 0x310.U
-    val menvcfgh       = 0x31A.U
-    val mscratch       = 0x340.U
-    val mepc           = 0x341.U
-    val mcause         = 0x342.U
-    val mtval          = 0x343.U
-    val mip            = 0x344.U
-  
-    val time           = 0xC01.U
-    val timeh          = 0xC81.U
-  
-    val mvendorid      = 0xF11.U
-    val marchid        = 0xF12.U
-    val mipid          = 0xF13.U
-    val mhartid        = 0xF14.U
-  }
-*/
   // * sstatus    0x100
   // * sie        0x104
   val stvec        = Reg(UInt(XLEN.W))                  // * 0x105
-  // * scounteren 0x106
+  // * scounteren (read-only zero) 0x106
   val sscratch     = Reg(UInt(XLEN.W))                  // * 0x140
   val sepc         = Reg(UInt(XLEN.W))                  // * 0x141
   val scause       = Reg(UInt(XLEN.W))                  // * 0x142
@@ -195,25 +156,36 @@ class CSR extends CoreModule {
   val satp         = RegInit(0.U(32.W))                 // * 0x180
 
   val mstatus      = RegInit(0.U.asTypeOf(new Mstatus)) // * 0x300
-  val misa         = RegInit(((1L << 30) | (1 << 0) | (1 << 2) | (1 << 3) | (1 << 5) | (1 << 8) | (1 << 12) | (1 << 18) | (1 << 20)).U(32.W)) // * 0x301
+  val mstatusU     = WireInit(mstatus.asUInt)
+  dontTouch(mstatusU)
+
+  val misa         = RegInit(((1L << 30) | (1 << 0) | (1 << 2) | (1 << 8) | (1 << 12) | (1 << 18) | (1 << 20)).U(32.W)) // * 0x301
   val medeleg      = RegInit(0.U(XLEN.W))               // * 0x302
   val mideleg      = RegInit(0.U(XLEN.W))               // * 0x303
   val mie          = RegInit(0.U.asTypeOf(new Mipe))    // * 0x304
+  val mieU         = WireInit(mie.asUInt)
+  dontTouch(mieU)
+
   val mtvec        = Reg(UInt(32.W))                    // * 0x305
-  // * mcounteren 0x306
+  // * mcounteren (read-only zero) 0x306
   val menvcfg      = RegInit(0.U.asTypeOf(new Menvcfg)) // * 0x30A
-  // * mstatush   0x310
-  // * menvcfgh   0x31A
+  val menvcfgU     = WireInit(menvcfg.asUInt)
+  dontTouch(menvcfgU)
+  // * mstatush (read-only zero)  0x310
+  // * menvcfgh (read-only zero)  0x31A
 
   val mscratch     = Reg(UInt(XLEN.W))                  // * 0x340
   val mepc         = Reg(UInt(XLEN.W))                  // * 0x341
   val mcause       = Reg(UInt(XLEN.W))                  // * 0x342
   val mtval        = Reg(UInt(XLEN.W))                  // * 0x343
   val mip          = RegInit(0.U.asTypeOf(new Mipe))    // * 0x344
+  val mipU         = WireInit(mip.asUInt)
+  dontTouch(mipU)
 
-  // * time       0xC01
-  // * timeh      0xC81
+  // * time  (CLINT-mtime)  0xC01
+  // * timeh (CLINT-mtimeh) 0xC81
 
+  // * all hardwired
   // * mvendorid  0xF11
   // * marchid    0xF12
   // * mipid      0xF13
@@ -480,7 +452,7 @@ class CSR extends CoreModule {
       mstatus.SD := status.FS.orR
     }
     when(addr === CSRList("misa")) { // * 0x301
-      misa := wdata
+      // * do nothing
     }
     when(addr === CSRList("medeleg")) { // * 0x302
       medeleg := wdata & 0xb7ff.U

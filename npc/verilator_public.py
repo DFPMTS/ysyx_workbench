@@ -1,5 +1,6 @@
 import re
 
+
 def add_verilator_public_comment(verilog_code):
     """
     Modify Verilog code to add `/*verilator public*/` after the variable name
@@ -22,14 +23,16 @@ def add_verilator_public_comment(verilog_code):
         ([a-zA-Z]\w*)        # Match a wire name that does not start with an underscore
         \b                   # Word boundary to ensure we match the full name
         """,
-        re.VERBOSE
+        re.VERBOSE,
     )
 
     # Function to insert the comment after the variable name
     def insert_comment(match):
         # Extract the matched groups
-        wire_declaration = match.group(0)  # Full wire declaration (e.g., "wire [7:0] data_bus")
-        wire_name = match.group(2)         # The wire name (e.g., "data_bus")
+        wire_declaration = match.group(
+            0
+        )  # Full wire declaration (e.g., "wire [7:0] data_bus")
+        wire_name = match.group(2)  # The wire name (e.g., "data_bus")
 
         # Find the position of the wire name in the declaration
         name_start = wire_declaration.find(wire_name)
@@ -46,18 +49,12 @@ def add_verilator_public_comment(verilog_code):
 # Example usage
 if __name__ == "__main__":
     # Input and output file paths
-    input_file = "vsrc/Core.sv"  # Replace with your input Verilog file
-    output_file ="vsrc/Core.sv"   # Replace with your output Verilog file
+    input_files = ["vsrc/Core.sv", "vsrc/CSR.sv"]
 
-    # Read the Verilog code from the input file
-    with open(input_file, "r") as f:
-        verilog_code = f.read()
-
-    # Modify the Verilog code
-    modified_verilog_code = add_verilator_public_comment(verilog_code)
-
-    # Write the modified Verilog code to the output file
-    with open(output_file, "w") as f:
-        f.write(modified_verilog_code)
-
-    print(f"Modified Verilog code has been written to {output_file}")
+    for input_file in input_files:
+        with open(input_file, "r") as f:
+            verilog_code = f.read()
+        modified_verilog_code = add_verilator_public_comment(verilog_code)
+        with open(input_file, "w") as f:
+            f.write(modified_verilog_code)
+        print(f"Modified Verilog code has been written to {input_file}")
