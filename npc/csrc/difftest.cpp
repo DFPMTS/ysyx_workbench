@@ -1,4 +1,5 @@
 #include "difftest.hpp"
+#include "SimState.hpp"
 #include "cpu.hpp"
 #include "debug.hpp"
 #include "ftrace.hpp"
@@ -68,6 +69,24 @@ bool check_context(difftest_context_t *ref, difftest_context_t *dut) {
     succ &= difftest_check_reg(reg_name(i), dut->pc, ref->gpr[i], dut->gpr[i]);
   }
   // succ &= difftest_check_reg("pc", dut->pc, ref->pc, dut->pc);
+  succ &= difftest_check_reg("stvec", dut->pc, ref->stvec, dut->stvec);
+  succ &= difftest_check_reg("sscratch", dut->pc, ref->sscratch, dut->sscratch);
+  succ &= difftest_check_reg("sepc", dut->pc, ref->sepc, dut->sepc);
+  succ &= difftest_check_reg("scause", dut->pc, ref->scause, dut->scause);
+  succ &= difftest_check_reg("stval", dut->pc, ref->stval, dut->stval);
+  succ &= difftest_check_reg("satp", dut->pc, ref->satp, dut->satp);
+  succ &= difftest_check_reg("mstatus", dut->pc, ref->mstatus, dut->mstatus);
+  succ &= difftest_check_reg("medeleg", dut->pc, ref->medeleg, dut->medeleg);
+  succ &= difftest_check_reg("mideleg", dut->pc, ref->mideleg, dut->mideleg);
+  succ &= difftest_check_reg("mie", dut->pc, ref->mie, dut->mie);
+  succ &= difftest_check_reg("mtvec", dut->pc, ref->mtvec, dut->mtvec);
+  succ &= difftest_check_reg("menvcfg", dut->pc, ref->menvcfg, dut->menvcfg);
+  succ &= difftest_check_reg("mscratch", dut->pc, ref->mscratch, dut->mscratch);
+  succ &= difftest_check_reg("mepc", dut->pc, ref->mepc, dut->mepc);
+  succ &= difftest_check_reg("mcause", dut->pc, ref->mcause, dut->mcause);
+  succ &= difftest_check_reg("mtval", dut->pc, ref->mtval, dut->mtval);
+  // succ &= difftest_check_reg("mip", dut->pc, ref->mip, dut->mip);
+
   return succ;
 }
 
@@ -85,13 +104,37 @@ void trace(uint32_t pc, uint32_t inst) {
 }
 
 void difftest() {
-  difftest_step();
+  // * skip_difftest: just ref_difftest_exec(1), but do not compare
+  // * access_device: override the ref
+
+  // * the access_device is only handled when !skip_difftest
+
+  if (skip_difftest) {
+    ref_difftest_exec(1);
+    skip_difftest = false;
+    return;
+  }
+
+  if (access_device) {
+    get_context(&dut);
+    ref_difftest_regcpy(&dut, DIFFTEST_TO_REF);
+    access_device = false;
+    return;
+  } else {
+    ref_difftest_exec(1);
+  }
+
   get_context(&dut);
   ref_difftest_regcpy(&ref, DIFFTEST_TO_DUT);
-  if (!check_context(&ref, &dut)) {
-    isa_reg_display(&dut);
-    Log("Difftest failed\n");
-    running.store(false);
+  if (!skip_difftest) {
+    if (!check_context(&ref, &dut)) {
+      isa_reg_display(&dut);
+      Log("Difftest failed\n");
+      stop = Stop::DIFFTEST_FAILED;
+      running.store(false);
+    }
+  } else {
+    skip_difftest = false;
   }
   // isa_reg_display(&ref);
 }

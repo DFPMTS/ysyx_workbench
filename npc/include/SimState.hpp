@@ -1,6 +1,7 @@
 #ifndef SIMSTATE_HPP
 #define SIMSTATE_HPP
 
+#include "CSR.hpp"
 #include "Uop.hpp"
 #include "cpu.hpp"
 #include "debug.hpp"
@@ -11,6 +12,8 @@
 #include <cstdint>
 #include <cstdio>
 
+extern bool skip_difftest;
+
 class SimState {
 public:
   RenameUop renameUop[4];
@@ -19,6 +22,7 @@ public:
   CommitUop commitUop[4];
   FlagUop flagUop[1];
   CSRCtrl csrCtrl[1];
+  CSR csr;
 
   InstInfo insts[128];
   uint32_t archTable[32] = {};
@@ -84,6 +88,11 @@ public:
 #define UOP_FIELDS CSR_CTRL_FIELDS
 
     REPEAT_1(BIND_FIELDS)
+
+#define CSRS csr
+    CSR_FIELDS(BIND_CSRS_FIELD);
+    printf("stvec: %p\n", csr.stvec);
+    printf("bind uops done\n");
   }
 
   void log(uint64_t cycle) {
@@ -92,6 +101,7 @@ public:
     }
     if (cycle > lastCommit + 100) {
       Log("CPU hangs");
+      stop = Stop::CPU_HANG;
       running.store(false);
     }
     char buf[512];
@@ -102,6 +112,16 @@ public:
         auto &inst = insts[robIndex];
         auto flag = (FlagOp)*flagUop[i].flag;
         auto decodeFlag = (DecodeFlagOp)*flagUop[i].rd;
+
+        if (flag != FlagOp::MISPREDICT) {
+          // * skip the difftest since inst has commited but CSR is not changed
+          // * for now
+          skip_difftest = true;
+          if (flag == FlagOp::INTERRUPT) {
+            // * override the difftest ref
+            access_device = true;
+          }
+        }
 
         if (flag != FlagOp::MISPREDICT) {
           if (flag == FlagOp::DECODE_FLAG) {
@@ -165,6 +185,12 @@ public:
           if (addr >= 0x11000000 + 0xbff8 && addr < 0x11000000 + 0xc000 ||
               addr >= 0x11000000 + 0x4000 && addr < 0x11000000 + 0x4008 ||
               addr >= 0x11000000 + 0x0000 && addr < 0x11000000 + 0x0004) {
+            access_device = true;
+          }
+        }
+        if (inst.fuType == FuType::CSR) {
+          auto csrAddr = inst.imm & ((1 << 12) - 1);
+          if (csrAddr == 0xC01 || csrAddr == 0xC81) {
             access_device = true;
           }
         }
@@ -301,5 +327,7 @@ public:
 
   uint64_t getInstRetired() { return instRetired; }
 };
+
+extern SimState state;
 
 #endif

@@ -60,14 +60,11 @@ public:
   }
 };
 
-SimState state;
-
 int main(int argc, char *argv[]) {
   Verilated::commandArgs(argc, argv);
   gpr = [&](int index) { return state.getReg(index); };
   PC = [&]() { return state.getPC(); };
   init_monitor(argc, argv);
-  state.bindUops();
   SimulationSpeed sim_speed;
   bool commit = false;
   bool booted = false;
@@ -83,7 +80,7 @@ int main(int argc, char *argv[]) {
     running.store(false);
   });
   while (running.load()) {
-    // if (state.getInstRetired() > 346000) {
+    // if (totalCycles > 240000) {
     //   begin_wave = true;
     // }
     cpu_step();
@@ -103,15 +100,22 @@ int main(int argc, char *argv[]) {
   fst->close();
 #endif
 
-  if (retval == 0) {
-    Log("\033[32mHit GOOD trap.\033[0m\n");
-  } else {
-    Log("\033[31mHit  BAD trap.\033[0m\n");
+  if (stop == Stop::EBREAK) {
+    if (retval == 0) {
+      Log("\033[32mHit GOOD trap.\033[0m\n");
+    } else {
+      Log("\033[31mHit  BAD trap.\033[0m\n");
+    }
+  } else if (stop == Stop::DIFFTEST_FAILED) {
+    Log("\033[31mDifftest failed.\033[0m\n");
+  } else if (stop == Stop::CPU_HANG) {
+    Log("\033[31mCPU hangs.\033[0m\n");
   }
 #ifdef NVBOARD
   nvboard_quit();
 #endif
   printPerfCounters();
   sim_speed.printSimulationSpeed(totalCycles);
-  return retval != 0;
+  auto good = (stop == Stop::EBREAK) && (retval == 0);
+  return !good;
 }

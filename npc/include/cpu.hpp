@@ -22,8 +22,25 @@ extern bool begin_wave;
 static uint32_t dummy = 0;
 
 struct difftest_context_t {
-  uint32_t gpr[32];
-  uint32_t pc;
+  word_t gpr[32];
+  word_t pc;
+  word_t stvec;
+  word_t sscratch;
+  word_t sepc;
+  word_t scause;
+  word_t stval;
+  word_t satp;
+  word_t mstatus;
+  word_t medeleg;
+  word_t mideleg;
+  word_t mie;
+  word_t mtvec;
+  word_t menvcfg;
+  word_t mscratch;
+  word_t mepc;
+  word_t mcause;
+  word_t mtval;
+  word_t mip;
 };
 
 extern std::function<uint32_t(int)> gpr;

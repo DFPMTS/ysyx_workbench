@@ -1,4 +1,5 @@
 #include "cpu.hpp"
+#include "SimState.hpp"
 #include "difftest.hpp"
 #include "disasm.hpp"
 #include <cstdint>
@@ -69,6 +70,23 @@ void get_context(difftest_context_t *dut) {
     dut->gpr[i] = gpr(i);
   }
   dut->pc = PC();
+  dut->stvec = *state.csr.stvec;
+  dut->sscratch = *state.csr.sscratch;
+  dut->sepc = *state.csr.sepc;
+  dut->scause = *state.csr.scause;
+  dut->stval = *state.csr.stval;
+  dut->satp = *state.csr.satp;
+  dut->mstatus = *state.csr.mstatus;
+  dut->medeleg = *state.csr.medeleg;
+  dut->mideleg = *state.csr.mideleg;
+  dut->mie = *state.csr.mie;
+  dut->mtvec = *state.csr.mtvec;
+  dut->menvcfg = *state.csr.menvcfg;
+  dut->mscratch = *state.csr.mscratch;
+  dut->mepc = *state.csr.mepc;
+  dut->mcause = *state.csr.mcause;
+  dut->mtval = *state.csr.mtval;
+  dut->mip = *state.csr.mip;
 }
 
 void cpu_step() {
@@ -113,6 +131,7 @@ void nvboard_bind_all_pins(Vtop *top);
 
 void init_cpu() {
   top = new Vtop;
+  state.bindUops();
 #ifdef NVBOARD
   nvboard_bind_all_pins(top);
 #endif
