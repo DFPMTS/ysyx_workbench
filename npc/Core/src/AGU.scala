@@ -160,10 +160,10 @@ class AGU extends CoreModule {
     pageFault := FlagOp.STORE_PAGE_FAULT
   }.elsewhen(inUop.fuType === FuType.LSU) {
     when(inUop.opcode(3)) {
-      misalignFault := FlagOp.LOAD_ADDR_MISALIGNED
+      misalignFault := FlagOp.STORE_ADDR_MISALIGNED
       pageFault := FlagOp.STORE_PAGE_FAULT
     }.otherwise {
-      misalignFault := FlagOp.STORE_ADDR_MISALIGNED
+      misalignFault := FlagOp.LOAD_ADDR_MISALIGNED
       pageFault := FlagOp.LOAD_PAGE_FAULT
     }
   }
