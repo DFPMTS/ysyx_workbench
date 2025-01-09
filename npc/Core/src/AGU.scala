@@ -156,8 +156,13 @@ class AGU extends CoreModule {
   val pageFault = WireInit(0.U(FLAG_W))
 
   when(inUop.fuType === FuType.AMO) {
-    misalignFault := FlagOp.STORE_ADDR_MISALIGNED
-    pageFault := FlagOp.STORE_PAGE_FAULT
+    when(inUop.opcode === AMOOp.LR_W) {
+      misalignFault := FlagOp.LOAD_ADDR_MISALIGNED
+      pageFault := FlagOp.LOAD_PAGE_FAULT
+    }.otherwise {
+      misalignFault := FlagOp.STORE_ADDR_MISALIGNED
+      pageFault := FlagOp.STORE_PAGE_FAULT
+    }
   }.elsewhen(inUop.fuType === FuType.LSU) {
     when(inUop.opcode(3)) {
       misalignFault := FlagOp.STORE_ADDR_MISALIGNED
