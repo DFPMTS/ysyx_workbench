@@ -133,22 +133,24 @@ public:
               continue;
             }
           }
-          itrace_generate(buf, inst.pc, inst.inst);
-          fprintf(stderr, "\033[32m");
-          fprintf(stderr, "<%3d> %s\n", robIndex, buf);
-          fprintf(stderr, "      pc   = %x\n", *flagUop[i].pc);
-          fprintf(stderr, "      flag = %s\n", getFlagOpName(flag));
-          if (flag == FlagOp::DECODE_FLAG) {
-            fprintf(stderr, "      decodeFlag = %s\n",
-                    getDecodeFlagOpName(decodeFlag));
-          }
-          fprintf(stderr, "\033[0m");
+          // itrace_generate(buf, inst.pc, inst.inst);
+          // fprintf(stderr, "\033[32m");
+          // fprintf(stderr, "<%3d> %s\n", robIndex, buf);
+          // fprintf(stderr, "      pc   = %x\n", *flagUop[i].pc);
+          // fprintf(stderr, "      flag = %s\n", getFlagOpName(flag));
+          // if (flag == FlagOp::DECODE_FLAG) {
+          //   fprintf(stderr, "      decodeFlag = %s\n",
+          //           getDecodeFlagOpName(decodeFlag));
+          // }
+          // fprintf(stderr, "\033[0m");
         }
       }
     }
     // * fix PC with redirect
     if (V_REDIRECT_VALID) {
-      // printf("PC redirect to %x\n", V_REDIRECT_PC);
+      if (begin_wave) {
+        printf("PC redirect to %x\n", V_REDIRECT_PC);
+      }
       pc = V_REDIRECT_PC;
     }
 
@@ -160,22 +162,23 @@ public:
       auto mret = *csrCtrl[0].mret;
       auto sret = *csrCtrl[0].sret;
       auto deleg = *csrCtrl[0].delegate;
-      if (trap || mret || sret) {
-        fprintf(stderr, "\033[33m");
-        if (trap) {
-          fprintf(stderr, "%s on PC: %x:\n", (intr ? "Interrupt" : "Exception"),
-                  pc);
-          fprintf(stderr, "      cause = %d\n", *csrCtrl[0].cause);
-          fprintf(stderr, "      delegate = %s\n", (deleg ? "yes" : "no"));
-        }
-        if (mret) {
-          fprintf(stderr, "mret on PC: %x\n", pc);
-        }
-        if (sret) {
-          fprintf(stderr, "sret on PC: %x\n", pc);
-        }
-        fprintf(stderr, "\033[0m");
-      }
+      // if (trap || mret || sret) {
+      //   fprintf(stderr, "\033[33m");
+      //   if (trap) {
+      //     fprintf(stderr, "%s on PC: %x:\n", (intr ? "Interrupt" :
+      //     "Exception"),
+      //             pc);
+      //     fprintf(stderr, "      cause = %d\n", *csrCtrl[0].cause);
+      //     fprintf(stderr, "      delegate = %s\n", (deleg ? "yes" : "no"));
+      //   }
+      //   if (mret) {
+      //     fprintf(stderr, "mret on PC: %x\n", pc);
+      //   }
+      //   if (sret) {
+      //     fprintf(stderr, "sret on PC: %x\n", pc);
+      //   }
+      //   fprintf(stderr, "\033[0m");
+      // }
     }
 
     if (waitDifftest && difftestCountdown == 0) {
@@ -221,6 +224,8 @@ public:
                  inst.src2);
           printf("      result = %d/%u/0x%x\n", inst.result, inst.result,
                  inst.result);
+          printf("      flag = %s\n", getFlagOpName(inst.flag));
+          printf("      target = %x\n", inst.target);
         }
         if (*uop.rd) {
           if (begin_wave) {
@@ -251,16 +256,20 @@ public:
         auto robIndex = *writebackUop[i].robPtr_index;
         auto &inst = insts[robIndex];
         auto &uop = writebackUop[i];
-        if (*uop.prd) {
-          if (begin_wave) {
-            printf("writeback: pReg[%d] = %d\n", *uop.prd,
-                   *writebackUop[i].data);
+        // * the writeback may go to ROB or PTW
+        if ((Dest)*uop.dest == Dest::ROB) {
+          if (*uop.prd) {
+            if (begin_wave) {
+              printf("writeback: pReg[%d] = %d\n", *uop.prd,
+                     *writebackUop[i].data);
+            }
+            pReg[*uop.prd] = *writebackUop[i].data;
           }
-          pReg[*uop.prd] = *writebackUop[i].data;
+          inst.result = *writebackUop[i].data;
+          inst.executed = true;
+          inst.flag = (FlagOp)*writebackUop[i].flag;
+          inst.target = *writebackUop[i].target;
         }
-        inst.result = *writebackUop[i].data;
-        inst.executed = true;
-        inst.flag = (FlagOp)*writebackUop[i].flag;
       }
     }
 
@@ -315,6 +324,8 @@ public:
         printf("      src2   = %d/%u/0x%x\n", inst.src2, inst.src2, inst.src2);
         printf("      result = %d/%u/0x%x\n", inst.result, inst.result,
                inst.result);
+        printf("      flag = %s\n", getFlagOpName(inst.flag));
+        printf("      target = %x\n", inst.target);
       }
     }
   }
@@ -339,6 +350,8 @@ public:
         printf("      src2   = %d/%u/0x%x\n", inst.src2, inst.src2, inst.src2);
         printf("      result = %d/%u/0x%x\n", inst.result, inst.result,
                inst.result);
+        printf("      flag = %s\n", getFlagOpName(inst.flag));
+        printf("      target = %x\n", inst.target);
       }
     }
   }

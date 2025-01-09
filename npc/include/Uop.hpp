@@ -9,6 +9,8 @@ using IData = uint32_t;
 
 enum class SrcType : CData { ZERO = 0, REG = 1, IMM = 2, PC = 3 };
 
+enum class Dest : CData { ROB = 0, PTW = 1 };
+
 enum class FuType : CData {
   ALU = 0,
   BRU = 1,
@@ -232,6 +234,7 @@ struct InstInfo {
   IData result;
   FlagOp flag;
 
+  IData target;
   CData executed;
 };
 
@@ -288,6 +291,7 @@ struct ReadRegUop : Uop {
 struct WritebackUop : Uop {
   CData *prd;
   IData *data;
+  CData *dest;
   CData *robPtr_flag;
   CData *robPtr_index;
   FlagOp *flag;
@@ -390,6 +394,7 @@ struct CSRCtrl : Uop {
 #define WRITEBACK_FIELDS(X, i)                                                 \
   X(i, prd)                                                                    \
   X(i, data)                                                                   \
+  X(i, dest)                                                                   \
   X(i, robPtr_flag)                                                            \
   X(i, robPtr_index)                                                           \
   X(i, flag)                                                                   \

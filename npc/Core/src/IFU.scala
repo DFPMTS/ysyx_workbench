@@ -140,7 +140,8 @@ class FetchCacheLine extends Module {
     )
   )
 
-  val isBurst = io.in.bits >= "hA0000000".U && io.in.bits < "hA2000000".U
+  // val isBurst = io.in.bits >= "hA0000000".U && io.in.bits < "hA2000000".U
+  val isBurst = false.B
 
   val lowAddrBuffer = Reg(UInt(4.W))
   val nextLowAddr   = Mux(!isBurst && io.master.r.valid, lowAddrBuffer + 4.U, lowAddrBuffer)

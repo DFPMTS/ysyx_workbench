@@ -11,8 +11,8 @@ class MMUResp extends CoreBundle {
   }
   def loadStorePermFail(write: Bool, vmCSR: VMCSR) = {
     !pte.v || // * Invalid
-    // !pte.a || // * svadu
-    Mux(write, !pte.r || !pte.w /*|| !pte.d*/, 
+    !pte.a || // * svadu
+    Mux(write, !pte.r || !pte.w || !pte.d, 
                !pte.r && !(vmCSR.mxr && pte.x)) || // * r/w perm fail
     (!pte.u && vmCSR.epm === Priv.U) || // * User program can only access page with U bit set
     (pte.u && !vmCSR.sum && vmCSR.epm === Priv.S) || // * SUM
@@ -20,7 +20,7 @@ class MMUResp extends CoreBundle {
   }
   def executePermFail(vmCSR: VMCSR) = {
     !pte.v || // * Invalid
-    // !pte.a || // * svadu
+    !pte.a || // * svadu
     !pte.x || // * Execute perm fail
     (!pte.r && pte.w) || // * illegal combination
     (!pte.u && vmCSR.priv === Priv.U) || // * User program can only access page with U bit set

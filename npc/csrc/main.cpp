@@ -61,7 +61,7 @@ public:
 };
 
 int main(int argc, char *argv[]) {
-  Verilated::commandArgs(argc, argv);
+  // Verilated::commandArgs(argc, argv);
   gpr = [&](int index) { return state.getReg(index); };
   PC = [&]() { return state.getPC(); };
   init_monitor(argc, argv);
@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
     running.store(false);
   });
   while (running.load()) {
-    // if (totalCycles > 240000) {
+    // if (state.getInstRetired() > 86086000) {
     //   begin_wave = true;
     // }
     cpu_step();
