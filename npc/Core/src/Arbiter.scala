@@ -209,7 +209,11 @@ class AXI_Arbiter extends Module {
   toIn.b.valid   := Mux(writeMMIOReg, true.B, io.winMaster.b.valid)
 
   val waddr = win.aw.bits.addr
-  when(waddr(31, 2) === (CLINT_BASE + MTIMECMP_OFFSET)(31, 2)) {
+  when(raddr(31, 2) === (CLINT_BASE + MTIME_OFFSET)(31, 2)) {
+    mtime := Cat(mtime(63, 32), win.w.bits.data)
+  }.elsewhen(raddr(31, 2) === (CLINT_BASE + MTIME_OFFSET + 4.U)(31, 2)) {
+    mtime := Cat(win.w.bits.data, mtime(31, 0))
+  }.elsewhen(waddr(31, 2) === (CLINT_BASE + MTIMECMP_OFFSET)(31, 2)) {
     mtimecmp := Cat(mtimecmp(63, 32), win.w.bits.data)
   }.elsewhen(waddr(31, 2) === (CLINT_BASE + MTIMECMP_OFFSET + 4.U)(31, 2)) {
     mtimecmp := Cat(win.w.bits.data, mtimecmp(31, 0))
