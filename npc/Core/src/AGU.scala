@@ -193,7 +193,7 @@ class AGU extends CoreModule {
       wbUopValid := true.B
       uopValid := false.B
     }.elsewhen(tlbHit) {
-      val isWrite = uopNext.opcode(3)
+      val isWrite = (uopNext.fuType === FuType.LSU && uopNext.opcode(3)) || (uopNext.fuType === FuType.AMO && uopNext.opcode =/= AMOOp.LR_W)
       val permFail = io.IN_TLBResp.bits.loadStorePermFail(isWrite, io.IN_VMCSR)
       when(!uopValid || io.OUT_AGUUop.ready) {
         uop := uopNext
