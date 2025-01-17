@@ -26,7 +26,8 @@ public:
   uint32_t archTable[32] = {};
   uint32_t pReg[64] = {};
   uint32_t pc = 0;
-  uint32_t lastCommit;
+
+  uint64_t lastCommit;
   uint64_t instRetired = 0;
 
   InstInfo commited[32];
@@ -104,7 +105,7 @@ public:
     if (begin_wave) {
       printf("cycle: %ld\n", cycle);
     }
-    if (cycle > lastCommit + 100) {
+    if (cycle > lastCommit + 200) {
       Log("CPU hangs");
       stop = Stop::CPU_HANG;
       running.store(false);
