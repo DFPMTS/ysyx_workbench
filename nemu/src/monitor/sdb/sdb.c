@@ -19,6 +19,8 @@
 #include <readline/history.h>
 #include "sdb.h"
 #include "memory/vaddr.h"
+#include <memory/paddr.h>
+#include <checkpoint.h>
 
 static int is_batch_mode = false;
 
@@ -68,6 +70,8 @@ static int cmd_w(char *args);
 
 static int cmd_d(char *args);
 
+static int cmd_cpt(char *args);
+
 static struct {
   const char *name;
   const char *description;
@@ -81,7 +85,8 @@ static struct {
   { "p", "Evaluate expression.", cmd_p},
   { "x", "Examine memory.", cmd_x},
   { "w", "Set watch point.", cmd_w},
-  { "d", "Delete watch point", cmd_d}
+  { "d", "Delete watch point", cmd_d},
+  { "cpt", "Save checkpoint", cmd_cpt},
 
   /* TODO: Add more commands */
 
@@ -232,6 +237,83 @@ static int cmd_d(char *args) {
   } else {
     int NO = atoi(arg);
     wp_delete(NO);
+  }
+
+  return 0;
+}
+
+uint8_t* guest_to_host(paddr_t paddr);
+uint32_t read_time();
+uint32_t read_timeh();
+uint64_t read_mtimecmp();
+
+static void save_checkpoint() {
+
+  printf("Save checkpoint:\n");
+  isa_reg_display();
+
+  // * pc -> mepc, priv -> mstatus.MPP
+  cpu.mepc = cpu.pc;
+  cpu.mstatus.MPP = cpu.priv;
+  cpu.mstatus.MPIE = cpu.mstatus.MIE;
+  cpu.mstatus.MIE = 0;
+
+  // * save CSR
+  paddr_t t1 = RESET_VECTOR + CSR_REG_OFFSET;
+  paddr_write(t1, 4, cpu.stvec);
+  paddr_write(t1 + 4, 4, cpu.sscratch);
+  paddr_write(t1 + 8, 4, cpu.sepc);
+  paddr_write(t1 + 12, 4, cpu.scause);
+  paddr_write(t1 + 16, 4, cpu.stval);
+  paddr_write(t1 + 20, 4, cpu.satp);
+  paddr_write(t1 + 24, 4, cpu.mstatus.val);
+  paddr_write(t1 + 28, 4, cpu.medeleg);
+  paddr_write(t1 + 32, 4, cpu.mideleg);
+  paddr_write(t1 + 36, 4, cpu.mie.val);
+  paddr_write(t1 + 40, 4, cpu.mtvec);
+  paddr_write(t1 + 44, 4, cpu.menvcfg);
+  paddr_write(t1 + 48, 4, cpu.mscratch);
+  paddr_write(t1 + 52, 4, cpu.mepc);
+  paddr_write(t1 + 56, 4, cpu.mcause);
+  paddr_write(t1 + 60, 4, cpu.mtval);
+  paddr_write(t1 + 64, 4, cpu.mip.val);
+
+  // * save INT
+  t1 = RESET_VECTOR + INT_REG_OFFSET;
+  for (int i = 0; i < 32; i++) {
+    paddr_write(t1 + i * 4, 4, cpu.gpr[i]);
+  }
+
+  // * save MMIO (MTIME/MTIMECMP)
+  t1 = RESET_VECTOR + MMIO_REG_OFFSET;
+  paddr_write(t1, 4, read_time());
+  paddr_write(t1 + 4, 4, read_timeh());
+
+  uint64_t mtimecmp = read_mtimecmp();
+  paddr_write(t1 + 8, 4, mtimecmp);
+  paddr_write(t1 + 12, 4, mtimecmp >> 32);
+
+  // * toggle CTRL
+  t1 = RESET_VECTOR + CTRL_OFFSET;
+  paddr_write(t1, 4, 1);
+}
+
+static int cmd_cpt(char *args) {
+  // extract the first argument: file name
+  char *arg = strtok(NULL, " ");
+
+  if (arg == NULL) {
+    // need argument
+    printf("Format: cpt file_name\n");
+  } else {
+    FILE *fp = fopen(arg, "wb");
+    if (fp == NULL) {
+      printf("Can not open file %s\n", arg);
+    } else {
+      save_checkpoint();
+      fwrite(guest_to_host(RESET_VECTOR), 1, CONFIG_MSIZE, fp);
+      fclose(fp);
+    }
   }
 
   return 0;

@@ -48,6 +48,8 @@ static char *elf_files[16];
 static int elf_files_cnt = 0;
 static int difftest_port = 1234;
 
+static int is_cpt = false;
+
 static long load_img() {
   if (img_file == NULL) {
     Log("No image is given. Use the default build-in image.");
@@ -63,10 +65,34 @@ static long load_img() {
   Log("The image is %s, size = %ld", img_file, size);
 
   fseek(fp, 0, SEEK_SET);
-  int ret = fread(guest_to_host(RESET_VECTOR), size, 1, fp);
+  // * The image's start address shoulde be 0x80100000
+  // * the first 1MB is reserved for checkpoint
+  uint32_t img_start = is_cpt ? RESET_VECTOR : IMG_START;
+  int ret = fread(guest_to_host(img_start), size, 1, fp);
   assert(ret == 1);
-
   fclose(fp);
+
+  
+  if (!is_cpt) {
+    // * load checkpoint
+    char *cpt_name =
+        "/home/dfpmts/Documents/ysyx-workbench/nemu/checkpoint/cpt.bin";
+    FILE *fp_cpt = fopen(cpt_name, "rb");
+    Assert(fp_cpt, "Can not open '%s'", cpt_name);
+
+    fseek(fp_cpt, 0, SEEK_END);
+    long size_cpt = ftell(fp_cpt);
+
+    fseek(fp_cpt, 0, SEEK_SET);
+
+    for (int i = 0; i < 0x100000; ++i) {
+      *guest_to_host(RESET_VECTOR + i) = 0;
+    }
+    ret = fread(guest_to_host(RESET_VECTOR), size_cpt, 1, fp_cpt);
+    Assert(ret == 1, "load checkpoint failed");
+    fclose(fp_cpt);
+  }
+
   return size;
 }
 
@@ -78,6 +104,7 @@ static int parse_args(int argc, char *argv[]) {
     {"port"     , required_argument, NULL, 'p'},
     {"elf"      , required_argument, NULL, 'e'},
     {"help"     , no_argument      , NULL, 'h'},
+    {"cpt"      , no_argument      , NULL, 'c'},
     {0          , 0                , NULL,  0 },
   };
   int o;
@@ -88,6 +115,7 @@ static int parse_args(int argc, char *argv[]) {
       case 'l': log_file = optarg; break;
       case 'd': diff_so_file = optarg; break;
       case 'e': elf_files[elf_files_cnt++] = optarg; printf("ELF: %s\n",optarg); break;
+      case 'c': is_cpt = true; break;
       case 1: img_file = optarg; return 0;
       default:
         printf("Usage: %s [OPTION...] IMAGE [args]\n\n", argv[0]);
@@ -96,6 +124,7 @@ static int parse_args(int argc, char *argv[]) {
         printf("\t-d,--diff=REF_SO        run DiffTest with reference REF_SO\n");
         printf("\t-p,--port=PORT          run DiffTest with port PORT\n");
         printf("\t-e,--elf=ELF            read symbols from ELF\n");
+        printf("\t-c,--cpt                load checkpoint\n");
         printf("\n");
         exit(0);
     }

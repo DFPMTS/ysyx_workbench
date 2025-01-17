@@ -72,7 +72,7 @@ int isa_mmu_translate(vaddr_t vaddr, int len, int type, paddr_t *paddr) {
 
   // use VPN[1] to address in to flpt to get slpt
   PTE = paddr_read(flpt | (VPN_1 << 2), 4);
-  // Log("flpt: 0x%x - 0x%x",flpt, flpt | (VPN_1 << 2));
+  // Log("flpt: 0x%x - 0x%x, 0x%x",flpt, flpt | (VPN_1 << 2), PTE);
   // Assert(BIT(flpte, PTE_V), "Invalid First Level PTE for vaddr: 0x%x\n", vaddr);
 
 #define TRANSLATE_EXCEPTION                                                    \
@@ -101,10 +101,8 @@ int isa_mmu_translate(vaddr_t vaddr, int len, int type, paddr_t *paddr) {
 
     // use VPN[0] to address in to slpt to get PTE
     PTE = paddr_read(slpt | (VPN_0 << 2), 4);
-    // printf("NEMU: vaddr: 0x%x pdir: 0x%x flpte_p: 0x%x flpte: 0x%x slpte_p:
-    // 0x%x "
-    //        "slpte: 0x%x\n",
-    //        vaddr, flpt, (flpt | (VPN_1 << 2)), flpte, (slpt | (VPN_0 << 2)),
+    // printf("NEMU: vaddr: 0x%x pdir: 0x%x flpte_p: 0x%x slpte_p:0x%x slpte: 0x%x\n",
+    //        vaddr, flpt, (flpt | (VPN_1 << 2)), (slpt | (VPN_0 << 2)),
     //        PTE);
   }
 
@@ -169,6 +167,8 @@ done:
     // Log("vaddr: %x paddr: %x\n", vaddr, translated_paddr);
     return 0;
   } else {
+    // Log("NEMU: vaddr: 0x%x paddr: 0x%x PTE: 0x%x\n", vaddr, translated_paddr, PTE);
+    // Log("V: %d, R: %d, W: %d, X: %d, A: %d, D: %d\n", V, R, W, X, A, D);
     // Log("vaddr: %x paddr: ERROR in translation\n", vaddr);
     return -1;
   }

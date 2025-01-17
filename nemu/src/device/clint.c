@@ -25,12 +25,12 @@ static uint32_t *msip_port_base = NULL;
 
 static void mtime_io_handler(uint32_t offset, int len, bool is_write) {
   assert(offset == 0 || offset == 4);  
-  if(!is_write){
+  // if(!is_write){
     // uint64_t us = get_time();    
     // if (offset == 0) mtime_port_base[0] = (uint32_t)us;
     // if (offset == 4) mtime_port_base[1] = us >> 32;
     // printf("read mtime offset=%d, %lu\n",offset, *(uint64_t*)mtime_port_base);
-  }
+  // }
 }
 
 static void mtimecmp_io_handler(uint32_t offset, int len, bool is_write) {
@@ -64,7 +64,7 @@ word_t read_timeh()  {
 
 void cycle_mtime()
 {
-  (*(uint64_t*)mtime_port_base)++;
+  (*(uint64_t*)mtime_port_base)+=10;
 }
 
 uint64_t read_mtimecmp() {
