@@ -42,7 +42,7 @@ void init_difftest(const char *diff_so_file) {
 
   ref_difftest_init(0);
 #ifdef NPC
-  ref_difftest_memcpy(RESET_VECTOR, mem, 0x08000000, DIFFTEST_TO_REF);
+  ref_difftest_memcpy(RESET_VECTOR, mem, MEM_SIZE, DIFFTEST_TO_REF);
 #else
   ref_difftest_memcpy(FLASH_BASE, flash, FLASH_SIZE, DIFFTEST_TO_REF);
 #endif
