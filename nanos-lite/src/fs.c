@@ -54,9 +54,9 @@ static Finfo file_table[] __attribute__((used)) = {
 };
 
 void init_fs() {
-  AM_GPU_CONFIG_T config;
-  ioe_read(AM_GPU_CONFIG, &config);
-  file_table[FD_FB].size = config.height * config.width;
+  // AM_GPU_CONFIG_T config;
+  // ioe_read(AM_GPU_CONFIG, &config);
+  // file_table[FD_FB].size = config.height * config.width;
 }
 
 int fs_open(const char *pathname)

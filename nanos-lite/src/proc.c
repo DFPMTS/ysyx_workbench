@@ -46,9 +46,9 @@ void init_proc() {
   // context_kload(&pcb[1], hello_fun, "World");
   // context_uload(&pcb[0], "/bin/pal", (char *[]){"/bin/pal", "--skip", NULL},
   //               (char *[]){NULL});
-  context_uload(&pcb[0], "/bin/hello", (char *[]){"/bin/pal", "--skip", NULL},
+  context_uload(&pcb[0], "/bin/hello", (char *[]){"/bin/hello", "--skip", NULL},
                 (char *[]){NULL});
-  context_uload(&pcb[1], "/bin/nterm", (char *[]){"/bin/nterm", NULL},
+  context_uload(&pcb[1], "/bin/hello", (char *[]){"/bin/hello", NULL},
                 (char *[]){NULL});
   // context_uload(&pcb[1], "/bin/pal", (char *[]){"/bin/pal", NULL},
   //               (char *[]){NULL});

@@ -3,6 +3,16 @@
 #include <klib.h>
 
 static Context* (*user_handler)(Event, Context*) = NULL;
+void __am_get_cur_as(Context *c);
+void __am_switch(Context *c);
+
+__attribute_maybe_unused__ static void print_context(Context *c)
+{
+  printf("am_irq Context:\n");
+  printf("sp:       0x%x\n",c->gpr[2]);
+  printf("sscratch: 0x%x\n",c->sscratch);
+  printf("\n");
+}
 
 Context* __am_irq_handle(Context *c) {
   if (user_handler) {
@@ -10,20 +20,20 @@ Context* __am_irq_handle(Context *c) {
     ev.event = EVENT_ERROR;
     switch (c->mcause) {
     case 11: // ecall from m
-      switch (c->GPR1) {
-      case -1:
+      if (c->GPR1 == -1) {
         // yield
         ev.event = EVENT_YIELD;
         c->mepc += 4;
         break;
-      }
-      break;
+      } else if (c->GPR1 >= 0 && c->GPR1 <= 19){
+        ev.event = EVENT_SYSCALL;
+        c->mepc += 4;        
+      }      
     }
 
     c = user_handler(ev, c);
     assert(c != NULL);
   }
-
   return c;
 }
 
@@ -51,7 +61,7 @@ bool cte_init(Context*(*handler)(Event, Context*)) {
 #define NR_REGS 32
 #endif
 
-Context *kcontext(Area kstack, void (*entry)(void *), void *arg) {
+Context *kcontext(Area kstack, void (*entry)(void *), void *arg) {  
   Context **cp = kstack.start;
   Context *c = kstack.end - sizeof(Context);
 
@@ -59,6 +69,10 @@ Context *kcontext(Area kstack, void (*entry)(void *), void *arg) {
   c->mstatus = 0x1800;
   c->gpr[2] = (uintptr_t)kstack.end;
   c->gpr[10] = (uintptr_t)arg;
+  c->sscratch = 0;
+
+  // kernel space
+  c->pdir = NULL;
 
   *cp = c;
   return c;

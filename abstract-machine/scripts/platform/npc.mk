@@ -5,7 +5,7 @@ AM_SRCS := riscv/npc/start.S \
            riscv/npc/input.c \
            riscv/npc/cte.c \
            riscv/npc/trap.S \
-           platform/dummy/vme.c \
+           riscv/npc/vme.c \
            platform/dummy/mpe.c
 
 CFLAGS    += -fdata-sections -ffunction-sections
