@@ -1,7 +1,6 @@
 import chisel3._
 import chisel3.util._
 import utils._
-import os.stat
 
 trait HasLSUOps {
   def U    = 0.U(1.W)
@@ -201,4 +200,280 @@ class AMOALU extends CoreModule {
   )
 
   io.OUT_res := res
+}
+
+class DTagReq extends CoreBundle {
+  val addr = UInt(XLEN.W)
+  val write = Bool()
+  val data = new DTag
+}
+
+class DTagResp extends CoreBundle {
+  val tags = Vec(DCACHE_WAYS, new DTag)
+}
+
+class DTag extends CoreBundle {
+  val valid = Bool()
+  val tag = UInt(DCACHE_TAG.W)
+}
+
+class DDataReq extends CoreBundle {
+  val addr = UInt(XLEN.W)
+  val write = Bool()
+  val wmask = UInt(CACHE_LINE.W)
+  val data = UInt((CACHE_LINE * 8).W)
+}
+
+class DDataResp extends CoreBundle {
+  val data = Vec(DCACHE_WAYS, UInt((CACHE_LINE * 8).W))
+}
+
+class NewLSUIO extends CoreBundle {
+  val IN_AGUUop = Flipped(Decoupled(new AGUUop))
+  // * DCache Interface
+  val OUT_tagReq = Decoupled(new DTagReq)
+  val IN_tagResp = Flipped(new DTagResp)
+  val OUT_dataReq = Decoupled(new DDataReq)
+  val IN_dataResp = Flipped(new DDataResp)
+  // * Cache Controller Interface
+  val OUT_cacheCtrlUop = Decoupled(new CacheCtrlUop)
+  val IN_mshrs = Flipped(Vec(1, new MSHR))
+  val IN_memLoadFoward = Flipped(Valid(new MemLoadFoward))
+
+  val OUT_writebackUop = Valid(new WritebackUop)
+}
+
+class NewLSU extends CoreModule with HasLSUOps {
+  val io = IO(new NewLSUIO)
+
+  // * Submodules
+  val loadResultBuffer = Module(new LoadResultBuffer)
+
+  io.OUT_cacheCtrlUop.valid := false.B
+  io.OUT_cacheCtrlUop.bits := 0.U.asTypeOf(new CacheCtrlUop)
+  io.OUT_dataReq.valid := false.B
+  io.OUT_dataReq.bits := 0.U.asTypeOf(new DDataReq)
+  io.OUT_tagReq.valid := false.B
+  io.OUT_tagReq.bits := 0.U.asTypeOf(new DTagReq)
+
+  // * write tag
+  val writeTag = WireInit(false.B)
+
+  // * Load Pipeline
+  val loadStage = Reg(Vec(2, new AGUUop))
+  val loadStageValid = RegInit(VecInit(Seq.fill(2)(false.B)))
+
+  // * Store Pipeline
+  val storeStage = Reg(Vec(2, new AGUUop))
+  val storeStageValid = RegInit(VecInit(Seq.fill(2)(false.B)))
+
+  val cacheCtrlUop = Reg(new CacheCtrlUop)
+  val cacheCtrlUopValid = RegInit(false.B)  
+  io.OUT_cacheCtrlUop.valid := cacheCtrlUopValid
+  io.OUT_cacheCtrlUop.bits := cacheCtrlUop
+  when(io.OUT_cacheCtrlUop.fire) {  
+    cacheCtrlUopValid := false.B
+  }
+
+  io.IN_AGUUop.ready := !writeTag && !cacheCtrlUopValid && loadResultBuffer.io.IN_loadResult.ready && io.OUT_dataReq.ready && io.OUT_tagReq.ready
+
+  val tagResp = io.IN_tagResp.tags(0)
+
+  // ** Load/Store Stage 0
+  val loadUop = io.IN_AGUUop.fire && LSUOp.isLoad(io.IN_AGUUop.bits.opcode)
+  loadStage(0) := io.IN_AGUUop.bits
+  loadStageValid(0) := loadUop
+
+  val storeUop = io.IN_AGUUop.fire && LSUOp.isStore(io.IN_AGUUop.bits.opcode) 
+  storeStage(0) := io.IN_AGUUop.bits
+  storeStageValid(0) := storeUop
+
+  when(loadUop) {
+    // * Tag Request
+    io.OUT_tagReq.valid := true.B
+    io.OUT_tagReq.bits.addr := io.IN_AGUUop.bits.addr
+    // * Data Request
+    io.OUT_dataReq.valid := true.B
+    io.OUT_dataReq.bits.addr := io.IN_AGUUop.bits.addr
+  }.elsewhen(storeUop) {
+    // * Tag Request
+    io.OUT_tagReq.valid := true.B
+    io.OUT_tagReq.bits.addr := io.IN_AGUUop.bits.addr
+  }
+
+  // ** Load/Store Stage 1
+  
+  // * Load Result
+  val loadResult = WireInit(0.U.asTypeOf(new LoadResult))
+  val loadResultValid = WireInit(false.B)
+  loadResultBuffer.io.IN_loadResult.valid := loadResultValid
+  loadResultBuffer.io.IN_loadResult.bits := loadResult
+  loadResultBuffer.io.IN_memLoadFoward := io.IN_memLoadFoward
+  
+  // * Load cache hit or miss 
+  val loadTagHit = tagResp.valid && tagResp.tag === loadStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+  val loadMSHRConflict = io.IN_mshrs(0).valid && 
+    io.IN_mshrs(0).memReadAddr(XLEN - 1, log2Up(CACHE_LINE * 8)) === loadStage(0).addr(XLEN - 1, log2Up(CACHE_LINE * 8))
+  val loadCacheCtrlConflict = cacheCtrlUopValid && 
+    Cat(cacheCtrlUop.rtag, cacheCtrlUop.index) === loadStage(0).addr(XLEN - 1, log2Up(CACHE_LINE * 8))
+  val loadHit = loadTagHit && !loadMSHRConflict && !loadCacheCtrlConflict
+  // * store cache hit or miss
+  val storeTagHit = tagResp.valid && tagResp.tag === storeStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+  val storeMSHRConflict = io.IN_mshrs(0).valid && 
+    io.IN_mshrs(0).memReadAddr(XLEN - 1, log2Up(CACHE_LINE * 8)) === storeStage(0).addr(XLEN - 1, log2Up(CACHE_LINE * 8))
+  val storeCacheCtrlConflict = cacheCtrlUopValid &&
+    Cat(cacheCtrlUop.rtag, cacheCtrlUop.index) === storeStage(0).addr(XLEN - 1, log2Up(CACHE_LINE * 8))
+  val storeHit = storeTagHit && !storeMSHRConflict && !storeCacheCtrlConflict
+
+  when(loadStageValid(0)) {
+    when(loadHit) {
+      // * Cache Hit
+    }.otherwise {
+      // * Cache Miss
+      // * Write tag
+      writeTag := true.B
+      io.OUT_tagReq.valid := true.B
+      io.OUT_tagReq.bits.addr := loadStage(0).addr
+      io.OUT_tagReq.bits.write := true.B
+      val dtag = Wire(new DTag)
+      dtag.valid := true.B
+      dtag.tag := loadStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+      io.OUT_tagReq.bits.data := dtag
+      // * Cache Controller
+      cacheCtrlUopValid := true.B
+      cacheCtrlUop.index := loadStage(0).addr(log2Up(CACHE_LINE) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE))
+      cacheCtrlUop.rtag := loadStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+      cacheCtrlUop.wtag := tagResp.tag
+      cacheCtrlUop.wmask := 0.U
+      cacheCtrlUop.wdata := 0.U
+      cacheCtrlUop.opcode := Mux(tagResp.valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
+    }
+    loadResultValid := true.B
+    loadResult.data := io.IN_dataResp.data(0)
+    loadResult.ready := loadHit
+    loadResult.addr := loadStage(0).addr
+    loadResult.opcode := loadStage(0).opcode
+    loadResult.prd := loadStage(0).prd
+    loadResult.robPtr := loadStage(0).robPtr
+  }.elsewhen(storeStageValid(0)) {
+    val memLen = storeStage(0).opcode(2, 1)
+    val addrOffset = storeStage(0).addr(log2Up(XLEN/8) - 1, 0)
+    val wmask = MuxLookup(memLen, 0.U(4.W))(
+      Seq(
+        0.U(2.W) -> "b0001".U,
+        1.U(2.W) -> "b0011".U,
+        2.U(2.W) -> "b1111".U
+      )
+    ) << addrOffset
+    when(storeHit) {
+      
+      // * Cache Hit - Write data
+      io.OUT_dataReq.valid := true.B
+      io.OUT_dataReq.bits.addr := storeStage(0).addr
+      io.OUT_dataReq.bits.write := true.B
+      io.OUT_dataReq.bits.wmask := wmask
+      io.OUT_dataReq.bits.data := storeStage(0).wdata << (storeStage(0).addr(log2Up(CACHE_LINE) - 1, 0) << 3)
+    }.otherwise {
+      // * Cache Miss
+      // * Write tag
+      writeTag := true.B
+      io.OUT_tagReq.valid := true.B
+      io.OUT_tagReq.bits.addr := storeStage(0).addr
+      io.OUT_tagReq.bits.write := true.B
+      val dtag = Wire(new DTag)
+      dtag.valid := true.B
+      dtag.tag := storeStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+      io.OUT_tagReq.bits.data := dtag
+      // * Cache Controller
+      cacheCtrlUopValid := true.B  
+      cacheCtrlUop.index := storeStage(0).addr(log2Up(CACHE_LINE) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE))
+      cacheCtrlUop.rtag := storeStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+      cacheCtrlUop.wtag := tagResp.tag
+      cacheCtrlUop.wdata := storeStage(0).wdata
+      cacheCtrlUop.wmask := wmask
+      cacheCtrlUop.opcode := Mux(tagResp.valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
+    }
+  }
+
+  // * Output 
+  io.OUT_writebackUop <> loadResultBuffer.io.OUT_writebackUop
+}
+
+class LoadResult extends CoreBundle{
+  val data = UInt(XLEN.W)
+  val ready = Bool()
+  // * addr
+  val addr = UInt(XLEN.W)
+  val opcode = UInt(OpcodeWidth.W)
+  val prd = UInt(PREG_IDX_W)
+  val robPtr = RingBufferPtr(ROB_SIZE)
+}
+
+class LoadResultBufferIO extends CoreBundle {
+  val IN_loadResult = Flipped(Decoupled(new LoadResult))
+  val IN_memLoadFoward = Flipped(Valid(new MemLoadFoward))
+  val OUT_writebackUop = Valid(new WritebackUop)
+}
+
+class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
+  val io = IO(new LoadResultBufferIO)
+  
+  // Load result entries
+  val valid = RegInit(VecInit(Seq.fill(N)(false.B)))
+  val entries = Reg(Vec(N, new LoadResult))
+  
+  // Find an empty slot for new load
+  val emptySlots = valid.map(!_) 
+  val hasEmptySlot = emptySlots.reduce(_ || _)
+  val allocPtr = PriorityEncoder(emptySlots)
+  
+  io.IN_loadResult.ready := hasEmptySlot
+
+  // Accept new load if there's space
+  when(io.IN_loadResult.fire) {
+    valid(allocPtr) := true.B
+    entries(allocPtr) := io.IN_loadResult.bits
+  }
+  
+  // Forward load data to all entries
+  for (i <- 0 until N) {
+    when(io.IN_memLoadFoward.valid && 
+          io.IN_memLoadFoward.bits.addr(XLEN - 1, log2Up(AXI_DATA_WIDTH - 1)) === entries(i).addr(XLEN - 1, log2Up(AXI_DATA_WIDTH - 1))) {
+      val addrOffset = entries(i).addr(log2Up(AXI_DATA_WIDTH/8) - 1, 0)
+      val rawData = io.IN_memLoadFoward.bits.data >> (addrOffset << 3)
+      val loadU = entries(i).opcode(0)
+      val memLen = entries(i).opcode(2,1)
+      entries(i).data := MuxCase(rawData, Seq(
+        (memLen === BYTE) -> Cat(Fill(24, ~loadU & rawData(7)), rawData(7,0)),
+        (memLen === HALF) -> Cat(Fill(16, ~loadU & rawData(15)), rawData(15,0))
+      ))
+      entries(i).ready := true.B
+    }
+  }
+
+  // Find ready entries to writeback
+  val readyEntries = valid.zip(entries).map { case (v, e) => v && e.ready }
+  val hasReady = readyEntries.reduce(_ || _)
+  val readyIndex = PriorityEncoder(readyEntries)
+  
+  // Generate writeback when entry is ready
+  io.OUT_writebackUop.valid := hasReady
+  when(hasReady) {
+    val selectedEntry = entries(readyIndex)
+    
+    io.OUT_writebackUop.bits.prd := selectedEntry.prd
+    io.OUT_writebackUop.bits.data := selectedEntry.data
+    io.OUT_writebackUop.bits.robPtr := selectedEntry.robPtr
+    io.OUT_writebackUop.bits.dest := Dest.ROB
+    io.OUT_writebackUop.bits.flag := 0.U
+    io.OUT_writebackUop.bits.target := 0.U
+    
+    // Clear entry after writeback
+    valid(readyIndex) := false.B
+  }.otherwise {
+    io.OUT_writebackUop.bits := 0.U.asTypeOf(new WritebackUop)
+  }
+
+  // Utility function to get number of valid entries 
+  def count(): UInt = PopCount(valid)
 }

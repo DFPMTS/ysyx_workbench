@@ -56,6 +56,24 @@ trait HasCoreParameters {
   // * Page Number Length
   def PAGE_NR_LEN = 20
 
+  // * Cache Line Size in Bytes
+  def CACHE_LINE = 4
+
+  // * DCache Ways
+  def DCACHE_WAYS = 4
+
+  // * DCache Sets
+  def DCACHE_SETS = 64
+
+  // * DCache Tag Width
+  def DCACHE_TAG = XLEN - log2Up(DCACHE_SETS) - log2Up(CACHE_LINE)
+
+  // * AXI Data Width
+  def AXI_DATA_WIDTH = 32
+
+  // * AXI Addr Width
+  def AXI_ADDR_WIDTH = 32
+
 
   def ZERO = 0.U
 }

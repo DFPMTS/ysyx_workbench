@@ -128,6 +128,9 @@ object LSUOp extends HasDecodeConfig {
   def SB  = "b1000".U(OpcodeWidth.W)
   def SH  = "b1010".U(OpcodeWidth.W)
   def SW  = "b1100".U(OpcodeWidth.W)
+
+  def isLoad(opcode: UInt) = opcode(3) === 0.U
+  def isStore(opcode: UInt) = opcode(3) === 1.U
 }
 
 object AMOOp extends HasDecodeConfig {
@@ -307,4 +310,36 @@ class CommitUop extends CoreBundle {
   val rd = UInt(5.W)
   val prd = UInt(PREG_IDX_W)
   val robPtr = RingBufferPtr(ROB_SIZE)
+}
+
+object CacheOpcode extends HasDecodeConfig {
+  val LOAD = 0.U(4.W)       // cache[index0][assoc_id0] <- mem[addr0]
+  val REPLACE = 1.U(4.W)    // mem[addr0] <- cache[index0][assoc_id0], cache[index1][assoc_id1] <- mem[addr1]
+  val INVALIDATE = 2.U(4.W) // mem[addr0] <- cache[index0][assoc_id0]
+
+  val UNCACHED_LB = 8.U(4.W)
+  val UNCACHED_LH = 9.U(4.W)
+  val UNCACHED_LW = 10.U(4.W)
+  val UNCACHED_SB = 11.U(4.W)
+  val UNCACHED_SH = 12.U(4.W)
+  val UNCACHED_SW = 13.U(4.W)
+
+  def isUnCached(opcode: UInt) = {
+    opcode === UNCACHED_LB || opcode === UNCACHED_LH || opcode === UNCACHED_LW || opcode === UNCACHED_SB || opcode === UNCACHED_SH || opcode === UNCACHED_SW
+  }
+  def isUnCachedLoad(opcode: UInt) = {
+    opcode === UNCACHED_LB || opcode === UNCACHED_LH || opcode === UNCACHED_LW
+  }
+  def isUnCachedStore(opcode: UInt) = {
+    opcode === UNCACHED_SB || opcode === UNCACHED_SH || opcode === UNCACHED_SW
+  }
+}
+
+class CacheCtrlUop extends CoreBundle {
+  val index = UInt(log2Up(DCACHE_SETS).W)
+  val rtag = UInt(DCACHE_TAG.W)
+  val wtag = UInt(DCACHE_TAG.W)
+  val wmask = UInt(4.W)
+  val wdata = UInt(32.W)
+  val opcode = UInt(4.W)
 }

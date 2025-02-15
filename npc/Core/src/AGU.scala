@@ -1,7 +1,6 @@
 import chisel3._
 import chisel3.util._
 import utils._
-import FuType.FLAG
 
 class MMUResp extends CoreBundle {
   val isSuper = Bool()
@@ -173,6 +172,14 @@ class AGU extends CoreModule {
     }
   }
 
+  val storeWbUopValid = RegNext(uopNextValid && LSUOp.isStore(uopNext.opcode))
+  val storeWbUop = Reg(new WritebackUop)
+  storeWbUop.data := 0.U
+  storeWbUop.dest := Dest.ROB
+  storeWbUop.robPtr := uopNext.robPtr
+  storeWbUop.flag := FlagOp.NONE
+  storeWbUop.prd  := ZERO
+
   wbUop.data := 0.U
   wbUopValid := false.B
   wbUop.dest := Dest.ROB
@@ -222,8 +229,8 @@ class AGU extends CoreModule {
   io.OUT_PTWReq.valid := ptwReqValid
   io.OUT_PTWReq.bits := ptwReq
 
-  io.OUT_writebackUop.valid := wbUopValid
-  io.OUT_writebackUop.bits := wbUop
+  io.OUT_writebackUop.valid := wbUopValid || storeWbUopValid
+  io.OUT_writebackUop.bits := Mux(wbUopValid, wbUop, storeWbUop)
 
   io.OUT_xtvalRec.valid := wbUopValid
   io.OUT_xtvalRec.bits := xtvalRec

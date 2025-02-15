@@ -10,6 +10,10 @@ class Core extends CoreModule {
     val interrupt = Input(Bool())
   })
 
+  // * Cache
+  val dcache = Module(new DCache)
+  val cacheController = Module(new CacheController)
+
   val ifu = Module(new IFU)
   val itlb = Module(new TLB(size = 2, id = 0))
   val idu = Module(new IDU)
@@ -42,7 +46,7 @@ class Core extends CoreModule {
   val div  = Module(new DIV)
   // * Port 2
   val agu  = Module(new AGU)
-  val lsu  = Module(new LSU)
+  val lsu  = Module(new NewLSU)
   val dtlb = Module(new TLB(size = 2, id = 1))
   val ptw  = Module(new PTW)
   val loadArb = Module(new LoadArbiter)
@@ -232,9 +236,22 @@ class Core extends CoreModule {
 
   writebackUop(2) := lsu.io.OUT_writebackUop
 
+  // ** Cache 
+  lsu.io.OUT_tagReq <> dcache.io.IN_tagReq
+  lsu.io.OUT_dataReq <> dcache.io.IN_dataReq
+  lsu.io.IN_tagResp <> dcache.io.OUT_tagResp
+  lsu.io.IN_dataResp <> dcache.io.OUT_dataResp
+  lsu.io.IN_mshrs <> cacheController.io.OUT_MSHR
+  lsu.io.OUT_cacheCtrlUop <> cacheController.io.IN_cacheCtrlUop
+  lsu.io.IN_memLoadFoward <> cacheController.io.OUT_memLoadFoward
+
+  dcache.io.IN_ctrlDataRead <> cacheController.io.OUT_DDataRead
+  dcache.io.IN_ctrlDataWrite <> cacheController.io.OUT_DDataWrite
+  dcache.io.OUT_ctrlDataResp <> cacheController.io.IN_DDataResp
+
   // * AXI4 master
   arbiter.io.IFUMaster <> ifu.io.master
-  arbiter.io.LSUMaster <> lsu.io.master
+  arbiter.io.LSUMaster <> cacheController.io.OUT_axi
 
   // AXI4 slave
   io.slave.awready := false.B

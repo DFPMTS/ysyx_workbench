@@ -23,13 +23,13 @@ VSRCS_FLAG = $(VSRC_DIR)/.vsrc_flag
 CSRCS = $(shell find $(abspath ./csrc) -name "*.c" -or -name "*.cc" -or -name "*.cpp")
 CINCS = $(shell find $(abspath ./include) -name "*.h" -or -name "*.hpp")
 test:
-	mill -i __.test
+	./mill -i __.test
 
 gen_verilog: $(VSRCS_FLAG)$(SIM_TARGET)$(MODE)
 
 $(VSRCS_FLAG)$(SIM_TARGET)$(MODE): $(CORE_SRCS)
 	make verilog
-	python ./verilator_public.py
+	python3 ./verilator_public.py
 	touch $@
 
 $(BIN): $(VSRCS_FLAG) $(CSRCS) $(CINCS)
@@ -43,25 +43,25 @@ verilog:
 	$(call git_commit, "generate verilog")	
 	-rm -rf $(VSRC_DIR)
 	mkdir -p $(VSRC_DIR)
-	mill -i __.test.runMain Elaborate_$(SIM_TARGET) $(SIM_TARGET) $(MODE)
+	./mill -i __.test.runMain Elaborate_$(SIM_TARGET) $(SIM_TARGET) $(MODE)
 
 help:
-	mill -i __.test.runMain Elaborate --help
+	./mill -i __.test.runMain Elaborate --help
 
 compile:
-	mill -i __.compile
+	./mill -i __.compile
 
 bsp:
-	mill -i mill.bsp.BSP/install
+	./mill -i ./mill.bsp.BSP/install
 
 idea:
-	mill -i mill.idea.GenIdea/idea
+	./mill -i ./mill.idea.GenIdea/idea
 
 reformat:
-	mill -i __.reformat
+	./mill -i __.reformat
 
 checkformat:
-	mill -i __.checkFormat
+	./mill -i __.checkFormat
 
 clean:
 	-rm -rf $(BUILD_DIR)
