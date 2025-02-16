@@ -258,6 +258,7 @@ class NewLSU extends CoreModule with HasLSUOps {
 
   // * write tag
   val writeTag = WireInit(false.B)
+  val storeWriteData = WireInit(false.B)
 
   // * Load Pipeline
   val loadStage = Reg(Vec(2, new AGUUop))
@@ -275,7 +276,7 @@ class NewLSU extends CoreModule with HasLSUOps {
     cacheCtrlUopValid := false.B
   }
 
-  io.IN_AGUUop.ready := !writeTag && !cacheCtrlUopValid && loadResultBuffer.io.IN_loadResult.ready && io.OUT_dataReq.ready && io.OUT_tagReq.ready
+  io.IN_AGUUop.ready := !writeTag && !cacheCtrlUopValid && loadResultBuffer.io.IN_loadResult.ready && io.OUT_dataReq.ready && io.OUT_tagReq.ready && !io.IN_mshrs(0).valid && !storeWriteData
 
   val tagResp = io.IN_tagResp.tags(0)
 
@@ -373,6 +374,7 @@ class NewLSU extends CoreModule with HasLSUOps {
       io.OUT_dataReq.bits.write := true.B
       io.OUT_dataReq.bits.wmask := wmask
       io.OUT_dataReq.bits.data := storeStage(0).wdata << (storeStage(0).addr(log2Up(CACHE_LINE) - 1, 0) << 3)
+      storeWriteData := true.B
     }.otherwise {
       // * Cache Miss
       // * Write tag
@@ -389,7 +391,7 @@ class NewLSU extends CoreModule with HasLSUOps {
       cacheCtrlUop.index := storeStage(0).addr(log2Up(CACHE_LINE) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE))
       cacheCtrlUop.rtag := storeStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
       cacheCtrlUop.wtag := tagResp.tag
-      cacheCtrlUop.wdata := storeStage(0).wdata
+      cacheCtrlUop.wdata := storeStage(0).wdata << (storeStage(0).addr(log2Up(CACHE_LINE) - 1, 0) << 3)
       cacheCtrlUop.wmask := wmask
       cacheCtrlUop.opcode := Mux(tagResp.valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
     }
@@ -439,14 +441,7 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
   for (i <- 0 until N) {
     when(io.IN_memLoadFoward.valid && 
           io.IN_memLoadFoward.bits.addr(XLEN - 1, log2Up(AXI_DATA_WIDTH - 1)) === entries(i).addr(XLEN - 1, log2Up(AXI_DATA_WIDTH - 1))) {
-      val addrOffset = entries(i).addr(log2Up(AXI_DATA_WIDTH/8) - 1, 0)
-      val rawData = io.IN_memLoadFoward.bits.data >> (addrOffset << 3)
-      val loadU = entries(i).opcode(0)
-      val memLen = entries(i).opcode(2,1)
-      entries(i).data := MuxCase(rawData, Seq(
-        (memLen === BYTE) -> Cat(Fill(24, ~loadU & rawData(7)), rawData(7,0)),
-        (memLen === HALF) -> Cat(Fill(16, ~loadU & rawData(15)), rawData(15,0))
-      ))
+      entries(i).data := io.IN_memLoadFoward.bits.data
       entries(i).ready := true.B
     }
   }
@@ -460,9 +455,17 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
   io.OUT_writebackUop.valid := hasReady
   when(hasReady) {
     val selectedEntry = entries(readyIndex)
-    
+    val addrOffset = selectedEntry.addr(log2Up(AXI_DATA_WIDTH/8) - 1, 0)
+    val rawData = selectedEntry.data >> (addrOffset << 3)
+    val loadU = selectedEntry.opcode(0)
+    val memLen = selectedEntry.opcode(2,1)
+    val shiftedData = MuxCase(rawData, Seq(
+      (memLen === BYTE) -> Cat(Fill(24, ~loadU & rawData(7)), rawData(7,0)),
+      (memLen === HALF) -> Cat(Fill(16, ~loadU & rawData(15)), rawData(15,0))
+    ))
+
     io.OUT_writebackUop.bits.prd := selectedEntry.prd
-    io.OUT_writebackUop.bits.data := selectedEntry.data
+    io.OUT_writebackUop.bits.data := shiftedData
     io.OUT_writebackUop.bits.robPtr := selectedEntry.robPtr
     io.OUT_writebackUop.bits.dest := Dest.ROB
     io.OUT_writebackUop.bits.flag := 0.U
