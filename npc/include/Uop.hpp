@@ -227,6 +227,11 @@ struct InstInfo {
   CData prs1;
   CData prs2;
 
+  CData ldqPtr_flag;
+  CData ldqPtr_index;
+  CData stqPtr_flag;
+  CData stqPtr_index;
+
   IData src1;
   IData src2;
   IData imm;
@@ -255,8 +260,10 @@ struct RenameUop : Uop {
   CData *src2Ready;
   CData *robPtr_flag;
   CData *robPtr_index;
-  IData *ldqIndex;
-  IData *stqIndex;
+  CData *ldqPtr_flag;
+  CData *ldqPtr_index;
+  CData *stqPtr_flag;
+  CData *stqPtr_index;
   IData *imm;
   IData *pc;
   FuType *fuType;
@@ -278,8 +285,10 @@ struct ReadRegUop : Uop {
   IData *src2;
   CData *robPtr_flag;
   CData *robPtr_index;
-  IData *ldqIndex;
-  IData *stqIndex;
+  CData *ldqPtr_flag;
+  CData *ldqPtr_index;
+  CData *stqPtr_flag;
+  CData *stqPtr_index;
   IData *imm;
   IData *pc;
   FuType *fuType;
@@ -379,8 +388,10 @@ struct CSRCtrl : Uop {
   X(i, src2Ready)                                                              \
   X(i, robPtr_flag)                                                            \
   X(i, robPtr_index)                                                           \
-  X(i, ldqIndex)                                                               \
-  X(i, stqIndex)                                                               \
+  X(i, ldqPtr_flag)                                                            \
+  X(i, ldqPtr_index)                                                           \
+  X(i, stqPtr_flag)                                                            \
+  X(i, stqPtr_index)                                                           \
   X(i, imm)                                                                    \
   X(i, pc)                                                                     \
   X(i, fuType)                                                                 \
@@ -415,8 +426,10 @@ struct CSRCtrl : Uop {
   X(i, src2)                                                                   \
   X(i, robPtr_flag)                                                            \
   X(i, robPtr_index)                                                           \
-  X(i, ldqIndex)                                                               \
-  X(i, stqIndex)                                                               \
+  X(i, ldqPtr_flag)                                                            \
+  X(i, ldqPtr_index)                                                           \
+  X(i, stqPtr_flag)                                                            \
+  X(i, stqPtr_index)                                                           \
   X(i, imm)                                                                    \
   X(i, pc)                                                                     \
   X(i, fuType)                                                                 \

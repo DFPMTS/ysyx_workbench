@@ -53,8 +53,8 @@ class AGUUop extends CoreBundle {
   val dest = UInt(1.W)
 
   val robPtr = RingBufferPtr(ROB_SIZE)
-  val ldqIndex = UInt(LDQ_IDX_W)
-  val stqIndex = UInt(STQ_IDX_W)
+  val ldqPtr = RingBufferPtr(LDQ_SIZE)
+  val stqPtr = RingBufferPtr(STQ_SIZE)
 
   val fuType = UInt(FuTypeWidth.W)
   val opcode = UInt(OpcodeWidth.W)
@@ -132,8 +132,8 @@ class AGU extends CoreModule {
     uopNext.dest := Dest.ROB
 
     uopNext.robPtr := inUop.robPtr
-    uopNext.ldqIndex := inUop.ldqIndex
-    uopNext.stqIndex := inUop.stqIndex
+    uopNext.ldqPtr := inUop.ldqPtr
+    uopNext.stqPtr := inUop.stqPtr
 
     uopNext.fuType := inUop.fuType
     uopNext.opcode := inUop.opcode

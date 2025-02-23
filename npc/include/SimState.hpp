@@ -304,9 +304,31 @@ public:
         inst.prd = *uop.prd;
         inst.prs1 = *uop.prs1;
         inst.prs2 = *uop.prs2;
+        inst.ldqPtr_index = *uop.ldqPtr_index;
+        inst.ldqPtr_flag = *uop.ldqPtr_flag;
+        inst.stqPtr_index = *uop.stqPtr_index;
+        inst.stqPtr_flag = *uop.stqPtr_flag;
         inst.valid = true;
       }
     }
+  }
+
+  void printInst(InstInfo *inst, int id) {
+    char buf[512];
+    itrace_generate(buf, inst->pc, inst->inst);
+    printf("[%3d] %s\n", id, buf);
+    printf("      rd  = %2d  rs1  = %2d  rs2  = %2d\n", inst->rd, inst->rs1,
+           inst->rs2);
+    printf("      prd = %2d  prs1 = %2d  prs2 = %2d\n", inst->prd, inst->prs1,
+           inst->prs2);
+    printf("      ldqIndex = %d  stqIndex = %d\n", inst->ldqPtr_index,
+           inst->stqPtr_index);
+    printf("      src1   = %d/%u/0x%x\n", inst->src1, inst->src1, inst->src1);
+    printf("      src2   = %d/%u/0x%x\n", inst->src2, inst->src2, inst->src2);
+    printf("      result = %d/%u/0x%x\n", inst->result, inst->result,
+           inst->result);
+    printf("      flag = %s\n", getFlagOpName(inst->flag));
+    printf("      target = %x\n", inst->target);
   }
 
   void printInsts() {
@@ -314,19 +336,7 @@ public:
     char buf[512];
     for (int i = 0; i < 128; ++i) {
       if (insts[i].valid) {
-        auto &inst = insts[i];
-        itrace_generate(buf, inst.pc, inst.inst);
-        printf("[%3d] %s\n", i, buf);
-        printf("      rd  = %2d  rs1  = %2d  rs2  = %2d\n", inst.rd, inst.rs1,
-               inst.rs2);
-        printf("      prd = %2d  prs1 = %2d  prs2 = %2d\n", inst.prd, inst.prs1,
-               inst.prs2);
-        printf("      src1   = %d/%u/0x%x\n", inst.src1, inst.src1, inst.src1);
-        printf("      src2   = %d/%u/0x%x\n", inst.src2, inst.src2, inst.src2);
-        printf("      result = %d/%u/0x%x\n", inst.result, inst.result,
-               inst.result);
-        printf("      flag = %s\n", getFlagOpName(inst.flag));
-        printf("      target = %x\n", inst.target);
+        printInst(&commited[i], i);
       }
     }
   }
@@ -340,19 +350,7 @@ public:
         index -= 32;
       }
       if (commited[index].valid) {
-        auto &inst = commited[index];
-        itrace_generate(buf, inst.pc, inst.inst);
-        printf("[%3d] %s\n", i, buf);
-        printf("      rd  = %2d  rs1  = %2d  rs2  = %2d\n", inst.rd, inst.rs1,
-               inst.rs2);
-        printf("      prd = %2d  prs1 = %2d  prs2 = %2d\n", inst.prd, inst.prs1,
-               inst.prs2);
-        printf("      src1   = %d/%u/0x%x\n", inst.src1, inst.src1, inst.src1);
-        printf("      src2   = %d/%u/0x%x\n", inst.src2, inst.src2, inst.src2);
-        printf("      result = %d/%u/0x%x\n", inst.result, inst.result,
-               inst.result);
-        printf("      flag = %s\n", getFlagOpName(inst.flag));
-        printf("      target = %x\n", inst.target);
+        printInst(&commited[index], i);
       }
     }
   }

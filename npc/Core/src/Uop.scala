@@ -245,8 +245,8 @@ class RenameUop extends CoreBundle {
   val src2Ready = Bool()
 
   val robPtr = RingBufferPtr(ROB_SIZE)
-  val ldqIndex = UInt(LDQ_IDX_W)
-  val stqIndex = UInt(STQ_IDX_W)
+  val ldqPtr = RingBufferPtr(LDQ_SIZE)
+  val stqPtr = RingBufferPtr(STQ_SIZE)
 
   val imm =  UInt(32.W)  
   val pc = UInt(XLEN.W)
@@ -274,8 +274,8 @@ class ReadRegUop extends CoreBundle {
   val src2 = UInt(XLEN.W)
 
   val robPtr = RingBufferPtr(ROB_SIZE)
-  val ldqIndex = UInt(LDQ_IDX_W)
-  val stqIndex = UInt(STQ_IDX_W)
+  val ldqPtr = RingBufferPtr(LDQ_SIZE)
+  val stqPtr = RingBufferPtr(STQ_SIZE)
 
   val imm = UInt(32.W)
   val pc = UInt(XLEN.W)

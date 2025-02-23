@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
   Log("Simulation begin");
   sim_speed.initTimer();
   int T = 400;
-  begin_wave = true;
+  // begin_wave = true;
   signal(SIGINT, [](int) {
     puts("Vtop: SIGINT received");
     running.store(false);

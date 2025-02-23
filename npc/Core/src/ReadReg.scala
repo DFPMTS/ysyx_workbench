@@ -38,8 +38,8 @@ class ReadReg extends CoreModule {
       uopNext(i).src2 := Mux(issueUop.src2Type === SrcType.IMM, issueUop.imm, io.IN_readRegVal(i)(1))
 
       uopNext(i).robPtr := issueUop.robPtr
-      uopNext(i).ldqIndex := issueUop.ldqIndex
-      uopNext(i).stqIndex := issueUop.stqIndex
+      uopNext(i).ldqPtr := issueUop.ldqPtr
+      uopNext(i).stqPtr := issueUop.stqPtr
 
       uopNext(i).pc := issueUop.pc
       uopNext(i).imm := issueUop.imm

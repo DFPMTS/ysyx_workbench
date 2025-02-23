@@ -8,6 +8,8 @@ class ROBIO extends CoreBundle {
   val IN_writebackUop = Flipped(Vec(MACHINE_WIDTH, Valid(new WritebackUop)))
   val OUT_commitUop = Vec(COMMIT_WIDTH, Valid(new CommitUop))  
   val OUT_robTailPtr = Output(RingBufferPtr(ROB_SIZE))
+  val OUT_ldqTailPtr = Output(RingBufferPtr(LDQ_SIZE))
+  val OUT_stqTailPtr = Output(RingBufferPtr(STQ_SIZE))
   val IN_renameRobHeadPtr = Input(RingBufferPtr(ROB_SIZE))
   val OUT_flagUop = Valid(new FlagUop)
 
@@ -22,6 +24,9 @@ class ROBEntry extends CoreBundle {
   val pc   = UInt(XLEN.W)
   // * temporary
   val target = UInt(XLEN.W)
+
+  val isLoad = Bool()
+  val isStore = Bool()
 }
 
 class ROB extends CoreModule {
@@ -30,9 +35,13 @@ class ROB extends CoreModule {
   val rob = Reg(Vec(ROB_SIZE, new ROBEntry))
   val robStall = RegInit(false.B)
 
-  // ** head/tail
+  // ** ROB head/tail
   val robHeadPtr = RegInit(RingBufferPtr(size = ROB_SIZE, flag = 0.U, index = 0.U))  
   val robTailPtr = RegInit(RingBufferPtr(size = ROB_SIZE, flag = 1.U, index = 0.U))
+
+  // ** Ldq/Stq tail
+  val ldqTailPtr = RegInit(RingBufferPtr(size = LDQ_SIZE, flag = 1.U, index = 0.U))
+  val stqTailPtr = RegInit(RingBufferPtr(size = STQ_SIZE, flag = 1.U, index = 0.U))
 
   // ** Control
   val enqStall = false.B // * ROB stall is handled in Rename stage
@@ -50,6 +59,8 @@ class ROB extends CoreModule {
     enqEntry.pc  := renameUop.pc
     enqEntry.executed := renameUop.fuType === FuType.FLAG
     enqEntry.target := 0.U
+    enqEntry.isLoad := renameUop.fuType === FuType.LSU && LSUOp.isLoad(renameUop.opcode)
+    enqEntry.isStore := renameUop.fuType === FuType.LSU && LSUOp.isStore(renameUop.opcode)
     
     when (io.IN_renameUop(i).fire) {
       rob(io.IN_renameUop(i).bits.robPtr.index) := enqEntry
@@ -104,14 +115,21 @@ class ROB extends CoreModule {
     flagUopValid := false.B
   }
 
+  val loadCommited = (0 until COMMIT_WIDTH).map(i => deqValid(i) && deqEntry(i).isLoad)
+  val storeCommited = (0 until COMMIT_WIDTH).map(i => deqValid(i) && deqEntry(i).isStore)
+
   when(io.IN_flush) {
     robHeadPtr := RingBufferPtr(size = ROB_SIZE, flag = 0.U, index = 0.U)
     robTailPtr := RingBufferPtr(size = ROB_SIZE, flag = 1.U, index = 0.U)
+    ldqTailPtr := RingBufferPtr(size = LDQ_SIZE, flag = 1.U, index = 0.U)
+    stqTailPtr := RingBufferPtr(size = STQ_SIZE, flag = 1.U, index = 0.U)
   }.elsewhen(!robStall) {
     when(!enqStall){
       robHeadPtr := io.IN_renameRobHeadPtr
     }
     robTailPtr := robTailPtr + PopCount(deqValid)
+    ldqTailPtr := ldqTailPtr + PopCount(loadCommited)
+    stqTailPtr := stqTailPtr + PopCount(storeCommited)
   }
 
   io.OUT_flagUop.valid := flagUopValid
