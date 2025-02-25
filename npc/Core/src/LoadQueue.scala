@@ -18,16 +18,17 @@ class LoadUop extends CoreBundle {
   val opcode = UInt(OpcodeWidth.W)
 }
 
-class LdNegAck extends CoreBundle {
-  val ldqPtr = RingBufferPtr(LDQ_IDX_W.get)
+class LoadNegAck extends CoreBundle {
+  val ldqPtr = RingBufferPtr(LDQ_SIZE)
+  val dest = UInt(1.W) // 0: LoadQueue 1: PTW
 }
 
 class LoadQueueIO extends CoreBundle {
   val IN_AGUUop = Flipped(Decoupled(new AGUUop))
-  val IN_negAck = Input(Valid(new LdNegAck))
+  val IN_negAck = Input(Valid(new LoadNegAck))
   val IN_robTailPtr = Input(RingBufferPtr(ROB_SIZE))
   val IN_commitLdqPtr = Input(RingBufferPtr(LDQ_IDX_W.get))
-  val OUT_ldUop = Valid(new AGUUop)
+  val OUT_ldUop = Decoupled(new AGUUop)
 }
 
 class LoadQueue extends CoreModule {
@@ -40,7 +41,7 @@ class LoadQueue extends CoreModule {
   val hasLdqValid = ldqValid.reduce(_ || _)
   val hasLdqNotIssued = ldqIssued.map(~_).reduce(_ || _)
 
-  val uop = Reg(new LoadUop)
+  val uop = Reg(new AGUUop)
   val uopValid = RegInit(false.B)
 
   // * enqueue
@@ -51,7 +52,7 @@ class LoadQueue extends CoreModule {
   }
 
   // * choose
-  val issueReady = VecInit(ldq.map(_.robPtr === io.IN_robTailPtr)).asUInt & ldqValid.asUInt & ~(ldqIssued.asUInt)
+  val issueReady = VecInit(ldq.map(_.robPtr.index === io.IN_robTailPtr.index)).asUInt & ldqValid.asUInt & ~(ldqIssued.asUInt)
   val hasIssueReady = issueReady.orR
   val ldqIssueIndex = PriorityEncoder(issueReady)
 
@@ -75,15 +76,15 @@ class LoadQueue extends CoreModule {
   }
 
   // * issue logic
-  when(io.IN_negAck.valid) {
-    ldqIssued(io.IN_negAck.bits.ldqPtr.index) := false.B
+  uopValid := false.B
+  when(io.OUT_ldUop.ready || !uopValid) {
+    uop := ldq(ldqIssueIndex)
+    uopValid := hasIssueReady
+    ldqIssued(ldqIssueIndex) := true.B
   }
 
-  uopValid := false.B
-  when(hasIssueReady) {
-    uop := ldq(ldqIssueIndex)
-    uopValid := true.B
-    ldqIssued(ldqIssueIndex) := true.B
+  when(io.IN_negAck.valid && io.IN_negAck.bits.dest =/= Dest.PTW) {
+    ldqIssued(io.IN_negAck.bits.ldqPtr.index) := false.B
   }
 
   io.OUT_ldUop.valid := uopValid

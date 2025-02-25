@@ -229,7 +229,10 @@ class DDataResp extends CoreBundle {
 }
 
 class NewLSUIO extends CoreBundle {
-  val IN_AGUUop = Flipped(Decoupled(new AGUUop))
+  val IN_loadUop = Flipped(Valid(new AGUUop))
+  val OUT_loadNegAck = Valid(new LoadNegAck)
+  val IN_storeUop = Flipped(Valid(new AGUUop))
+  val OUT_storeNegAck = Valid(new StoreNegAck)
   // * DCache Interface
   val OUT_tagReq = Decoupled(new DTagReq)
   val IN_tagResp = Flipped(new DTagResp)
@@ -276,30 +279,40 @@ class NewLSU extends CoreModule with HasLSUOps {
     cacheCtrlUopValid := false.B
   }
 
-  io.IN_AGUUop.ready := !writeTag && !cacheCtrlUopValid && loadResultBuffer.io.IN_loadResult.ready && io.OUT_dataReq.ready && io.OUT_tagReq.ready && !io.IN_mshrs(0).valid && !storeWriteData
+  val idle = !writeTag && !cacheCtrlUopValid && loadResultBuffer.io.IN_loadResult.ready && io.OUT_dataReq.ready && io.OUT_tagReq.ready && !io.IN_mshrs(0).valid && !storeWriteData
+
+  // ** For now, we only support one load/store at a time
+  val serveLoad = idle
+  val serveStore = idle && !io.IN_loadUop.valid
+  // ** and we generate negack as some kind of "not ready" signal
+  io.OUT_loadNegAck.valid := io.IN_loadUop.valid && !serveLoad
+  io.OUT_loadNegAck.bits.ldqPtr := io.IN_loadUop.bits.ldqPtr
+  io.OUT_loadNegAck.bits.dest := io.IN_loadUop.bits.dest
+  io.OUT_storeNegAck.valid := io.IN_storeUop.valid && !serveStore
+  io.OUT_storeNegAck.bits.stqPtr := io.IN_storeUop.bits.stqPtr
 
   val tagResp = io.IN_tagResp.tags(0)
 
   // ** Load/Store Stage 0
-  val loadUop = io.IN_AGUUop.fire && LSUOp.isLoad(io.IN_AGUUop.bits.opcode)
-  loadStage(0) := io.IN_AGUUop.bits
+  val loadUop = io.IN_loadUop.valid && serveLoad
+  loadStage(0) := io.IN_loadUop.bits
   loadStageValid(0) := loadUop
 
-  val storeUop = io.IN_AGUUop.fire && LSUOp.isStore(io.IN_AGUUop.bits.opcode) 
-  storeStage(0) := io.IN_AGUUop.bits
+  val storeUop = io.IN_storeUop.valid && serveStore
+  storeStage(0) := io.IN_storeUop.bits
   storeStageValid(0) := storeUop
 
   when(loadUop) {
     // * Tag Request
     io.OUT_tagReq.valid := true.B
-    io.OUT_tagReq.bits.addr := io.IN_AGUUop.bits.addr
+    io.OUT_tagReq.bits.addr := io.IN_loadUop.bits.addr
     // * Data Request
     io.OUT_dataReq.valid := true.B
-    io.OUT_dataReq.bits.addr := io.IN_AGUUop.bits.addr
+    io.OUT_dataReq.bits.addr := io.IN_loadUop.bits.addr
   }.elsewhen(storeUop) {
     // * Tag Request
     io.OUT_tagReq.valid := true.B
-    io.OUT_tagReq.bits.addr := io.IN_AGUUop.bits.addr
+    io.OUT_tagReq.bits.addr := io.IN_storeUop.bits.addr
   }
 
   // ** Load/Store Stage 1

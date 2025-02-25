@@ -14,7 +14,7 @@ class LoadArbiter extends CoreModule {
 
   when(io.IN_AGUUop.valid) {
     io.IN_PTWUop.ready := false.B
-    io.IN_AGUUop <> io.OUT_AGUUop    
+    io.IN_AGUUop <> io.OUT_AGUUop
   }.otherwise {
     io.IN_AGUUop.ready := false.B
     io.OUT_AGUUop.bits.prd := ZERO

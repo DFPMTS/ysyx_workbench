@@ -3,13 +3,14 @@ import chisel3.util._
 import utils._
 
 
-class StNegAck extends CoreBundle {
-  val stqPtr = RingBufferPtr(STQ_IDX_W.get)
+class StoreNegAck extends CoreBundle {
+  val stqPtr = RingBufferPtr(STQ_SIZE)
 }
 
 class StoreQueueIO extends CoreBundle {
   val IN_AGUUop       = Flipped(Decoupled(new AGUUop))
-  val IN_negAck       = Input(Valid(new StNegAck))
+  val IN_negAck       = Input(Valid(new StoreNegAck))
+  val IN_robTailPtr   = Input(RingBufferPtr(ROB_SIZE))
   val IN_commitStqPtr = Input(RingBufferPtr(STQ_IDX_W.get))
   val OUT_stUop       = Valid(new AGUUop)
 }
@@ -55,9 +56,6 @@ class StoreQueue extends CoreModule {
   }
 
   // Issue logic
-  when(io.IN_negAck.valid) {
-    stqIssued(io.IN_negAck.bits.stqPtr.index) := false.B
-  }
 
   val issueReady    = stqValid.asUInt & ~(stqIssued.asUInt)
   val hasIssueReady = issueReady.orR
@@ -68,6 +66,10 @@ class StoreQueue extends CoreModule {
     uop                      := stq(stqIssueIndex)
     uopValid                 := true.B
     stqIssued(stqIssueIndex) := true.B
+  }
+
+  when(io.IN_negAck.valid) {
+    stqIssued(io.IN_negAck.bits.stqPtr.index) := false.B
   }
 
   io.OUT_stUop.valid := uopValid

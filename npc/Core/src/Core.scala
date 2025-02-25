@@ -46,6 +46,8 @@ class Core extends CoreModule {
   val div  = Module(new DIV)
   // * Port 2
   val agu  = Module(new AGU)
+  val loadQueue = Module(new LoadQueue)
+  val storeQueue = Module(new StoreQueue)
   val lsu  = Module(new NewLSU)
   val dtlb = Module(new TLB(size = 2, id = 1))
   val ptw  = Module(new PTW)
@@ -218,6 +220,7 @@ class Core extends CoreModule {
   ptw.io.IN_VMCSR := csr.io.OUT_VMCSR
   ptw.io.IN_writebackUop <> writebackUop(2)
   ptw.io.IN_TLBFlush := TLBFlush
+  ptw.io.IN_loadNegAck <> lsu.io.OUT_loadNegAck
 
   agu.io.IN_VMCSR := csr.io.OUT_VMCSR
   agu.io.OUT_PTWReq <> ptw.io.IN_PTWReq(1)
@@ -229,10 +232,22 @@ class Core extends CoreModule {
   xtvalRecoder.io.IN_flush := flush
   xtvalRecoder.io.IN_tval := agu.io.OUT_xtvalRec
 
-  loadArb.io.IN_AGUUop <> agu.io.OUT_AGUUop
+  loadArb.io.IN_AGUUop <> loadQueue.io.OUT_ldUop
   loadArb.io.IN_PTWUop <> ptw.io.OUT_PTWUop
+  lsu.io.IN_loadUop.valid := loadArb.io.OUT_AGUUop.valid
+  lsu.io.IN_loadUop.bits := loadArb.io.OUT_AGUUop.bits
+  loadArb.io.OUT_AGUUop.ready := true.B
   
-  lsu.io.IN_AGUUop <> loadArb.io.OUT_AGUUop
+  loadQueue.io.IN_AGUUop <> agu.io.OUT_AGUUop
+  loadQueue.io.IN_negAck <> lsu.io.OUT_loadNegAck
+  loadQueue.io.IN_robTailPtr := rob.io.OUT_robTailPtr
+  loadQueue.io.IN_commitLdqPtr := rob.io.OUT_ldqTailPtr
+
+  storeQueue.io.IN_AGUUop <> agu.io.OUT_AGUUop
+  storeQueue.io.IN_negAck <> lsu.io.OUT_storeNegAck
+  storeQueue.io.IN_robTailPtr := rob.io.OUT_robTailPtr
+  storeQueue.io.IN_commitStqPtr := rob.io.OUT_stqTailPtr
+  storeQueue.io.OUT_stUop <> lsu.io.IN_storeUop
 
   writebackUop(2) := lsu.io.OUT_writebackUop
 

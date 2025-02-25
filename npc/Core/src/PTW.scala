@@ -13,6 +13,7 @@ class PTWIO extends CoreBundle {
   val IN_writebackUop = Flipped(Valid(new WritebackUop)) // * Writeback uop
   val IN_VMCSR = Flipped(new VMCSR) // * Virtual memory CSR
   val IN_TLBFlush = Flipped(Bool())
+  val IN_loadNegAck = Flipped(Valid(new LoadNegAck))
 
   val OUT_PTWUop = Decoupled(new PTWUop)
 }
@@ -70,6 +71,9 @@ class PTW extends CoreModule {
   }
   when(io.OUT_PTWUop.fire) {
     PTWUopValid := false.B
+  }
+  when(io.IN_loadNegAck.valid && io.IN_loadNegAck.bits.dest === Dest.PTW) {
+    PTWUopValid := true.B
   }
   io.OUT_PTWUop.bits.addr := Mux(state === sL1, Cat(io.IN_VMCSR.rootPPN, vpn1, 0.U(2.W)), Cat(pte.ppn1, pte.ppn0, vpn0, 0.U(2.W)))
   io.OUT_PTWUop.valid := PTWUopValid

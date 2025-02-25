@@ -336,7 +336,7 @@ public:
     char buf[512];
     for (int i = 0; i < 128; ++i) {
       if (insts[i].valid) {
-        printInst(&commited[i], i);
+        printInst(&insts[i], i);
       }
     }
   }

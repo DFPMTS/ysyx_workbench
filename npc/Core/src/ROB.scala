@@ -147,6 +147,8 @@ class ROB extends CoreModule {
   }
 
   io.OUT_robTailPtr := robTailPtr
+  io.OUT_ldqTailPtr := ldqTailPtr
+  io.OUT_stqTailPtr := stqTailPtr
   for (i <- 0 until COMMIT_WIDTH) {
     io.OUT_commitUop(i).valid := commitValid(i)
     io.OUT_commitUop(i).bits := commitUop(i)
