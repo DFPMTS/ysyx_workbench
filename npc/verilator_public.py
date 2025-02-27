@@ -50,6 +50,7 @@ def add_verilator_public_comment(verilog_code):
 if __name__ == "__main__":
     # Input and output file paths
     input_files = ["vsrc/Core.sv", "vsrc/CSR.sv"]
+    # input_files = ["vsrc/Multiplier.sv"]
 
     for input_file in input_files:
         with open(input_file, "r") as f:

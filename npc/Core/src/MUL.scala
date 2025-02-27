@@ -65,21 +65,24 @@ class DummyMUL extends HasBlackBoxInline{
     """.stripMargin)
 }
 
-class Multiplier extends CoreModule {
+class Multiplier(XLEN: Int) extends CoreModule {
   val io = IO(new Bundle {
     val opcode = Input(UInt(8.W))
-    val src1 = Input(UInt(32.W))
-    val src2 = Input(UInt(32.W))
-    val out = Output(UInt(32.W))
+    val src1 = Input(UInt(XLEN.W))
+    val src2 = Input(UInt(XLEN.W))
+    val out = Output(UInt(XLEN.W))
   })
 
-  val src1Signed = io.opcode === MULOp.MUL || io.opcode === MULOp.MULH || io.opcode === MULOp.MULHSU
-  val src2Signed = io.opcode === MULOp.MUL || io.opcode === MULOp.MULH 
+  val aSigned = io.opcode === MULOp.MUL || io.opcode === MULOp.MULH || io.opcode === MULOp.MULHSU
+  val bSigned = io.opcode === MULOp.MUL || io.opcode === MULOp.MULH 
+  val isH = io.opcode === MULOp.MULH || io.opcode === MULOp.MULHSU || io.opcode === MULOp.MULHU
 
   val a = io.src1 // * multiplicand
-  val b = Cat(Mux(src2Signed, Fill(2, io.src2(31)), 0.U(2.W)), io.src2, 0.U(1.W)) // * multiplier
+  val b = Cat(Mux(bSigned, Fill(2, io.src2(XLEN-1)), 0.U(2.W)), io.src2) // * multiplier
   
-  val partialProd = (0 until 18).map { i =>
+  // * vector of partial products, 
+  val partialProd = WireInit(VecInit(Seq.fill(XLEN/2+1)(VecInit(Seq.fill(2*XLEN+5)(false.B)))))
+  (0 until XLEN/2+1).map { i =>
     val boothEnc = Module(new BoothEncoder)
     if(i == 0) {
       boothEnc.io.mulBits := Cat(b(1, 0), 0.U(1.W))
@@ -88,10 +91,57 @@ class Multiplier extends CoreModule {
     }
     val boothCode = boothEnc.io.code
     val S = boothCode.sign
-    val E = random.XNOR(boothCode.sign, b(31))
-    val prod = WireInit(0.U(68.W))
+    val E = random.XNOR(boothCode.sign, Mux(boothCode.zero, false.B, a(XLEN-1) && aSigned))
+    dontTouch(S)
+    dontTouch(E)
+    val prod = WireInit(VecInit(Seq.fill(2*XLEN+5)(false.B)))
+    val shift = i * 2
+    // * generate the XLEN+1 bit shifted multiplicand
+    // * [32, 0]
+    val shiftedMultiplicand = (0 until XLEN+1).map{j => 
+        if(j == 0) {
+          Mux1H(Seq(boothCode.one -> a(0),
+                    boothCode.two -> 0.U(1.W),
+                    boothCode.zero -> 0.U(1.W)))
+        } else if (j == XLEN) {
+          Mux1H(Seq(boothCode.one -> (a(XLEN-1) & aSigned), // * sign extend
+                    boothCode.two -> a(XLEN-1),
+                    boothCode.zero -> 0.U(1.W)))
+        } else {
+          Mux1H(Seq(boothCode.one -> a(j),
+                    boothCode.two -> a(j - 1),
+                    boothCode.zero -> 0.U(1.W)))
+        }    
+      }
+    // * put the flipped (if needed) shifted multiplicand into the product
+    (0 until XLEN+1).map{j => 
+      prod(shift + j) := Mux(S, ~shiftedMultiplicand(j), shiftedMultiplicand(j))
+    }
 
+    if(i == 0) {
+      prod(shift + XLEN + 1) := ~E
+      prod(shift + XLEN + 2) := ~E
+      prod(shift + XLEN + 3) := E
+    } else {
+      prod(shift + XLEN + 1) := E
+      prod(shift + XLEN + 2) := 1.U
+    }
+
+    
+    if(i < XLEN/2) {
+      partialProd(i + 1)(i * 2) := S
+    }
+    for(j <- 0 until XLEN + 4) {
+      partialProd(i)(shift + j) := Mux((i == XLEN/2).B && bSigned, 0.U, prod(shift + j))
+    }
   }
+  val sum = WireInit(0.U((2*XLEN).W))
+  val partialProdU = partialProd.map(_.asUInt)
+  for (i <- 0 until XLEN/2+1) {    
+    dontTouch(partialProdU(i))
+  }
+  sum := partialProdU.reduce(_ +& _)
+  io.out := Mux(isH, sum(2*XLEN-1, XLEN), sum(XLEN-1, 0))
 }
 
 class BoothCode extends CoreBundle {

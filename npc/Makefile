@@ -114,6 +114,11 @@ testRename_tb:
 	xmake build testRename_tb
 	xmake run testRename_tb
 
+Multiplier_tb:
+	xmake build chisel
+	xmake build Multiplier_tb
+	xmake run Multiplier_tb
+
 sta:
 	make -C ../../yosys-sta sta DESIGN=multi SDC_FILE=$(abspath npc.sdc) RTL_FILES="$(shell find $(abspath ./vsrc) -regex ".*\.\(sv\|v\)")" CLK_FREQ_MHZ=5000
 
