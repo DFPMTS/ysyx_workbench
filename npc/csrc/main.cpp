@@ -20,26 +20,19 @@ static uint64_t totalCycles = 0;
 
 void printPerfCounters() {
   std::cout << "-----------------------------------" << std::endl;
-  std::cout << "ifuFinished"
-            << " " << getEventCount("ifuFinished") << std::endl;
-  std::cout << "icacheMiss"
-            << " " << getEventCount("icacheMiss") << std::endl;
-  std::cout << "ifuStalled"
-            << " " << getEventCount("ifuStalled") << std::endl;
+  std::cout << "ifuFinished" << " " << getEventCount("ifuFinished")
+            << std::endl;
+  std::cout << "icacheMiss" << " " << getEventCount("icacheMiss") << std::endl;
+  std::cout << "ifuStalled" << " " << getEventCount("ifuStalled") << std::endl;
 
-  std::cout << "iduBruInst"
-            << " " << getEventCount("iduBruInst") << std::endl;
-  std::cout << "iduAluInst"
-            << " " << getEventCount("iduAluInst") << std::endl;
-  std::cout << "iduMemInst"
-            << " " << getEventCount("iduMemInst") << std::endl;
-  std::cout << "iduCsrInst"
-            << " " << getEventCount("iduCsrInst") << std::endl;
+  std::cout << "iduBruInst" << " " << getEventCount("iduBruInst") << std::endl;
+  std::cout << "iduAluInst" << " " << getEventCount("iduAluInst") << std::endl;
+  std::cout << "iduMemInst" << " " << getEventCount("iduMemInst") << std::endl;
+  std::cout << "iduCsrInst" << " " << getEventCount("iduCsrInst") << std::endl;
 
-  std::cout << "memFinished"
-            << " " << getEventCount("memFinished") << std::endl;
-  std::cout << "memStalled"
-            << " " << getEventCount("memStalled") << std::endl;
+  std::cout << "memFinished" << " " << getEventCount("memFinished")
+            << std::endl;
+  std::cout << "memStalled" << " " << getEventCount("memStalled") << std::endl;
 
   std::cout << "Total cycles: " << totalCycles << std::endl;
 
@@ -74,7 +67,7 @@ int main(int argc, char *argv[]) {
   Log("Simulation begin");
   sim_speed.initTimer();
   int T = 400;
-  begin_wave = true;
+  // begin_wave = true;
   signal(SIGINT, [](int) {
     puts("Vtop: SIGINT received");
     running.store(false);

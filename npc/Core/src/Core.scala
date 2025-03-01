@@ -251,6 +251,10 @@ class Core extends CoreModule {
 
   writebackUop(2) := lsu.io.OUT_writebackUop
 
+  // ** Store Queue Bypass
+  lsu.io.IN_storeBypassResp <> storeQueue.io.OUT_storeBypassResp
+  storeQueue.io.IN_storeBypassReq <> lsu.io.OUT_storeBypassReq
+
   // ** Cache 
   lsu.io.OUT_tagReq <> dcache.io.IN_tagReq
   lsu.io.OUT_dataReq <> dcache.io.IN_dataReq

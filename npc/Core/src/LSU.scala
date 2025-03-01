@@ -228,11 +228,24 @@ class DDataResp extends CoreBundle {
   val data = Vec(DCACHE_WAYS, UInt((CACHE_LINE * 8).W))
 }
 
+class StoreBypassReq extends CoreBundle {
+  val addr = UInt(XLEN.W)
+  val stqPtr = RingBufferPtr(STQ_SIZE)
+}
+
+class StoreBypassResp extends CoreBundle {
+  val data = UInt(XLEN.W)
+  val mask = UInt(4.W)
+}
+
 class NewLSUIO extends CoreBundle {
   val IN_loadUop = Flipped(Valid(new AGUUop))
   val OUT_loadNegAck = Valid(new LoadNegAck)
   val IN_storeUop = Flipped(Valid(new AGUUop))
   val OUT_storeNegAck = Valid(new StoreNegAck)
+  // * Store Queue Bypass
+  val OUT_storeBypassReq = new StoreBypassReq
+  val IN_storeBypassResp = Flipped(new StoreBypassResp)
   // * DCache Interface
   val OUT_tagReq = Decoupled(new DTagReq)
   val IN_tagResp = Flipped(new DTagResp)
@@ -302,6 +315,10 @@ class NewLSU extends CoreModule with HasLSUOps {
   storeStage(0) := io.IN_storeUop.bits
   storeStageValid(0) := storeUop
 
+  // * Query Store Queue Bypass, resp available in next cycle (loadStage(0))
+  io.OUT_storeBypassReq.addr := io.IN_loadUop.bits.addr
+  io.OUT_storeBypassReq.stqPtr := io.IN_loadUop.bits.stqPtr
+
   when(loadUop) {
     // * Tag Request
     io.OUT_tagReq.valid := true.B
@@ -339,9 +356,37 @@ class NewLSU extends CoreModule with HasLSUOps {
     Cat(cacheCtrlUop.rtag, cacheCtrlUop.index) === storeStage(0).addr(XLEN - 1, log2Up(CACHE_LINE * 8))
   val storeHit = storeTagHit && !storeMSHRConflict && !storeCacheCtrlConflict
 
+  def getWmask(aguUop: AGUUop): UInt = {
+    val memLen = aguUop.opcode(2, 1)
+    val addrOffset = aguUop.addr(log2Up(XLEN/8) - 1, 0)
+    val wmask = MuxLookup(memLen, 0.U(4.W))(
+      Seq(
+        0.U(2.W) -> "b0001".U,
+        1.U(2.W) -> "b0011".U,
+        2.U(2.W) -> "b1111".U
+      )
+    ) << addrOffset
+    wmask
+  }
+
   when(loadStageValid(0)) {
-    when(loadHit) {
-      // * Cache Hit
+    val bypassData = io.IN_storeBypassResp.data
+    val bypassDataMask = io.IN_storeBypassResp.mask
+    val loadMask = getWmask(loadStage(0))
+    val hit = loadHit || (~bypassDataMask & loadMask) === 0.U
+    val finalData = {
+      val data = Wire(Vec(4, UInt(8.W)))
+      for(i <- 0 until 4) {
+        data(i) := Mux(
+          bypassDataMask(i),
+          bypassData((i + 1) * 8 - 1, i * 8),
+          io.IN_dataResp.data(0)((i + 1) * 8 - 1, i * 8)
+        )
+      }
+      data
+    }
+    when(hit) {
+      // * Cache Hit or Fully Bypassed
     }.otherwise {
       // * Cache Miss
       // * Write tag
@@ -363,8 +408,9 @@ class NewLSU extends CoreModule with HasLSUOps {
       cacheCtrlUop.opcode := Mux(tagResp.valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
     }
     loadResultValid := true.B
-    loadResult.data := io.IN_dataResp.data(0)
-    loadResult.ready := loadHit
+    loadResult.data := finalData.asUInt
+    loadResult.ready := hit
+    loadResult.bypassMask := bypassDataMask | ~loadMask
     loadResult.addr := loadStage(0).addr
     loadResult.opcode := loadStage(0).opcode
     loadResult.prd := loadStage(0).prd
@@ -417,6 +463,8 @@ class NewLSU extends CoreModule with HasLSUOps {
 class LoadResult extends CoreBundle{
   val data = UInt(XLEN.W)
   val ready = Bool()
+  // * already bypassed mask
+  val bypassMask = UInt(4.W)
   // * addr
   val addr = UInt(XLEN.W)
   val opcode = UInt(OpcodeWidth.W)
@@ -454,7 +502,14 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
   for (i <- 0 until N) {
     when(io.IN_memLoadFoward.valid && 
           io.IN_memLoadFoward.bits.addr(XLEN - 1, log2Up(AXI_DATA_WIDTH - 1)) === entries(i).addr(XLEN - 1, log2Up(AXI_DATA_WIDTH - 1))) {
-      entries(i).data := io.IN_memLoadFoward.bits.data
+      val data = Wire(Vec(4, UInt(8.W)))
+      data := entries(i).data.asTypeOf(data)
+      for (j <- 0 until 4) {
+        when(!entries(i).bypassMask) {
+          data(j) := io.IN_memLoadFoward.bits.data((j + 1) * 8 - 1, j * 8)
+        }
+      }
+      entries(i).data := data.asUInt
       entries(i).ready := true.B
     }
   }
