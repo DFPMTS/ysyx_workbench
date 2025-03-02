@@ -242,10 +242,12 @@ class NewLSUIO extends CoreBundle {
   val IN_loadUop = Flipped(Valid(new AGUUop))
   val OUT_loadNegAck = Valid(new LoadNegAck)
   val IN_storeUop = Flipped(Valid(new AGUUop))
-  val OUT_storeNegAck = Valid(new StoreNegAck)
+  val OUT_storeAck = Valid(new StoreAck)
   // * Store Queue Bypass
   val OUT_storeBypassReq = new StoreBypassReq
   val IN_storeBypassResp = Flipped(new StoreBypassResp)
+  // * Store Buffer Bypass
+  val IN_storeBufferBypassResp = Flipped(new StoreBypassResp)
   // * DCache Interface
   val OUT_tagReq = Decoupled(new DTagReq)
   val IN_tagResp = Flipped(new DTagResp)
@@ -301,8 +303,10 @@ class NewLSU extends CoreModule with HasLSUOps {
   io.OUT_loadNegAck.valid := io.IN_loadUop.valid && !serveLoad
   io.OUT_loadNegAck.bits.ldqPtr := io.IN_loadUop.bits.ldqPtr
   io.OUT_loadNegAck.bits.dest := io.IN_loadUop.bits.dest
-  io.OUT_storeNegAck.valid := io.IN_storeUop.valid && !serveStore
-  io.OUT_storeNegAck.bits.stqPtr := io.IN_storeUop.bits.stqPtr
+
+  io.OUT_storeAck.valid := io.IN_storeUop.valid
+  io.OUT_storeAck.bits.index := io.IN_storeUop.bits.stqPtr.index
+  io.OUT_storeAck.bits.resp :=  !serveStore
 
   val tagResp = io.IN_tagResp.tags(0)
 
@@ -370,8 +374,15 @@ class NewLSU extends CoreModule with HasLSUOps {
   }
 
   when(loadStageValid(0)) {
-    val bypassData = io.IN_storeBypassResp.data
-    val bypassDataMask = io.IN_storeBypassResp.mask
+    val bypassData =  Wire(Vec(4, UInt(8.W)))
+    val bypassDataMask = io.IN_storeBypassResp.mask | io.IN_storeBufferBypassResp.mask
+    for(i <- 0 until 4) {
+      bypassData(i) := Mux(
+        io.IN_storeBypassResp.mask(i),
+        io.IN_storeBypassResp.data((i + 1) * 8 - 1, i * 8),
+        io.IN_storeBufferBypassResp.data((i + 1) * 8 - 1, i * 8)
+      )
+    }
     val loadMask = getWmask(loadStage(0))
     val hit = loadHit || (~bypassDataMask & loadMask) === 0.U
     val finalData = {
@@ -379,7 +390,7 @@ class NewLSU extends CoreModule with HasLSUOps {
       for(i <- 0 until 4) {
         data(i) := Mux(
           bypassDataMask(i),
-          bypassData((i + 1) * 8 - 1, i * 8),
+          bypassData(i),
           io.IN_dataResp.data(0)((i + 1) * 8 - 1, i * 8)
         )
       }
@@ -505,7 +516,7 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
       val data = Wire(Vec(4, UInt(8.W)))
       data := entries(i).data.asTypeOf(data)
       for (j <- 0 until 4) {
-        when(!entries(i).bypassMask) {
+        when(!entries(i).bypassMask(j)) {
           data(j) := io.IN_memLoadFoward.bits.data((j + 1) * 8 - 1, j * 8)
         }
       }

@@ -27,7 +27,7 @@ class LoadQueueIO extends CoreBundle {
   val IN_AGUUop = Flipped(Decoupled(new AGUUop))
   val IN_negAck = Input(Valid(new LoadNegAck))
   val IN_robTailPtr = Input(RingBufferPtr(ROB_SIZE))
-  val IN_commitLdqPtr = Input(RingBufferPtr(LDQ_IDX_W.get))
+  val IN_commitLdqPtr = Input(RingBufferPtr(LDQ_SIZE))
   val OUT_ldUop = Decoupled(new AGUUop)
 }
 
@@ -45,14 +45,14 @@ class LoadQueue extends CoreModule {
   val uopValid = RegInit(false.B)
 
   // * enqueue
-  when(io.IN_AGUUop.fire) {
+  when(io.IN_AGUUop.fire && LSUOp.isLoad(io.IN_AGUUop.bits.opcode)) {
     ldq(io.IN_AGUUop.bits.ldqPtr.index) := io.IN_AGUUop.bits
     ldqValid(io.IN_AGUUop.bits.ldqPtr.index) := true.B
     ldqIssued(io.IN_AGUUop.bits.ldqPtr.index) := false.B
   }
 
   // * choose
-  val issueReady = VecInit(ldq.map(_.robPtr.index === io.IN_robTailPtr.index)).asUInt & ldqValid.asUInt & ~(ldqIssued.asUInt)
+  val issueReady = ldqValid.asUInt & ~(ldqIssued.asUInt)
   val hasIssueReady = issueReady.orR
   val ldqIssueIndex = PriorityEncoder(issueReady)
 
@@ -80,7 +80,9 @@ class LoadQueue extends CoreModule {
   when(io.OUT_ldUop.ready || !uopValid) {
     uop := ldq(ldqIssueIndex)
     uopValid := hasIssueReady
-    ldqIssued(ldqIssueIndex) := true.B
+    when(hasIssueReady) {
+      ldqIssued(ldqIssueIndex) := true.B
+    }
   }
 
   when(io.IN_negAck.valid && io.IN_negAck.bits.dest =/= Dest.PTW) {

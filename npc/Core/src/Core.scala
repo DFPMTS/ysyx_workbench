@@ -48,6 +48,7 @@ class Core extends CoreModule {
   val agu  = Module(new AGU)
   val loadQueue = Module(new LoadQueue)
   val storeQueue = Module(new StoreQueue)
+  val storeBuffer = Module(new StoreBuffer)
   val lsu  = Module(new NewLSU)
   val dtlb = Module(new TLB(size = 2, id = 1))
   val ptw  = Module(new PTW)
@@ -123,6 +124,9 @@ class Core extends CoreModule {
   rename.io.IN_flush := flush
   rename.io.IN_robTailPtr := rob.io.OUT_robTailPtr
 
+  rename.io.IN_ldqTailPtr := rob.io.OUT_ldqTailPtr
+  rename.io.IN_stqTailPtr := rob.io.OUT_stqTailPtr
+
   rename.io.OUT_renameUop <> renameUop
   rename.io.OUT_robValid <> renameRobValid
   rename.io.OUT_issueQueueValid <> renameIQValid
@@ -139,6 +143,7 @@ class Core extends CoreModule {
   rob.io.OUT_renameUopReady <> renameRobReady
   rob.io.OUT_flagUop <> flagUop
   rob.io.OUT_commitUop <> commitUop
+  rob.io.IN_stqBasePtr := storeQueue.io.OUT_stqBasePtr
 
   // * flag handler
   flagHandler.io.OUT_CSRCtrl <> CSRCtrl
@@ -244,16 +249,23 @@ class Core extends CoreModule {
   loadQueue.io.IN_commitLdqPtr := rob.io.OUT_ldqTailPtr
 
   storeQueue.io.IN_AGUUop <> agu.io.OUT_AGUUop
-  storeQueue.io.IN_negAck <> lsu.io.OUT_storeNegAck
   storeQueue.io.IN_robTailPtr := rob.io.OUT_robTailPtr
   storeQueue.io.IN_commitStqPtr := rob.io.OUT_stqTailPtr
-  storeQueue.io.OUT_stUop <> lsu.io.IN_storeUop
+  storeQueue.io.IN_flush := flush
+
+  storeBuffer.io.IN_storeUop <> storeQueue.io.OUT_stUop
+  storeBuffer.io.OUT_storeUop <> lsu.io.IN_storeUop
+  storeBuffer.io.IN_storeAck <> lsu.io.OUT_storeAck
 
   writebackUop(2) := lsu.io.OUT_writebackUop
 
   // ** Store Queue Bypass
   lsu.io.IN_storeBypassResp <> storeQueue.io.OUT_storeBypassResp
   storeQueue.io.IN_storeBypassReq <> lsu.io.OUT_storeBypassReq
+
+  // ** Store Buffer Bypass
+  lsu.io.IN_storeBufferBypassResp <> storeBuffer.io.OUT_storeBypassResp
+  storeBuffer.io.IN_storeBypassReq <> lsu.io.OUT_storeBypassReq
 
   // ** Cache 
   lsu.io.OUT_tagReq <> dcache.io.IN_tagReq

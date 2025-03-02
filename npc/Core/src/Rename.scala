@@ -10,6 +10,9 @@ class RenameIO extends CoreBundle {
   val OUT_robValid = Vec(ISSUE_WIDTH, Output(Bool()))
   val IN_robTailPtr = Input(RingBufferPtr(ROB_SIZE))
   val IN_robReady = Flipped(Bool())
+  // * ldq/stq tail
+  val IN_ldqTailPtr = Input(RingBufferPtr(LDQ_SIZE))
+  val IN_stqTailPtr = Input(RingBufferPtr(STQ_SIZE))
 
   val OUT_issueQueueValid = Vec(ISSUE_WIDTH, Output(Bool()))  
   val IN_issueQueueReady = Flipped(Vec(ISSUE_WIDTH, Bool()))
@@ -52,8 +55,10 @@ class Rename extends CoreModule {
 
   when (io.IN_flush) {
     robHeadPtr := RingBufferPtr(size = ROB_SIZE, flag = 0.U, index = 0.U)
-    ldqHeadPtr := RingBufferPtr(size = LDQ_SIZE, flag = 0.U, index = 0.U)
-    stqHeadPtr := RingBufferPtr(size = STQ_SIZE, flag = 0.U, index = 0.U)
+    ldqHeadPtr.flag := ~io.IN_ldqTailPtr.flag
+    ldqHeadPtr.index := io.IN_ldqTailPtr.index
+    stqHeadPtr.flag := ~io.IN_stqTailPtr.flag
+    stqHeadPtr.index := io.IN_stqTailPtr.index
   }.otherwise {
     val inFiredCnt = PopCount(io.IN_decodeUop.map(_.fire))
     robHeadPtr := robHeadPtr + inFiredCnt

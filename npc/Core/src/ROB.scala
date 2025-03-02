@@ -7,9 +7,10 @@ class ROBIO extends CoreBundle {
   val OUT_renameUopReady = Bool()
   val IN_writebackUop = Flipped(Vec(MACHINE_WIDTH, Valid(new WritebackUop)))
   val OUT_commitUop = Vec(COMMIT_WIDTH, Valid(new CommitUop))  
-  val OUT_robTailPtr = Output(RingBufferPtr(ROB_SIZE))
-  val OUT_ldqTailPtr = Output(RingBufferPtr(LDQ_SIZE))
-  val OUT_stqTailPtr = Output(RingBufferPtr(STQ_SIZE))
+  val OUT_robTailPtr = RingBufferPtr(ROB_SIZE)
+  val OUT_ldqTailPtr = RingBufferPtr(LDQ_SIZE)
+  val OUT_stqTailPtr = RingBufferPtr(STQ_SIZE)
+  val IN_stqBasePtr = Flipped(RingBufferPtr(STQ_SIZE))
   val IN_renameRobHeadPtr = Input(RingBufferPtr(ROB_SIZE))
   val OUT_flagUop = Valid(new FlagUop)
 
@@ -121,8 +122,6 @@ class ROB extends CoreModule {
   when(io.IN_flush) {
     robHeadPtr := RingBufferPtr(size = ROB_SIZE, flag = 0.U, index = 0.U)
     robTailPtr := RingBufferPtr(size = ROB_SIZE, flag = 1.U, index = 0.U)
-    ldqTailPtr := RingBufferPtr(size = LDQ_SIZE, flag = 1.U, index = 0.U)
-    stqTailPtr := RingBufferPtr(size = STQ_SIZE, flag = 1.U, index = 0.U)
   }.elsewhen(!robStall) {
     when(!enqStall){
       robHeadPtr := io.IN_renameRobHeadPtr
