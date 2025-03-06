@@ -28,7 +28,10 @@ class LoadQueueIO extends CoreBundle {
   val IN_negAck = Input(Valid(new LoadNegAck))
   val IN_robTailPtr = Input(RingBufferPtr(ROB_SIZE))
   val IN_commitLdqPtr = Input(RingBufferPtr(LDQ_SIZE))
+  val IN_commitStqPtr = Input(RingBufferPtr(STQ_SIZE))
   val OUT_ldUop = Decoupled(new AGUUop)
+
+  val IN_flush = Flipped(Bool())
 }
 
 class LoadQueue extends CoreModule {
@@ -37,6 +40,8 @@ class LoadQueue extends CoreModule {
   val ldq = Reg(Vec(LDQ_SIZE, new AGUUop))
   val ldqValid = RegInit(VecInit(Seq.fill(LDQ_SIZE)(false.B)))
   val ldqIssued = RegInit(VecInit(Seq.fill(LDQ_SIZE)(false.B)))
+  // * Is all store before this load finished?
+  // val ldqReady = RegInit(VecInit(Seq.fill(LDQ_SIZE)(false.B)))
 
   val hasLdqValid = ldqValid.reduce(_ || _)
   val hasLdqNotIssued = ldqIssued.map(~_).reduce(_ || _)
@@ -44,15 +49,24 @@ class LoadQueue extends CoreModule {
   val uop = Reg(new AGUUop)
   val uopValid = RegInit(false.B)
 
+  def storeCommited(stqPtr: RingBufferPtr, commitStqPtr: RingBufferPtr) = {
+    val flagDiff = stqPtr.flag ^ commitStqPtr.flag
+    val indexLeq = stqPtr.index <= commitStqPtr.index
+    val indexGeq = stqPtr.index >= commitStqPtr.index
+    ((flagDiff & indexGeq) | (~flagDiff & indexLeq)).asBool
+  }
+
   // * enqueue
   when(io.IN_AGUUop.fire && LSUOp.isLoad(io.IN_AGUUop.bits.opcode)) {
     ldq(io.IN_AGUUop.bits.ldqPtr.index) := io.IN_AGUUop.bits
     ldqValid(io.IN_AGUUop.bits.ldqPtr.index) := true.B
     ldqIssued(io.IN_AGUUop.bits.ldqPtr.index) := false.B
+    // ldqReady(io.IN_AGUUop.bits.ldqPtr.index) := storeCommited(io.IN_AGUUop.bits.stqPtr, io.IN_commitStqPtr)
   }
 
+  val ldqReady = VecInit(ldq.map(uop => storeCommited(uop.stqPtr, io.IN_commitStqPtr)))
   // * choose
-  val issueReady = ldqValid.asUInt & ~(ldqIssued.asUInt)
+  val issueReady = ldqValid.asUInt & ~(ldqIssued.asUInt) & ldqReady.asUInt
   val hasIssueReady = issueReady.orR
   val ldqIssueIndex = PriorityEncoder(issueReady)
 
@@ -87,6 +101,11 @@ class LoadQueue extends CoreModule {
 
   when(io.IN_negAck.valid && io.IN_negAck.bits.dest =/= Dest.PTW) {
     ldqIssued(io.IN_negAck.bits.ldqPtr.index) := false.B
+  }
+
+  when(io.IN_flush) {
+    ldqValid := VecInit(Seq.fill(LDQ_SIZE)(false.B))
+    uopValid := false.B
   }
 
   io.OUT_ldUop.valid := uopValid

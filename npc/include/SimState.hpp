@@ -355,6 +355,13 @@ public:
     }
   }
 
+  void printArchRenameTable() {
+    printf("======================Arch Rename Table======================\n");
+    for (int i = 0; i < 32; ++i) {
+      printf("archTable[%d] = %d\n", i, archTable[i]);
+    }
+  }
+
   uint32_t getPC() { return pc; }
 
   uint32_t getReg(int index) { return pReg[archTable[index]]; }

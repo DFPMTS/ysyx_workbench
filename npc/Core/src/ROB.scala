@@ -41,8 +41,8 @@ class ROB extends CoreModule {
   val robTailPtr = RegInit(RingBufferPtr(size = ROB_SIZE, flag = 1.U, index = 0.U))
 
   // ** Ldq/Stq tail
-  val ldqTailPtr = RegInit(RingBufferPtr(size = LDQ_SIZE, flag = 1.U, index = 0.U))
-  val stqTailPtr = RegInit(RingBufferPtr(size = STQ_SIZE, flag = 1.U, index = 0.U))
+  val ldqCommitPtr = RegInit(RingBufferPtr(size = LDQ_SIZE, flag = 0.U, index = 0.U))
+  val stqCommitPtr = RegInit(RingBufferPtr(size = STQ_SIZE, flag = 0.U, index = 0.U))
 
   // ** Control
   val enqStall = false.B // * ROB stall is handled in Rename stage
@@ -127,8 +127,8 @@ class ROB extends CoreModule {
       robHeadPtr := io.IN_renameRobHeadPtr
     }
     robTailPtr := robTailPtr + PopCount(deqValid)
-    ldqTailPtr := ldqTailPtr + PopCount(loadCommited)
-    stqTailPtr := stqTailPtr + PopCount(storeCommited)
+    ldqCommitPtr := ldqCommitPtr + PopCount(loadCommited)
+    stqCommitPtr := stqCommitPtr + PopCount(storeCommited)
   }
 
   io.OUT_flagUop.valid := flagUopValid
@@ -146,8 +146,8 @@ class ROB extends CoreModule {
   }
 
   io.OUT_robTailPtr := robTailPtr
-  io.OUT_ldqTailPtr := ldqTailPtr
-  io.OUT_stqTailPtr := stqTailPtr
+  io.OUT_ldqTailPtr := ldqCommitPtr
+  io.OUT_stqTailPtr := stqCommitPtr
   for (i <- 0 until COMMIT_WIDTH) {
     io.OUT_commitUop(i).valid := commitValid(i)
     io.OUT_commitUop(i).bits := commitUop(i)

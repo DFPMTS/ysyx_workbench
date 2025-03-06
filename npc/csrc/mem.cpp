@@ -180,10 +180,11 @@ mem_word_t mem_read(paddr_t addr) {
   if (valid) {
     return retval;
   }
-  if (running.load()) {
-    running.store(false);
-    Log("Invalid read to 0x%08x\n", raw_addr);
-  }
+  // if (running.load()) {
+  //   running.store(false);
+  //   Log("Invalid read to 0x%08x\n", raw_addr);
+  // }
+  return 0x57575757;
   return 0;
 }
 

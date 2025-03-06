@@ -55,9 +55,9 @@ class Rename extends CoreModule {
 
   when (io.IN_flush) {
     robHeadPtr := RingBufferPtr(size = ROB_SIZE, flag = 0.U, index = 0.U)
-    ldqHeadPtr.flag := ~io.IN_ldqTailPtr.flag
+    ldqHeadPtr.flag := io.IN_ldqTailPtr.flag
     ldqHeadPtr.index := io.IN_ldqTailPtr.index
-    stqHeadPtr.flag := ~io.IN_stqTailPtr.flag
+    stqHeadPtr.flag := io.IN_stqTailPtr.flag
     stqHeadPtr.index := io.IN_stqTailPtr.index
   }.otherwise {
     val inFiredCnt = PopCount(io.IN_decodeUop.map(_.fire))

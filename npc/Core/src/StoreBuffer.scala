@@ -48,7 +48,7 @@ class StoreBuffer extends CoreModule {
 
   def getShiftedData(aguUop: AGUUop): UInt = {
     val addrOffset = aguUop.addr(log2Up(XLEN/8) - 1, 0)
-    (aguUop.wdata << addrOffset)(XLEN - 1, 0)
+    (aguUop.wdata << (addrOffset << 3))(XLEN - 1, 0)
   }
 
   def addrMatch (addr1: UInt, addr2: UInt): Bool = {

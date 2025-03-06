@@ -41,7 +41,7 @@ class StoreQueue extends CoreModule {
   }
 
   // * stqPtr base Ptr
-  val stqBasePtr = RegInit(RingBufferPtr(STQ_SIZE, 1.U, 0.U))
+  val stqBasePtr = RegInit(RingBufferPtr(STQ_SIZE, 0.U, 0.U))
   io.OUT_stqBasePtr := stqBasePtr
   
   // val newCommitted = VecInit((0 until STQ_SIZE).map { i =>
@@ -71,7 +71,7 @@ class StoreQueue extends CoreModule {
 
   def getShiftedData(aguUop: AGUUop): UInt = {
     val addrOffset = aguUop.addr(log2Up(XLEN/8) - 1, 0)
-    (aguUop.wdata << addrOffset)(XLEN - 1, 0)
+    (aguUop.wdata << (addrOffset << 3))(XLEN - 1, 0)
   }
 
   def addrMatch (addr1: UInt, addr2: UInt): Bool = {
@@ -93,6 +93,7 @@ class StoreQueue extends CoreModule {
   when(addrMatch(io.IN_storeBypassReq.addr, uop.addr) && uopValid) {
     val uopWmask = getWmask(uop)
     val uopShiftedData = getShiftedData(uop)
+    dontTouch(uopShiftedData)
     for (i <- 0 until 4) {
       when(uopWmask(i)) {
         bypassDataNext(i) := uopShiftedData((i + 1) * 8 - 1, i * 8)
@@ -101,7 +102,7 @@ class StoreQueue extends CoreModule {
     }
   }
 
-  when(stqBasePtr.flag =/= io.IN_storeBypassReq.stqPtr.flag) {
+  when(stqBasePtr.flag === io.IN_storeBypassReq.stqPtr.flag) {
     for (i <- 0 until LDQ_SIZE) {
       when(addrMatch(io.IN_storeBypassReq.addr, stq(i).addr) && stqValid(i)
          && i.U >= stqBasePtr.index && i.U < io.IN_storeBypassReq.stqPtr.index) {

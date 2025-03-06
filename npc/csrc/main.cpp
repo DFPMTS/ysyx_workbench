@@ -67,7 +67,7 @@ int main(int argc, char *argv[]) {
   Log("Simulation begin");
   sim_speed.initTimer();
   int T = 400;
-  // begin_wave = true;
+  begin_wave = true;
   signal(SIGINT, [](int) {
     puts("Vtop: SIGINT received");
     running.store(false);
@@ -85,6 +85,7 @@ int main(int argc, char *argv[]) {
   printf("Total instructions:\t %lu\n", state.getInstRetired());
   state.printCommited();
   state.printInsts();
+  state.printArchRenameTable();
   ++totalCycles;
   // a0
   int retval = state.getReg(10);

@@ -64,7 +64,7 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
   val readyVec = (0 until IQ_SIZE).map(i => {
     (i.U < headIndex && (queue(i).src1Ready || writebackReady(i)(0)) && 
                         (queue(i).src2Ready || writebackReady(i)(1))) &&
-    (!hasFU(FuType.LSU).B || (queue(i).fuType =/= FuType.LSU && queue(i).fuType =/= FuType.AMO) || queue(i).robPtr.index === io.IN_robTailPtr.index) &&
+    // (!hasFU(FuType.LSU).B || (queue(i).fuType =/= FuType.LSU && queue(i).fuType =/= FuType.AMO) || queue(i).robPtr.index === io.IN_robTailPtr.index) &&
     (!hasFU(FuType.CSR).B || queue(i).fuType =/= FuType.CSR || queue(i).robPtr.index === io.IN_robTailPtr.index) && 
     ((queue(i).fuType =/= FuType.ALU && queue(i).fuType =/= FuType.BRU) || !wbReverved(0)) && 
     (queue(i).fuType =/= FuType.DIV || !io.IN_idivBusy)

@@ -259,6 +259,8 @@ class NewLSUIO extends CoreBundle {
   val IN_memLoadFoward = Flipped(Valid(new MemLoadFoward))
 
   val OUT_writebackUop = Valid(new WritebackUop)
+
+  val IN_flush = Flipped(Bool())
 }
 
 class NewLSU extends CoreModule with HasLSUOps {
@@ -294,7 +296,7 @@ class NewLSU extends CoreModule with HasLSUOps {
     cacheCtrlUopValid := false.B
   }
 
-  val idle = !writeTag && !cacheCtrlUopValid && loadResultBuffer.io.IN_loadResult.ready && io.OUT_dataReq.ready && io.OUT_tagReq.ready && !io.IN_mshrs(0).valid && !storeWriteData
+  val idle = !writeTag && !cacheCtrlUopValid && loadResultBuffer.io.IN_loadResult.ready && io.OUT_dataReq.ready && io.OUT_tagReq.ready && !io.IN_mshrs(0).valid && !storeWriteData && !storeStageValid(0) && !loadStageValid(0)
 
   // ** For now, we only support one load/store at a time
   val serveLoad = idle
@@ -318,6 +320,10 @@ class NewLSU extends CoreModule with HasLSUOps {
   val storeUop = io.IN_storeUop.valid && serveStore
   storeStage(0) := io.IN_storeUop.bits
   storeStageValid(0) := storeUop
+
+  when(io.IN_flush) {
+    loadStageValid := VecInit(Seq.fill(2)(false.B))
+  }
 
   // * Query Store Queue Bypass, resp available in next cycle (loadStage(0))
   io.OUT_storeBypassReq.addr := io.IN_loadUop.bits.addr
@@ -344,6 +350,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   loadResultBuffer.io.IN_loadResult.valid := loadResultValid
   loadResultBuffer.io.IN_loadResult.bits := loadResult
   loadResultBuffer.io.IN_memLoadFoward := io.IN_memLoadFoward
+  loadResultBuffer.io.IN_flush := io.IN_flush
   
   // * Load cache hit or miss 
   val loadTagHit = tagResp.valid && tagResp.tag === loadStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
@@ -487,6 +494,8 @@ class LoadResultBufferIO extends CoreBundle {
   val IN_loadResult = Flipped(Decoupled(new LoadResult))
   val IN_memLoadFoward = Flipped(Valid(new MemLoadFoward))
   val OUT_writebackUop = Valid(new WritebackUop)
+
+  val IN_flush = Flipped(Bool())
 }
 
 class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
@@ -531,7 +540,7 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
   val readyIndex = PriorityEncoder(readyEntries)
   
   // Generate writeback when entry is ready
-  io.OUT_writebackUop.valid := hasReady
+  io.OUT_writebackUop.valid := hasReady && !io.IN_flush
   when(hasReady) {
     val selectedEntry = entries(readyIndex)
     val addrOffset = selectedEntry.addr(log2Up(AXI_DATA_WIDTH/8) - 1, 0)
@@ -556,6 +565,18 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
     io.OUT_writebackUop.bits := 0.U.asTypeOf(new WritebackUop)
   }
 
-  // Utility function to get number of valid entries 
-  def count(): UInt = PopCount(valid)
+  when(io.IN_flush) {
+    valid := VecInit(Seq.fill(N)(false.B))
+  }
+}
+
+class UncachedLSUIO extends CoreBundle {
+  val IN_loadUop = Flipped(Decoupled(new AGUUop))
+  val IN_storeUop = Flipped(Decoupled(new AGUUop))
+
+  
+}
+
+class UncachedLSU extends CoreModule {
+
 }

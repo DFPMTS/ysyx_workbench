@@ -241,12 +241,15 @@ class Core extends CoreModule {
   loadArb.io.IN_PTWUop <> ptw.io.OUT_PTWUop
   lsu.io.IN_loadUop.valid := loadArb.io.OUT_AGUUop.valid
   lsu.io.IN_loadUop.bits := loadArb.io.OUT_AGUUop.bits
+  lsu.io.IN_flush := flush
   loadArb.io.OUT_AGUUop.ready := true.B
   
   loadQueue.io.IN_AGUUop <> agu.io.OUT_AGUUop
   loadQueue.io.IN_negAck <> lsu.io.OUT_loadNegAck
   loadQueue.io.IN_robTailPtr := rob.io.OUT_robTailPtr
   loadQueue.io.IN_commitLdqPtr := rob.io.OUT_ldqTailPtr
+  loadQueue.io.IN_commitStqPtr := rob.io.OUT_stqTailPtr
+  loadQueue.io.IN_flush := flush
 
   storeQueue.io.IN_AGUUop <> agu.io.OUT_AGUUop
   storeQueue.io.IN_robTailPtr := rob.io.OUT_robTailPtr

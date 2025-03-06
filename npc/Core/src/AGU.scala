@@ -235,6 +235,10 @@ class AGU extends CoreModule {
   io.OUT_xtvalRec.valid := wbUopValid
   io.OUT_xtvalRec.bits := xtvalRec
 
+  when(io.IN_flush) {
+    uopValid := false.B
+  }
+
   io.OUT_AGUUop.valid := uopValid
   io.OUT_AGUUop.bits := uop
 }
