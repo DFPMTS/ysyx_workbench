@@ -39,15 +39,15 @@ trait HasCoreParameters {
   def ROB_IDX_W = log2Up(ROB_SIZE).W
 
   // * Issue Queue
-  def IQ_SIZE = 16
+  def IQ_SIZE = 4
   def IQ_IDX_W = log2Up(IQ_SIZE).W
 
   // * Load Queue
-  def LDQ_SIZE = 16  
+  def LDQ_SIZE = 4
   def LDQ_IDX_W = log2Up(LDQ_SIZE).W
 
   // * Store Queue
-  def STQ_SIZE = 16
+  def STQ_SIZE = 4
   def STQ_IDX_W = log2Up(STQ_SIZE).W
 
   // * Flag

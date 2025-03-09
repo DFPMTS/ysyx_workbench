@@ -162,6 +162,8 @@ class Core extends CoreModule {
     iq(i).io.IN_renameUop <> scheduler.io.OUT_renameUop(i)
     iq(i).io.IN_writebackUop := writebackUop
     iq(i).io.IN_robTailPtr := rob.io.OUT_robTailPtr
+    iq(i).io.IN_ldqBasePtr := rob.io.OUT_ldqTailPtr
+    iq(i).io.IN_stqBasePtr := storeQueue.io.OUT_stqBasePtr
     iq(i).io.IN_flush := flush
     iq(i).io.IN_idivBusy := div.io.OUT_idivBusy
   }
@@ -276,8 +278,10 @@ class Core extends CoreModule {
   lsu.io.IN_tagResp <> dcache.io.OUT_tagResp
   lsu.io.IN_dataResp <> dcache.io.OUT_dataResp
   lsu.io.IN_mshrs <> cacheController.io.OUT_MSHR
-  lsu.io.OUT_cacheCtrlUop <> cacheController.io.IN_cacheCtrlUop
+  lsu.io.OUT_cacheCtrlUop <> cacheController.io.IN_cacheCtrlUop(0)
+  lsu.io.OUT_uncacheUop <> cacheController.io.IN_cacheCtrlUop(1)
   lsu.io.IN_memLoadFoward <> cacheController.io.OUT_memLoadFoward
+  lsu.io.IN_uncacheStoreResp := cacheController.io.OUT_uncacheStoreResp
 
   dcache.io.IN_ctrlDataRead <> cacheController.io.OUT_DDataRead
   dcache.io.IN_ctrlDataWrite <> cacheController.io.OUT_DDataWrite

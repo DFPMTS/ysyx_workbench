@@ -213,20 +213,7 @@ public:
           }
         }
         if (begin_wave) {
-          itrace_generate(buf, inst.pc, inst.inst);
-          printf("[%3d] %s\n", robIndex, buf);
-          printf("      rd  = %2d  rs1  = %2d  rs2  = %2d\n", inst.rd, inst.rs1,
-                 inst.rs2);
-          printf("      prd = %2d  prs1 = %2d  prs2 = %2d\n", inst.prd,
-                 inst.prs1, inst.prs2);
-          printf("      src1   = %d/%u/0x%x\n", inst.src1, inst.src1,
-                 inst.src1);
-          printf("      src2   = %d/%u/0x%x\n", inst.src2, inst.src2,
-                 inst.src2);
-          printf("      result = %d/%u/0x%x\n", inst.result, inst.result,
-                 inst.result);
-          printf("      flag = %s\n", getFlagOpName(inst.flag));
-          printf("      target = %x\n", inst.target);
+          printInst(&inst, robIndex);
         }
         if (*uop.rd) {
           if (begin_wave) {

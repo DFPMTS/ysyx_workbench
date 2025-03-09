@@ -343,3 +343,9 @@ class CacheCtrlUop extends CoreBundle {
   val wdata = UInt(32.W)
   val opcode = UInt(4.W)
 }
+
+object Addr {
+  def isUncached(addr: UInt) = {
+    addr < "h8000_0000".U
+  }
+}

@@ -11,11 +11,12 @@ class CacheControllerResp extends CoreBundle {
 class MemLoadFoward extends CoreBundle {
   val addr = UInt(XLEN.W)
   val data = UInt(32.W)
+  val uncached = Bool()
 }
 
 class CacheControllerIO extends CoreBundle {
   // * Cache Controller Uop
-  val IN_cacheCtrlUop = Flipped(Decoupled(new CacheCtrlUop))
+  val IN_cacheCtrlUop = Flipped(Vec(2, Decoupled(new CacheCtrlUop)))
 
   // * Cache Array Management
   // ** Data Cache Tag & Data
@@ -26,8 +27,11 @@ class CacheControllerIO extends CoreBundle {
   // ** Instruction Cache Tag & Data
   val OUT_MSHR = Vec(1, new MSHR)
 
-  // ** Forward load data
+  // ** Forward load data and Uncached Load Resp
   val OUT_memLoadFoward = Valid(new MemLoadFoward)
+
+  // ** Uncached Store Resp
+  val OUT_uncacheStoreResp = Bool()
 
   // * -> MEM interface
   val OUT_axi = new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
@@ -35,6 +39,7 @@ class CacheControllerIO extends CoreBundle {
 
 class MSHR extends CoreBundle {
   val valid = Bool()
+  val uncached = Bool()
   val opcode = UInt(OpcodeWidth.W)
   // * read from Mem
   val memReadAddr = UInt(XLEN.W)
@@ -57,16 +62,23 @@ class MSHR extends CoreBundle {
 class CacheController extends CoreModule {
   val io = IO(new CacheControllerIO)
 
-  val uop = io.IN_cacheCtrlUop.bits
-  val uopValid = io.IN_cacheCtrlUop.valid
+  val validIndex = PriorityEncoder(io.IN_cacheCtrlUop.map(_.valid))
+
+  val uop = io.IN_cacheCtrlUop(validIndex).bits
+  val uopValid = io.IN_cacheCtrlUop(validIndex).valid
 
   val mshr = RegInit(VecInit(Seq.fill(1)(0.U.asTypeOf(new MSHR))))
 
-  io.IN_cacheCtrlUop.ready := !mshr(0).valid
+  for (i <- 0 until 2) {
+    io.IN_cacheCtrlUop(i).ready := false.B
+  }
+  io.IN_cacheCtrlUop(validIndex).ready := !mshr(0).valid
+  
   io.OUT_MSHR := mshr
 
   when(!mshr(0).valid && uopValid) {
     mshr(0).valid := true.B
+    mshr(0).uncached := false.B
     mshr(0).needReadMem := false.B
     mshr(0).needWriteMem := false.B
     mshr(0).axiReadDone := true.B
@@ -97,6 +109,8 @@ class CacheController extends CoreModule {
       mshr(0).axiWriteDone := false.B
     }.elsewhen(CacheOpcode.isUnCachedLoad(uop.opcode)) {
       // * uncached load
+      mshr(0).uncached := true.B
+
       mshr(0).memReadAddr := raddr
 
       mshr(0).needReadMem := true.B
@@ -104,8 +118,10 @@ class CacheController extends CoreModule {
       mshr(0).axiReadDone := false.B
     }.elsewhen(CacheOpcode.isUnCachedStore(uop.opcode)) {
       // * uncached store
-      mshr(0).memWriteAddr := waddr
+      mshr(0).uncached := true.B
 
+      mshr(0).memWriteAddr := waddr
+      mshr(0).needReadCache := true.B
       mshr(0).needWriteMem := true.B
 
       mshr(0).axiWriteDone := false.B
@@ -116,11 +132,13 @@ class CacheController extends CoreModule {
 
   val wValidReg = RegInit(false.B)
   val wDataReg = RegInit(0.U(AXI_DATA_WIDTH.W))
+  val wMaskReg = Reg(UInt(4.W))
 
   // * forward load data
   io.OUT_memLoadFoward.valid := io.OUT_axi.r.valid
   io.OUT_memLoadFoward.bits.addr := mshr(0).memReadAddr
   io.OUT_memLoadFoward.bits.data := io.OUT_axi.r.bits.data
+  io.OUT_memLoadFoward.bits.uncached := mshr(0).uncached
 
   // * cache interface
   // ** cache read
@@ -129,14 +147,23 @@ class CacheController extends CoreModule {
   io.OUT_DDataRead.bits.data := 0.U
   io.OUT_DDataRead.bits.wmask := 0.U
   io.OUT_DDataRead.bits.write := false.B
-  io.OUT_DDataRead.valid := mshr(0).valid && mshr(0).needReadCache
+  io.OUT_DDataRead.valid := mshr(0).valid && mshr(0).needReadCache && !mshr(0).uncached
+  when(io.OUT_axi.w.fire) {
+    wValidReg := false.B
+  }
   when(!wValidReg || io.OUT_axi.w.fire) {    
-    when(dataReadRespValid && mshr(0).valid) {
-      wDataReg := io.IN_DDataResp.data(0)
-      wValidReg := mshr(0).needReadCache
-      mshr(0).needReadCache := false.B
-    }.elsewhen(io.OUT_axi.w.fire) {
-      wValidReg := false.B
+    when(mshr(0).valid) {      
+      when(!mshr(0).uncached && dataReadRespValid) {
+        wDataReg := io.IN_DDataResp.data(0)        
+        wMaskReg := "b1111".U
+        wValidReg := mshr(0).needReadCache
+        mshr(0).needReadCache := false.B
+      }.elsewhen(mshr(0).uncached) {
+        wDataReg := mshr(0).wdata
+        wMaskReg := mshr(0).wmask
+        wValidReg := mshr(0).needReadCache
+        mshr(0).needReadCache := false.B
+      }      
     }
   }
   // ** cache write
@@ -162,7 +189,7 @@ class CacheController extends CoreModule {
   val arValidReg = RegInit(false.B)
   val arAddrReg = RegInit(0.U(AXI_ADDR_WIDTH.W))
   when(!arValidReg || io.OUT_axi.ar.fire) {
-    when(mshr(0).valid && mshr(0).needReadMem && (!mshr(0).needWriteMem || mshr(0).counter > 0.U)) {
+    when(mshr(0).valid && mshr(0).needReadMem && (!mshr(0).needReadCache || mshr(0).counter > 0.U)) {
       arValidReg := mshr(0).needReadMem
       arAddrReg := mshr(0).memReadAddr
       mshr(0).needReadMem := false.B
@@ -206,6 +233,7 @@ class CacheController extends CoreModule {
   io.OUT_axi.r.ready := true.B
 
   // ** b
+  io.OUT_uncacheStoreResp := io.OUT_axi.b.fire
   io.OUT_axi.b.ready := true.B
   when(io.OUT_axi.b.fire) {
     mshr(0).axiWriteDone := true.B

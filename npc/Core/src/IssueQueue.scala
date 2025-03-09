@@ -8,6 +8,8 @@ class IssueQueueIO extends CoreBundle {
   val IN_writebackUop = Flipped(Vec(MACHINE_WIDTH, Valid(new WritebackUop)))
   val OUT_issueUop = Decoupled(new RenameUop)
   val IN_robTailPtr = Input(RingBufferPtr(ROB_SIZE))
+  val IN_stqBasePtr = Flipped(RingBufferPtr(STQ_SIZE))
+  val IN_ldqBasePtr = Flipped(RingBufferPtr(LDQ_SIZE))
   val IN_flush = Input(Bool())
 
   val IN_idivBusy = Input(Bool())
@@ -61,10 +63,19 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
     }    
   }  
 
+  val ldqLimitPtr = Wire(RingBufferPtr(LDQ_SIZE))
+  val stqLimitPtr = Wire(RingBufferPtr(STQ_SIZE))
+  ldqLimitPtr.flag := ~io.IN_ldqBasePtr.flag
+  ldqLimitPtr.index := io.IN_ldqBasePtr.index
+  stqLimitPtr.flag := ~io.IN_stqBasePtr.flag
+  stqLimitPtr.index := io.IN_stqBasePtr.index
+
+
   val readyVec = (0 until IQ_SIZE).map(i => {
     (i.U < headIndex && (queue(i).src1Ready || writebackReady(i)(0)) && 
                         (queue(i).src2Ready || writebackReady(i)(1))) &&
-    // (!hasFU(FuType.LSU).B || (queue(i).fuType =/= FuType.LSU && queue(i).fuType =/= FuType.AMO) || queue(i).robPtr.index === io.IN_robTailPtr.index) &&
+    (!hasFU(FuType.LSU).B || queue(i).fuType =/= FuType.LSU || !LSUOp.isLoad(queue(i).opcode) || queue(i).ldqPtr.isBefore(ldqLimitPtr)) &&
+    (!hasFU(FuType.LSU).B || queue(i).fuType =/= FuType.LSU || !LSUOp.isStore(queue(i).opcode) || queue(i).stqPtr.isBefore(stqLimitPtr)) &&
     (!hasFU(FuType.CSR).B || queue(i).fuType =/= FuType.CSR || queue(i).robPtr.index === io.IN_robTailPtr.index) && 
     ((queue(i).fuType =/= FuType.ALU && queue(i).fuType =/= FuType.BRU) || !wbReverved(0)) && 
     (queue(i).fuType =/= FuType.DIV || !io.IN_idivBusy)
