@@ -254,6 +254,9 @@ class NewLSUIO extends CoreBundle {
   val IN_tagResp = Flipped(new DTagResp)
   val OUT_dataReq = Decoupled(new DDataReq)
   val IN_dataResp = Flipped(new DDataResp)
+  // * Internal MMIO Interface (CLINT)
+  val OUT_mmioReq = new MMIOReq
+  val IN_mmioResp = Flipped(new MMIOResp)
   // * Cache Controller Interface
   val OUT_cacheCtrlUop = Decoupled(new CacheCtrlUop)
   val OUT_uncacheUop = Decoupled(new CacheCtrlUop)
@@ -315,10 +318,25 @@ class NewLSU extends CoreModule with HasLSUOps {
 
   val tagResp = io.IN_tagResp.tags(0)
 
+  // ** Load/Store Stage 0
+  val inLoadUop = io.IN_loadUop.bits
+  val loadIsUncached = Addr.isUncached(inLoadUop.addr)
+  val loadIsInternalMMIO = Addr.isInternalMMIO(inLoadUop.addr)
+  val loadUop = io.IN_loadUop.valid && serveLoad && (!loadIsUncached || loadIsInternalMMIO)
+  loadStage(0) := inLoadUop
+  loadStageValid(0) := loadUop
+
+  val inStoreUop = io.IN_storeUop.bits
+  val storeIsUncached = Addr.isUncached(inStoreUop.addr)
+  val storeIsInternalMMIO = Addr.isInternalMMIO(inStoreUop.addr)
+  val storeUop = io.IN_storeUop.valid && serveStore && (!storeIsUncached || storeIsInternalMMIO)
+  storeStage(0) := inStoreUop
+  storeStageValid(0) := storeUop
+
   // * Uncache Load/Store
-  uncachedLSU.io.IN_loadUop.valid := io.IN_loadUop.valid && Addr.isUncached(io.IN_loadUop.bits.addr) && serveLoad
+  uncachedLSU.io.IN_loadUop.valid := io.IN_loadUop.valid && loadIsUncached && !loadIsInternalMMIO && serveLoad
   uncachedLSU.io.IN_loadUop.bits := io.IN_loadUop.bits
-  uncachedLSU.io.IN_storeUop.valid := io.IN_storeUop.valid && Addr.isUncached(io.IN_storeUop.bits.addr) && serveStore
+  uncachedLSU.io.IN_storeUop.valid := io.IN_storeUop.valid && storeIsUncached && !storeIsInternalMMIO && serveStore
   uncachedLSU.io.IN_storeUop.bits := io.IN_storeUop.bits
   uncachedLSU.io.IN_memLoadFoward := io.IN_memLoadFoward
   uncachedLSU.io.IN_uncacheStoreResp := io.IN_uncacheStoreResp
@@ -328,14 +346,6 @@ class NewLSU extends CoreModule with HasLSUOps {
 
   io.OUT_uncacheUop <> uncachedLSU.io.OUT_cacheCtrlUop
 
-  // ** Load/Store Stage 0
-  val loadUop = io.IN_loadUop.valid && serveLoad && !Addr.isUncached(io.IN_loadUop.bits.addr)
-  loadStage(0) := io.IN_loadUop.bits
-  loadStageValid(0) := loadUop
-
-  val storeUop = io.IN_storeUop.valid && serveStore && !Addr.isUncached(io.IN_storeUop.bits.addr)
-  storeStage(0) := io.IN_storeUop.bits
-  storeStageValid(0) := storeUop
 
   when(io.IN_flush) {
     loadStageValid := VecInit(Seq.fill(2)(false.B))
@@ -345,17 +355,30 @@ class NewLSU extends CoreModule with HasLSUOps {
   io.OUT_storeBypassReq.addr := io.IN_loadUop.bits.addr
   io.OUT_storeBypassReq.stqPtr := io.IN_loadUop.bits.stqPtr
 
+  io.OUT_mmioReq := 0.U.asTypeOf(new MMIOReq)
+
   when(loadUop) {
-    // * Tag Request
-    io.OUT_tagReq.valid := true.B
-    io.OUT_tagReq.bits.addr := io.IN_loadUop.bits.addr
-    // * Data Request
-    io.OUT_dataReq.valid := true.B
-    io.OUT_dataReq.bits.addr := io.IN_loadUop.bits.addr
+    when(loadIsInternalMMIO) {
+      io.OUT_mmioReq.ren := true.B
+      io.OUT_mmioReq.addr := inLoadUop.addr
+    }.otherwise {
+      // * Tag Request
+      io.OUT_tagReq.valid := true.B
+      io.OUT_tagReq.bits.addr := inLoadUop.addr
+      // * Data Request
+      io.OUT_dataReq.valid := true.B
+      io.OUT_dataReq.bits.addr := inLoadUop.addr
+    }
   }.elsewhen(storeUop) {
-    // * Tag Request
-    io.OUT_tagReq.valid := true.B
-    io.OUT_tagReq.bits.addr := io.IN_storeUop.bits.addr
+    when(storeIsInternalMMIO) {
+      io.OUT_mmioReq.wen := true.B
+      io.OUT_mmioReq.addr := inStoreUop.addr
+      io.OUT_mmioReq.wdata := inStoreUop.wdata
+    }.otherwise {
+      // * Tag Request
+      io.OUT_tagReq.valid := true.B
+      io.OUT_tagReq.bits.addr := io.IN_storeUop.bits.addr
+    }
   }
 
   // ** Load/Store Stage 1
@@ -407,7 +430,8 @@ class NewLSU extends CoreModule with HasLSUOps {
       )
     }
     val loadMask = getWmask(loadStage(0))
-    val hit = loadHit || (~bypassDataMask & loadMask) === 0.U
+    val isInternalMMIO = Addr.isInternalMMIO(loadStage(0).addr)
+    val hit = (loadHit || (~bypassDataMask & loadMask) === 0.U) || isInternalMMIO
     val finalData = {
       val data = Wire(Vec(4, UInt(8.W)))
       for(i <- 0 until 4) {
@@ -426,7 +450,7 @@ class NewLSU extends CoreModule with HasLSUOps {
 
     val loadUop = Mux(serveUncache, uncacheLoadUop, loadStage(0))
 
-    when(!serveUncache && !hit) {
+    when(!serveUncache && !isInternalMMIO && !hit) {
       // * Cache Miss
       // * Write tag
       writeTag := true.B
@@ -447,13 +471,14 @@ class NewLSU extends CoreModule with HasLSUOps {
       cacheCtrlUop.opcode := Mux(tagResp.valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
     }
     loadResultValid := true.B
-    loadResult.data := Mux(serveUncache, uncacheLoadData, finalData.asUInt)
-    loadResult.ready := Mux(serveUncache, true.B, hit)
-    loadResult.bypassMask := Mux(serveUncache, Fill(XLEN/8, "b1".U), bypassDataMask | ~loadMask)
+    loadResult.data := Mux(serveUncache, uncacheLoadData, Mux(isInternalMMIO, io.IN_mmioResp.data, finalData.asUInt))
+    loadResult.ready := Mux(serveUncache || isInternalMMIO, true.B, hit)
+    loadResult.bypassMask := Mux(serveUncache || isInternalMMIO, Fill(XLEN/8, "b1".U), bypassDataMask | ~loadMask)
     loadResult.addr := loadUop.addr
     loadResult.opcode := loadUop.opcode
     loadResult.prd := loadUop.prd
     loadResult.robPtr := loadUop.robPtr
+    loadResult.dest := loadUop.dest
   }.elsewhen(storeStageValid(0)) {
     val memLen = storeStage(0).opcode(2, 1)
     val addrOffset = storeStage(0).addr(log2Up(XLEN/8) - 1, 0)
@@ -464,7 +489,10 @@ class NewLSU extends CoreModule with HasLSUOps {
         2.U(2.W) -> "b1111".U
       )
     ) << addrOffset
-    when(storeHit) {
+    val isInternalMMIO = Addr.isInternalMMIO(storeStage(0).addr)
+    when(isInternalMMIO){
+
+    }.elsewhen(storeHit) {
       
       // * Cache Hit - Write data
       io.OUT_dataReq.valid := true.B
@@ -509,6 +537,7 @@ class LoadResult extends CoreBundle{
   val opcode = UInt(OpcodeWidth.W)
   val prd = UInt(PREG_IDX_W)
   val robPtr = RingBufferPtr(ROB_SIZE)
+  val dest = UInt(1.W)
 }
 
 class LoadResultBufferIO extends CoreBundle {
@@ -576,7 +605,7 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
     io.OUT_writebackUop.bits.prd := selectedEntry.prd
     io.OUT_writebackUop.bits.data := shiftedData
     io.OUT_writebackUop.bits.robPtr := selectedEntry.robPtr
-    io.OUT_writebackUop.bits.dest := Dest.ROB
+    io.OUT_writebackUop.bits.dest := selectedEntry.dest
     io.OUT_writebackUop.bits.flag := 0.U
     io.OUT_writebackUop.bits.target := 0.U
     
@@ -587,7 +616,7 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
   }
 
   when(io.IN_flush) {
-    valid := VecInit(Seq.fill(N)(false.B))
+    valid := valid.zipWithIndex.map { case (v, i) => v && entries(i).dest =/= Dest.ROB }
   }
 }
 
@@ -692,6 +721,6 @@ class UncachedLSU extends CoreModule {
   io.OUT_cacheCtrlUop.bits := cacheCtrlUop
 
   io.OUT_loadUop.valid := state === sLoadFin
-  io.OUT_loadUop.bits := io.IN_loadUop.bits
-  io.OUT_loadData := io.IN_memLoadFoward.bits.data
+  io.OUT_loadUop.bits := loadUop
+  io.OUT_loadData := loadData
 }

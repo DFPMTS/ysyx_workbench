@@ -348,4 +348,7 @@ object Addr {
   def isUncached(addr: UInt) = {
     addr < "h8000_0000".U
   }
+  def isInternalMMIO(addr: UInt) = {
+    addr >= "h1100_0000".U && addr < "h1200_0000".U
+  }
 }

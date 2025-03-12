@@ -239,6 +239,8 @@ struct InstInfo {
   IData result;
   FlagOp flag;
 
+  IData paddr;
+
   IData target;
   CData executed;
 };
@@ -333,6 +335,16 @@ struct CSRCtrl : Uop {
   CData *sret;
 };
 
+struct AGUUop : Uop {
+  IData *addr;
+  CData *robPtr_flag;
+  CData *robPtr_index;
+  CData *ldqPtr_flag;
+  CData *ldqPtr_index;
+  CData *stqPtr_flag;
+  CData *stqPtr_index;
+};
+
 // * redirect
 #define V_REDIRECT_VALID top->rootp->npc_top__DOT__npc__DOT__redirect_valid
 #define V_REDIRECT_PC top->rootp->npc_top__DOT__npc__DOT__redirect_pc
@@ -376,6 +388,11 @@ struct CSRCtrl : Uop {
 
 // * CSRCtrl
 #define V_CSR_CTRL(i, field) top->rootp->npc_top__DOT__npc__DOT__CSRCtrl_##field
+
+// * AGUUop
+#define V_AGU_UOP(i, field)                                                    \
+  top->rootp->npc_top__DOT__npc__DOT__aguUop_bits_##field
+#define V_AGU_VALID(i) top->rootp->npc_top__DOT__npc__DOT__aguUop_valid
 
 #define RENAME_FIELDS(X, i)                                                    \
   X(i, rd)                                                                     \
@@ -453,6 +470,15 @@ struct CSRCtrl : Uop {
   X(i, delegate)                                                               \
   X(i, mret)                                                                   \
   X(i, sret)
+
+#define AGU_FIELDS(X, i)                                                       \
+  X(i, addr)                                                                   \
+  X(i, robPtr_flag)                                                            \
+  X(i, robPtr_index)                                                           \
+  X(i, ldqPtr_flag)                                                            \
+  X(i, ldqPtr_index)                                                           \
+  X(i, stqPtr_flag)                                                            \
+  X(i, stqPtr_index)
 
 #define BIND_ONE_FIELD(i, field)                                               \
   UOP[i].field = (decltype(UOP[i].field))&V_UOP(i, field);

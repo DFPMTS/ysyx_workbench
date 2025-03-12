@@ -89,9 +89,6 @@ class AXI_Arbiter extends Module {
     val IFUMaster = Flipped(new AXI4(32, 32))
     val LSUMaster = Flipped(new AXI4(32, 32))
     val winMaster = new AXI4(32, 32)
-
-    val OUT_mtime = UInt(64.W)
-    val OUT_MTIP = Bool()
   })
 
   val sIdle :: sIFU :: sLSU :: Nil = Enum(3)
@@ -146,81 +143,6 @@ class AXI_Arbiter extends Module {
   val toOut = WireDefault(win)
   val toIn  = WireDefault(io.winMaster)
 
-  // MMIO read 
-
-  val mtime = RegInit(0.U(64.W))
-  val mtimecmp = RegInit(0.U(64.W))
-  val msip = RegInit(0.U(1.W))
-  mtime := mtime + 1.U
-
-  val CLINT_BASE = 0x11000000L.U(32.W)
-  val MTIME_OFFSET = 0xbff8.U
-  val MTIMECMP_OFFSET = 0x4000.U
-  val MSIP_OFFSET = 0x0.U
-
-  val mtimel = mtime(31, 0)
-  val mtimeh = mtime(63, 32)
-  val mtimecmpl = mtimecmp(31, 0)
-  val mtimecmph = mtimecmp(63, 32)
-
-    
-
-  val readMMIO = win.ar.bits.addr(31,24) === 0x11.U
-  val readMMIOReg = RegInit(false.B)
-  val readMMIOData = WireInit(0.U(32.W))
-  readMMIOReg := Mux(
-    win.ar.valid && readMMIO,
-    true.B,
-    Mux(win.r.ready, false.B, readMMIOReg)
-  )
-  val raddr = win.ar.bits.addr
-  when(raddr(31, 2) === (CLINT_BASE + MTIME_OFFSET)(31, 2)) {
-    readMMIOData := mtimel
-  }.elsewhen(raddr(31, 2) === (CLINT_BASE + MTIME_OFFSET + 4.U)(31, 2)) {
-    readMMIOData := mtimeh
-  }.elsewhen(raddr(31, 2) === (CLINT_BASE + MTIMECMP_OFFSET)(31, 2)) {
-    readMMIOData := mtimecmpl
-  }.elsewhen(raddr(31, 2) === (CLINT_BASE + MTIMECMP_OFFSET + 4.U)(31, 2)) {
-    readMMIOData := mtimecmph
-  }.elsewhen(raddr(31, 2) === (CLINT_BASE + MSIP_OFFSET)(31, 2)) {
-    readMMIOData := msip
-  }
-
-  
-  toOut.ar.valid   := win.ar.valid && !readMMIO
-  toIn.ar.ready    := Mux(readMMIO, true.B, io.winMaster.ar.ready)
-  toIn.r.valid     := Mux(readMMIOReg, true.B, io.winMaster.r.valid)
-  toIn.r.bits.last := Mux(readMMIOReg, true.B, io.winMaster.r.bits.last)
-  toIn.r.bits.data := Mux(readMMIOReg, readMMIOData, io.winMaster.r.bits.data)
-
-  val writeMMIO = win.aw.valid && win.w.valid && win.aw.bits.addr(31,24) === 0x11.U
-  val writeMMIOReg = RegInit(false.B)
-
-  writeMMIOReg := Mux(
-    win.aw.valid && win.w.valid && writeMMIO,
-    true.B,
-    Mux(win.b.fire, false.B, writeMMIOReg)
-  )
-
-  toOut.aw.valid := win.aw.valid && !writeMMIO
-  toOut.w.valid  := win.w.valid && !writeMMIO
-  toIn.aw.ready  := Mux(writeMMIO, true.B, io.winMaster.aw.ready)
-  toIn.w.ready   := Mux(writeMMIO, true.B, io.winMaster.w.ready)
-  toIn.b.valid   := Mux(writeMMIOReg, true.B, io.winMaster.b.valid)
-
-  val waddr = win.aw.bits.addr
-  when(raddr(31, 2) === (CLINT_BASE + MTIME_OFFSET)(31, 2)) {
-    mtime := Cat(mtime(63, 32), win.w.bits.data)
-  }.elsewhen(raddr(31, 2) === (CLINT_BASE + MTIME_OFFSET + 4.U)(31, 2)) {
-    mtime := Cat(win.w.bits.data, mtime(31, 0))
-  }.elsewhen(waddr(31, 2) === (CLINT_BASE + MTIMECMP_OFFSET)(31, 2)) {
-    mtimecmp := Cat(mtimecmp(63, 32), win.w.bits.data)
-  }.elsewhen(waddr(31, 2) === (CLINT_BASE + MTIMECMP_OFFSET + 4.U)(31, 2)) {
-    mtimecmp := Cat(win.w.bits.data, mtimecmp(31, 0))
-  }.elsewhen(waddr(31, 2) === (CLINT_BASE + MSIP_OFFSET)(31, 2)) {
-    msip := win.w.bits.data(0)
-  }
-
   // toWin <> toIn
   toIn :>= win
   // dontTouch(readCLINT)
@@ -229,7 +151,4 @@ class AXI_Arbiter extends Module {
   // dontTouch(toIn)
   // io.winMaster :>= toIn
   io.winMaster :<= toOut
-
-  io.OUT_mtime := mtime
-  io.OUT_MTIP := mtime >= mtimecmp
 }

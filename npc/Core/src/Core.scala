@@ -10,6 +10,9 @@ class Core extends CoreModule {
     val interrupt = Input(Bool())
   })
 
+  // * Internal MMIO 
+  val internalMMIO = Module(new InternalMMIO)
+
   // * Cache
   val dcache = Module(new DCache)
   val cacheController = Module(new CacheController)
@@ -191,8 +194,8 @@ class Core extends CoreModule {
   alu0.io.IN_readRegUop <> dispatcher(0).io.OUT_uop(0)
   mul.io.IN_readRegUop  <> dispatcher(0).io.OUT_uop(1)
   csr.io.IN_readRegUop  <> dispatcher(0).io.OUT_uop(2)
-  csr.io.IN_mtime := arbiter.io.OUT_mtime
-  csr.io.IN_MTIP := arbiter.io.OUT_MTIP
+  csr.io.IN_mtime := internalMMIO.io.OUT_mtime
+  csr.io.IN_MTIP := internalMMIO.io.OUT_MTIP
   csr.io.IN_xtvalRec <> xtvalRecoder.io.OUT_tval
   csr.io.IN_CSRCtrl <> CSRCtrl
 
@@ -246,14 +249,18 @@ class Core extends CoreModule {
   lsu.io.IN_flush := flush
   loadArb.io.OUT_AGUUop.ready := true.B
   
-  loadQueue.io.IN_AGUUop <> agu.io.OUT_AGUUop
+  val aguUop = Wire(Valid(new AGUUop))
+  dontTouch(aguUop)
+
+  aguUop <> agu.io.OUT_AGUUop
+  loadQueue.io.IN_AGUUop <> aguUop
   loadQueue.io.IN_negAck <> lsu.io.OUT_loadNegAck
   loadQueue.io.IN_robTailPtr := rob.io.OUT_robTailPtr
   loadQueue.io.IN_commitLdqPtr := rob.io.OUT_ldqTailPtr
   loadQueue.io.IN_commitStqPtr := rob.io.OUT_stqTailPtr
   loadQueue.io.IN_flush := flush
 
-  storeQueue.io.IN_AGUUop <> agu.io.OUT_AGUUop
+  storeQueue.io.IN_AGUUop <> aguUop
   storeQueue.io.IN_robTailPtr := rob.io.OUT_robTailPtr
   storeQueue.io.IN_commitStqPtr := rob.io.OUT_stqTailPtr
   storeQueue.io.IN_flush := flush
@@ -271,6 +278,10 @@ class Core extends CoreModule {
   // ** Store Buffer Bypass
   lsu.io.IN_storeBufferBypassResp <> storeBuffer.io.OUT_storeBypassResp
   storeBuffer.io.IN_storeBypassReq <> lsu.io.OUT_storeBypassReq
+
+  // ** Internal MMIO
+  lsu.io.OUT_mmioReq <> internalMMIO.io.IN_mmioReq
+  lsu.io.IN_mmioResp <> internalMMIO.io.OUT_mmioResp
 
   // ** Cache 
   lsu.io.OUT_tagReq <> dcache.io.IN_tagReq

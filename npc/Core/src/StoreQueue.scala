@@ -4,7 +4,7 @@ import utils._
 
 
 class StoreQueueIO extends CoreBundle {
-  val IN_AGUUop       = Flipped(Decoupled(new AGUUop))
+  val IN_AGUUop       = Flipped(Valid(new AGUUop))
   val IN_robTailPtr   = Flipped(RingBufferPtr(ROB_SIZE))
   val IN_commitStqPtr = Flipped(RingBufferPtr(STQ_SIZE))
   val OUT_stUop       = Decoupled(new AGUUop)
@@ -151,6 +151,4 @@ class StoreQueue extends CoreModule {
 
   io.OUT_stUop.valid := uopValid
   io.OUT_stUop.bits  := uop
-
-  io.IN_AGUUop.ready := true.B
 }

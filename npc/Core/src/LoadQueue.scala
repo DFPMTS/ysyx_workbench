@@ -24,7 +24,7 @@ class LoadNegAck extends CoreBundle {
 }
 
 class LoadQueueIO extends CoreBundle {
-  val IN_AGUUop = Flipped(Decoupled(new AGUUop))
+  val IN_AGUUop = Flipped(Valid(new AGUUop))
   val IN_negAck = Input(Valid(new LoadNegAck))
   val IN_robTailPtr = Input(RingBufferPtr(ROB_SIZE))
   val IN_commitLdqPtr = Input(RingBufferPtr(LDQ_SIZE))
@@ -113,6 +113,4 @@ class LoadQueue extends CoreModule {
 
   io.OUT_ldUop.valid := uopValid
   io.OUT_ldUop.bits := uop
-
-  io.IN_AGUUop.ready := true.B
 }

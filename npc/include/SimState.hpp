@@ -20,6 +20,7 @@ public:
   CommitUop commitUop[4];
   FlagUop flagUop[1];
   CSRCtrl csrCtrl[1];
+  AGUUop aguUop[1];
   CSR csr;
 
   InstInfo insts[128];
@@ -90,6 +91,14 @@ public:
 #define UOP_FIELDS CSR_CTRL_FIELDS
 
     REPEAT_1(BIND_FIELDS)
+
+#define UOP aguUop
+#define V_UOP V_AGU_UOP
+#define V_UOP_VALID V_AGU_VALID
+#define UOP_FIELDS AGU_FIELDS
+
+    REPEAT_1(BIND_FIELDS)
+    REPEAT_1(BIND_VALID)
 
 #define CSRS csr
     CSR_FIELDS(BIND_CSRS_FIELD);
@@ -199,7 +208,7 @@ public:
         waitDifftest = inst.flag != FlagOp::NONE;
 
         if (inst.fuType == FuType::LSU) {
-          auto addr = inst.src1 + inst.imm;
+          auto addr = inst.paddr;
           if (addr >= 0x11000000 + 0xbff8 && addr < 0x11000000 + 0xc000 ||
               addr >= 0x11000000 + 0x4000 && addr < 0x11000000 + 0x4008 ||
               addr >= 0x11000000 + 0x0000 && addr < 0x11000000 + 0x0004) {
@@ -261,6 +270,19 @@ public:
       }
     }
 
+    // * agu
+    for (int i = 0; i < 1; ++i) {
+      if (*aguUop[i].valid && *aguUop[i].ready) {
+        auto robIndex = *aguUop[i].robPtr_index;
+        auto &inst = insts[robIndex];
+        auto &uop = aguUop[i];
+        inst.paddr = *aguUop[i].addr;
+        if (begin_wave) {
+          printf("AGU: [%3d] paddr = %x\n", robIndex, inst.paddr);
+        }
+      }
+    }
+
     // * read register
     for (int i = 0; i < 4; ++i) {
       if (*readRegUop[i].valid && *readRegUop[i].ready) {
@@ -312,6 +334,7 @@ public:
            inst->stqPtr_index);
     printf("      src1   = %d/%u/0x%x\n", inst->src1, inst->src1, inst->src1);
     printf("      src2   = %d/%u/0x%x\n", inst->src2, inst->src2, inst->src2);
+    printf("      paddr = 0x%x\n", inst->paddr);
     printf("      result = %d/%u/0x%x\n", inst->result, inst->result,
            inst->result);
     printf("      flag = %s\n", getFlagOpName(inst->flag));

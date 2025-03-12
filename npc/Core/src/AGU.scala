@@ -74,7 +74,7 @@ class AGUIO extends CoreBundle {
   val OUT_PTWReq     = Decoupled(new PTWReq)
   val IN_PTWResp     = Flipped(Valid(new PTWResp))
 
-  val OUT_AGUUop     = Decoupled(new AGUUop)
+  val OUT_AGUUop     = Valid(new AGUUop)
   val OUT_writebackUop = Valid(new WritebackUop)
   val OUT_xtvalRec   = Valid(new XtvalRec)
 
@@ -96,7 +96,7 @@ class AGU extends CoreModule {
   val wbUopValid = RegInit(false.B)
   val xtvalRec = Reg(new XtvalRec)
 
-  io.IN_readRegUop.ready := tlbMissQueue.io.IN_uop.ready && (!uopValid || io.OUT_AGUUop.ready)
+  io.IN_readRegUop.ready := tlbMissQueue.io.IN_uop.ready
 
   val inUop = io.IN_readRegUop.bits
   val inValid = io.IN_readRegUop.valid
@@ -172,7 +172,7 @@ class AGU extends CoreModule {
     }
   }
 
-  val storeWbUopValid = io.OUT_AGUUop.fire && LSUOp.isStore(io.OUT_AGUUop.bits.opcode)
+  val storeWbUopValid = io.OUT_AGUUop.valid && LSUOp.isStore(io.OUT_AGUUop.bits.opcode)
   val storeWbUop = WireInit(0.U.asTypeOf(new WritebackUop))
   storeWbUop.data := 0.U
   storeWbUop.dest := Dest.ROB
@@ -190,9 +190,7 @@ class AGU extends CoreModule {
   xtvalRec.tval := uopNext.addr
   xtvalRec.robPtr := uopNext.robPtr
 
-  when(io.OUT_AGUUop.ready) {
-    uopValid := false.B
-  }  
+  uopValid := false.B
   wbUopValid := false.B
   tlbMissQueue.io.OUT_uop.ready := false.B
   when(uopNextValid) {
@@ -202,7 +200,7 @@ class AGU extends CoreModule {
     }.elsewhen(tlbHit) {
       val isWrite = (uopNext.fuType === FuType.LSU && uopNext.opcode(3)) || (uopNext.fuType === FuType.AMO && uopNext.opcode =/= AMOOp.LR_W)
       val permFail = io.IN_TLBResp.bits.loadStorePermFail(isWrite, io.IN_VMCSR)
-      when(!uopValid || io.OUT_AGUUop.ready) {
+      when(true.B) {
         uop := uopNext
         uop.addr := Mux(doTranslate, io.IN_TLBResp.bits.vaddrToPaddr(uopNext.addr), uopNext.addr)
         uopValid := Mux(doTranslate, !permFail, true.B)
