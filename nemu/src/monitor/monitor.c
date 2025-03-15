@@ -76,7 +76,7 @@ static long load_img() {
   if (!is_cpt) {
     // * load checkpoint
     char *cpt_name =
-        "/home/dfpmts/Documents/ysyx-workbench/nemu/checkpoint/cpt.bin";
+        "/home/dfpmts/ysyx-workbench/nemu/checkpoint/cpt.bin";
     FILE *fp_cpt = fopen(cpt_name, "rb");
     Assert(fp_cpt, "Can not open '%s'", cpt_name);
 
