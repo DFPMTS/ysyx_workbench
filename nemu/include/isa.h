@@ -55,7 +55,7 @@ vaddr_t isa_raise_intr(word_t NO, vaddr_t epc);
 word_t isa_query_intr();
 word_t isa_mret();
 word_t isa_sret();
-void isa_set_trap(word_t NO, word_t xtval);
+void isa_set_trap(EXCEPTION_NO NO, word_t xtval);
 #define HAS_TRAP (cpu.trap != INTR_EMPTY)
 
 extern uint32_t current_inst;
