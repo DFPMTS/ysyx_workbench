@@ -6,7 +6,7 @@
     struct {                                                                   \
       int64_t n : len;                                                         \
     } __x = {.n = x};                                                          \
-    (uint64_t) __x.n;                                                          \
+    (uint64_t)__x.n;                                                           \
   })
 
 extern "C" {
@@ -53,7 +53,13 @@ int dummyDiv(uint8_t opcode, uint32_t src1, uint32_t src2) {
     break;
 
   case 2: // rem
-    out = (src2 == 0) ? src1 : (int32_t)src1 % (int32_t)src2;
+    if (src2 == 0) {
+      out = src1;
+    } else if (src1 == INT32_MIN && src2 == -1) {
+      out = 0;
+    } else {
+      out = (int32_t)src1 % (int32_t)src2;
+    }
     break;
 
   case 3: // remu

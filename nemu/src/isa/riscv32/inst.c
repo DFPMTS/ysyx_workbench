@@ -293,7 +293,7 @@ static int decode_exec(Decode *s) {
   INSTPAT("0000001 ????? ????? 011 ????? 01100 11", mulhu  , R, regW(rd) = ((uint64_t)src1 * (uint64_t)src2) >> 32);
   INSTPAT("0000001 ????? ????? 100 ????? 01100 11", div    , R, regW(rd) = (src2 == 0) ? -1 : (src1 == INT32_MIN && src2 == -1) ? INT32_MIN : (int32_t)src1 / (int32_t)src2);
   INSTPAT("0000001 ????? ????? 101 ????? 01100 11", divu   , R, regW(rd) = (src2 == 0) ? -1 : src1 / src2);
-  INSTPAT("0000001 ????? ????? 110 ????? 01100 11", rem    , R, regW(rd) = (src2 == 0) ? src1 : (int32_t)src1 % (int32_t)src2);
+  INSTPAT("0000001 ????? ????? 110 ????? 01100 11", rem    , R, regW(rd) = (src2 == 0) ? src1 : (src1 == INT32_MIN && src2 == -1) ? 0 : (int32_t)src1 % (int32_t)src2);
   INSTPAT("0000001 ????? ????? 111 ????? 01100 11", remu   , R, regW(rd) = (src2 == 0) ? src1 : src1 % src2);
 
   // -----------------------------------------------Zicsr-----------------------------------------------  
