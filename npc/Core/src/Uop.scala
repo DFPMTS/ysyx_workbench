@@ -338,8 +338,10 @@ object CacheOpcode extends HasDecodeConfig {
 class CacheCtrlUop extends CoreBundle {
   val index = UInt(log2Up(DCACHE_SETS).W)
   val rtag = UInt(DCACHE_TAG.W)
+  val way = UInt(log2Up(DCACHE_WAYS).W)
   val wtag = UInt(DCACHE_TAG.W)
   val wmask = UInt(4.W)
+  val offset = UInt(log2Up(CACHE_LINE_B/4).W)
   val wdata = UInt(32.W)
   val opcode = UInt(4.W)
 }

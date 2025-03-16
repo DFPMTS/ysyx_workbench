@@ -1,8 +1,9 @@
 import chisel3._
 import chisel3.util._
 import chisel3.SpecifiedDirection.Flip
+import utils._
 
-class IFUIO extends Bundle {
+class IFUIO extends CoreBundle {
   // * Invalidate whole ICache
   val flushICache = Input(Bool())
   // * Redirect PC
@@ -19,7 +20,7 @@ class IFUIO extends Bundle {
   val IN_trapCSR = Flipped(new TrapCSR)
 
   // * AXI master interface
-  val master = new AXI4(32, 32)
+  val master = new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
 }
 
 // * PTW Request id = 0
@@ -113,7 +114,7 @@ class IFU extends Module with HasPerfCounters {
   monitorEvent(ifuStalled, validBuffer && ~reset.asBool)
 }
 
-class FetchCacheLine extends Module {
+class FetchCacheLine extends CoreModule {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(UInt(32.W)))
     val out = new Bundle {
@@ -122,7 +123,7 @@ class FetchCacheLine extends Module {
       val valid  = Bool()
       val fin    = Bool()
     }
-    val master = new AXI4(32, 32)
+    val master = new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
   })
 
   val data = Reg(Vec(4, UInt(32.W)))
@@ -182,18 +183,22 @@ class FetchCacheLine extends Module {
   io.master.b.ready := false.B
 
   io.out.offset := rCnt
-  io.out.data   := io.master.r.bits.data
+  val readDataVec = Wire(Vec(8, UInt(32.W)))
+  val idx = Cat(addr(4), rCnt(1, 0))
+  dontTouch(idx)
+  readDataVec := io.master.r.bits.data.asTypeOf(readDataVec)
+  io.out.data   := readDataVec(idx)
   io.out.valid  := io.master.r.valid && state === sFill
   io.out.fin    := state === sFill && rCnt === 4.U
   io.in.ready   := state === sIdle
 }
 
-class ICache extends Module with HasPerfCounters {
+class ICache extends CoreModule with HasPerfCounters {
   val io = IO(new Bundle {
     val in          = Flipped(Decoupled(UInt(32.W)))
     val out         = Decoupled(UInt(32.W))
     val flushICache = Input(Bool())
-    val master      = new AXI4(32, 32)
+    val master      = new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
   })
   val numCacheLine = 4
 
@@ -261,11 +266,11 @@ class ICache extends Module with HasPerfCounters {
   monitorEvent(icacheMiss, state === sIdle && !hit)
 }
 
-class FullyAssocICache extends Module with HasPerfCounters {
+class FullyAssocICache extends CoreModule with HasPerfCounters {
   val io = IO(new Bundle {
     val in     = Flipped(Decoupled(UInt(32.W)))
     val out    = Decoupled(UInt(32.W))
-    val master = new AXI4(32, 32)
+    val master = new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
   })
   val numCacheLine = 3
 

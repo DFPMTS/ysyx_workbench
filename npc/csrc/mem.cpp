@@ -7,6 +7,7 @@
 #include <cstring>
 #include <ctime>
 #include <iostream>
+#include <svdpi.h>
 
 #define OFFSET 0x80000000
 #define SIZE 0x08000000
@@ -51,7 +52,7 @@ uint8_t mrom[MROM_SIZE];
 uint8_t flash[FLASH_SIZE];
 uint8_t psram[PSRAM_SIZE];
 uint8_t sdram[SDRAM_SIZE];
-#define ADDR_MASK (~0x3u)
+#define ADDR_MASK (~0x1Fu)
 #define BYTE_MASK (0xFFu)
 
 static bool in_pmem(paddr_t addr) { return addr - MEM_BASE < MEM_SIZE; }
@@ -141,25 +142,35 @@ void host_write(uint8_t *addr, mem_word_t wdata, unsigned char wmask) {
 }
 
 extern "C" {
-mem_word_t mem_read(paddr_t addr) {
-#ifdef MTRACE
-  if (begin_wave) {
-    log_write("(%lu)read:  0x%08x : ", eval_time, addr);
-  }
-#endif
+void mem_read(uint32_t addr, svBitVecVal *result) {
+  // #ifdef MTRACE
+  //   if (begin_wave) {
+  //     log_write("(%lu)read:  0x%08x : ", eval_time, addr);
+  //   }
+  // #endif
   auto raw_addr = addr;
   addr &= ADDR_MASK;
   bool valid = false;
   mem_word_t retval = 0;
   if (in_pmem(addr)) {
     valid = true;
-    retval = host_read(guest_to_host(addr));
+    // retval = host_read(guest_to_host(addr));
+    if (begin_wave) {
+      printf("addr = 0x%08x\n", raw_addr);
+    }
+
+    for (int i = 0; i < 8; ++i) {
+      result[i] = *((uint32_t *)guest_to_host(addr) + i);
+      if (begin_wave) {
+        printf("result[%d] = 0x%08x\n", i, result[i]);
+      }
+    }
   }
   if (in_clock(addr)) {
     access_device = true;
-#ifdef MTRACE
-    log_write("|clock| ");
-#endif
+    // #ifdef MTRACE
+    //     log_write("|clock| ");
+    // #endif
     valid = true;
     retval = clock_read(addr - RTC_ADDR);
   }
@@ -169,59 +180,66 @@ mem_word_t mem_read(paddr_t addr) {
     retval = uart_io_handler(raw_addr - UART_BASE, 1, 0, false);
     retval <<= (raw_addr - addr) * 8;
   }
-#ifdef MTRACE
-  if (begin_wave) {
-    if (valid)
-      log_write("<0x%08x / %lu>\n", retval, retval);
-    else
-      log_write("NOT VALID / NOT VALID\n");
-  }
-#endif
+  // #ifdef MTRACE
+  //   if (begin_wave) {
+  //     if (valid)
+  //       log_write("<0x%08x / %lu>\n", retval, retval);
+  //     else
+  //       log_write("NOT VALID / NOT VALID\n");
+  //   }
+  // #endif
   if (valid) {
-    return retval;
+
+  } else {
+    for (int i = 0; i < 8; ++i) {
+      result[i] = 0x57575757;
+    }
   }
   // if (running.load()) {
   //   running.store(false);
   //   Log("Invalid read to 0x%08x\n", raw_addr);
   // }
-  return 0x57575757;
-  return 0;
 }
 
-void mem_write(paddr_t addr, mem_word_t wdata, unsigned char wmask) {
+void mem_write(uint32_t addr, const svBitVecVal *wdata, uint32_t wmask) {
   if (!running.load())
     return;
   auto raw_addr = addr;
   addr &= ADDR_MASK;
-#ifdef MTRACE
-  if (begin_wave) {
-    log_write("(%lu)write: 0x%08x - %x : 0x%08x / %lu\n", eval_time, addr,
-              wmask, wdata, wdata);
-  }
-#endif
+  // #ifdef MTRACE
+  //   if (begin_wave) {
+  //     log_write("(%lu)write: 0x%08x - %x : 0x%08x / %lu\n", eval_time, addr,
+  //               wmask, wdata, wdata);
+  //   }
+  // #endif
   if (in_pmem(addr)) {
-    host_write(guest_to_host(addr), wdata, wmask);
+    // host_write(guest_to_host(addr), wdata, wmask);
+    for (int i = 0; i < 32; ++i) {
+      if ((wmask >> i) & 1) {
+        *((uint8_t *)guest_to_host(addr) + i) = ((uint8_t *)wdata)[i];
+      }
+    }
     return;
   }
-  if (in_serial(addr) && wmask == 1) {
-    access_device = true;
-#ifdef MTRACE
-    log_write("|serial|\n");
-#endif
-    serial_write(addr - SERIAL_PORT, wdata);
-    return;
-  }
+  //   if (in_serial(addr) && wmask == 1) {
+  //     access_device = true;
+  // #ifdef MTRACE
+  //     log_write("|serial|\n");
+  // #endif
+  //     serial_write(addr - SERIAL_PORT, wdata);
+  //     return;
+  //   }
   if (in_uart(raw_addr)) {
     access_device = true;
-    wdata >>= (raw_addr - addr) * 8;
-    uart_io_handler(raw_addr - UART_BASE, 1, (uint8_t)wdata, true);
+    uart_io_handler(raw_addr - UART_BASE, 1,
+                    ((uint8_t *)wdata)[raw_addr - addr], true);
     return;
   }
   Log("Invalid write to 0x%08x\n", raw_addr);
   running.store(false);
 }
 
-mem_word_t inst_fetch(paddr_t pc) { return mem_read(pc); }
+// mem_word_t inst_fetch(paddr_t pc) { return mem_read(pc); }
 
 void raise_ebreak() { running.store(false); }
 

@@ -31,11 +31,11 @@ trait HasCoreParameters {
   def IDIV_DELAY = 3
 
   // * Physical Register
-  def NUM_PREG = 64
+  def NUM_PREG = 48
   def PREG_IDX_W = log2Up(NUM_PREG).W
 
   // * ROB 
-  def ROB_SIZE = 33
+  def ROB_SIZE = 16
   def ROB_IDX_W = log2Up(ROB_SIZE).W
 
   // * Issue Queue
@@ -56,24 +56,29 @@ trait HasCoreParameters {
   // * Page Number Length
   def PAGE_NR_LEN = 20
 
+  // * Number of MSHR
+  def NUM_MSHR = 4
+
   // * Cache Line Size in Bytes
-  def CACHE_LINE = 4
+  def CACHE_LINE_B = 32
 
   // * DCache Ways
   def DCACHE_WAYS = 4
 
   // * DCache Sets
-  def DCACHE_SETS = 64
+  def DCACHE_SETS = 8
 
   // * DCache Tag Width
-  def DCACHE_TAG = XLEN - log2Up(DCACHE_SETS) - log2Up(CACHE_LINE)
+  def DCACHE_TAG = XLEN - log2Up(DCACHE_SETS) - log2Up(CACHE_LINE_B)
 
   // * AXI Data Width
-  def AXI_DATA_WIDTH = 32
+  def AXI_DATA_WIDTH = 256
 
   // * AXI Addr Width
   def AXI_ADDR_WIDTH = 32
 
+  def CacheLine = Vec(CACHE_LINE_B, UInt(8.W))
+  def CacheSet = Vec(DCACHE_WAYS, CacheLine)
 
   def ZERO = 0.U
 }

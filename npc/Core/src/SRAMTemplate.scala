@@ -3,23 +3,25 @@ import chisel3.util._
 import utils._
 
 
-class SRAMTemplateR(N: Int, width: Int, writeWidth: Int) extends CoreBundle {
+class SRAMTemplateR(N: Int, ways: Int, width: Int, writeWidth: Int) extends CoreBundle {
   val en = Bool()
   val addr = UInt(log2Up(N).W)
-  val rdata = Flipped(UInt(width.W))
+  val rdata = Flipped(Vec(ways, UInt(width.W)))
   def apply(paddr: UInt, en: Bool) = {
-    this.addr := paddr(log2Up(N) - 1 + log2Up(CACHE_LINE), log2Up(CACHE_LINE))
+    this.addr := paddr(log2Up(N) - 1 + log2Up(CACHE_LINE_B), log2Up(CACHE_LINE_B))
     this.en := en
   }
 }
 
-class SRAMTemplateRW(N: Int, width: Int, writeWidth: Int) extends SRAMTemplateR(N, width, writeWidth) {
+class SRAMTemplateRW(N: Int, ways: Int, width: Int, writeWidth: Int) extends SRAMTemplateR(N, ways, width, writeWidth) {
   val write = Bool()
   val wdata = UInt(width.W)
+  val way = UInt(log2Up(ways).W)
   val wmask = UInt((width / writeWidth).W)
-  def apply(paddr: UInt, write: UInt, mask: UInt, data: UInt, en: Bool) = {
-    this.addr := paddr(log2Up(N) - 1 + log2Up(CACHE_LINE), log2Up(CACHE_LINE))
+  def apply(paddr: UInt, write: UInt, way: UInt, mask: UInt, data: UInt, en: Bool) = {
+    this.addr := paddr(log2Up(N) - 1 + log2Up(CACHE_LINE_B), log2Up(CACHE_LINE_B))
     this.wmask := mask
+    this.way := way
     this.write := write
     this.wdata := data
     this.en := en
@@ -27,33 +29,40 @@ class SRAMTemplateRW(N: Int, width: Int, writeWidth: Int) extends SRAMTemplateR(
 }
 
 // * N: 数量 width: 元素宽度 writeWidth: wmask每一位对应的宽度
-class SRAMTemplateIO(N: Int, width: Int, writeWidth: Int) extends CoreBundle {  
-  val r = Flipped(new SRAMTemplateR(N, width, writeWidth))
-  val rw = Flipped(new SRAMTemplateRW(N, width, writeWidth))
+class SRAMTemplateIO(N: Int, ways: Int, width: Int, writeWidth: Int) extends CoreBundle {  
+  val r = Flipped(new SRAMTemplateR(N, ways, width, writeWidth))
+  val rw = Flipped(new SRAMTemplateRW(N, ways, width, writeWidth))
 }
 
 
-class SRAMTemplate(N: Int, width: Int, writeWidth: Int) extends CoreModule {
-  assert(width % writeWidth == 0)
-  val io = IO(new SRAMTemplateIO(N, width, writeWidth))
+class SRAMTemplate(N: Int, ways: Int, width: Int, writeWidth: Int) extends CoreModule {
+  val io = IO(new SRAMTemplateIO(N, ways, width, writeWidth))
 
-  val array = SyncReadMem(N, Vec(width / writeWidth, UInt(writeWidth.W)))
+  assert(width % writeWidth == 0, "width must be multiple of writeWidth")
 
-  val wDataVec = io.rw.wdata.asTypeOf(Vec(width / writeWidth, UInt(writeWidth.W)))
+  val numEntries = width / writeWidth
+  val PhysicalSet = Vec(ways * numEntries, UInt(writeWidth.W))
+  val Line = Vec(numEntries, UInt(writeWidth.W))
+  val Set = Vec(ways, Line)
+  val array = SyncReadMem(N, PhysicalSet)
+
+  val writeDataVec = Fill(ways, io.rw.wdata).asTypeOf(PhysicalSet) 
+  val writeMaskVec = (io.rw.wmask << (io.rw.way * numEntries.U)).take(numEntries * ways)
 
   // * Port0: R 读通道
-  val rDataVec = Wire(Vec(width / writeWidth, UInt(writeWidth.W)))
-  rDataVec := array.read(io.r.addr, io.r.en).asTypeOf(Vec(width / writeWidth, UInt(writeWidth.W)))
+  val rDataVec = Wire(Set)
+  rDataVec := array.read(io.r.addr, io.r.en).asTypeOf(Set)
   // * try bypass
   when (io.r.addr === io.rw.addr && io.rw.en && io.rw.write) {
-    for (i <- 0 until width / writeWidth) {
-      when (io.rw.wmask(i)) {
-        rDataVec(i) := wDataVec(i)
-      }
-    }
+    val writeLine = io.rw.wdata.asTypeOf(Line)
+    for (i <- 0 until numEntries) {
+      when(io.rw.wmask(i)) {
+        rDataVec(io.rw.way)(i) := writeLine(i)
+      }    
+    }    
   }
-  io.r.rdata := rDataVec.asUInt
+  io.r.rdata := rDataVec.asTypeOf(io.r.rdata)
 
   // * Port1: RW 读写通道
-  io.rw.rdata := array.readWrite(io.rw.addr, wDataVec, io.rw.wmask.asBools, io.rw.en, io.rw.write).asUInt
+  io.rw.rdata := array.readWrite(io.rw.addr, writeDataVec, writeMaskVec.asBools, io.rw.en, io.rw.write).asTypeOf(io.rw.rdata)
 }

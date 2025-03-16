@@ -5,8 +5,8 @@ import chisel3.experimental.dataview._
 
 class Core extends CoreModule {
   val io = IO(new Bundle {
-    val master    = new AXI4ysyxSoC(32, 32)
-    val slave     = Flipped(new AXI4ysyxSoC(32, 32))
+    val master    = new AXI4ysyxSoC(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
+    val slave     = Flipped(new AXI4ysyxSoC(AXI_DATA_WIDTH, AXI_ADDR_WIDTH))
     val interrupt = Input(Bool())
   })
 

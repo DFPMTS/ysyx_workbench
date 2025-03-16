@@ -1,7 +1,6 @@
 import chisel3._
 import chisel3.util._
-import os.stat
-import os.truncate
+import utils._
 
 // class AXI_Arbiter extends Module {
 //   val io = IO(new Bundle {
@@ -84,11 +83,11 @@ import os.truncate
 //   }
 // }
 
-class AXI_Arbiter extends Module {
+class AXI_Arbiter extends CoreModule {
   val io = IO(new Bundle {
-    val IFUMaster = Flipped(new AXI4(32, 32))
-    val LSUMaster = Flipped(new AXI4(32, 32))
-    val winMaster = new AXI4(32, 32)
+    val IFUMaster = Flipped(new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH))
+    val LSUMaster = Flipped(new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH))
+    val winMaster = new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
   })
 
   val sIdle :: sIFU :: sLSU :: Nil = Enum(3)
@@ -111,7 +110,7 @@ class AXI_Arbiter extends Module {
     )
   )
 
-  val win = Wire(Flipped(new AXI4(32, 32)))
+  val win = Wire(Flipped(new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)))
 
   win :>= io.LSUMaster
   win :>= io.IFUMaster

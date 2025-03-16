@@ -6,7 +6,7 @@ class MemRead extends HasBlackBoxInline {
     val clk    = Input(Clock())
     val addr   = Input(UInt(32.W))
     val en     = Input(UInt(1.W))
-    val data_r = Output(UInt(32.W))
+    val data_r = Output(UInt(256.W))
   })
   // addPath("Core/src/MemRead.v")
   setInline(
@@ -15,14 +15,14 @@ class MemRead extends HasBlackBoxInline {
       |    input clk,
       |    input  [31:0] addr,
       |    input         en,
-      |    output reg [31:0] data_r
+      |    output reg [255:0] data_r
       |);
       |    // synopsys translate_off
-      |    import "DPI-C" function int mem_read(input int addr);
+      |    import "DPI-C" function void mem_read(input int addr, output bit [255:0] data);
       |    
       |    always @(posedge clk) begin
-      |        if (en) data_r = mem_read(addr);
-      |        else data_r =  32'b0;
+      |        if (en) mem_read(addr, data_r);
+      |        else data_r =  256'b0;
       |    end
       |    // synopsys translate_on
       |
@@ -35,27 +35,27 @@ class MemWrite extends HasBlackBoxInline {
   val io = IO(new Bundle {
     val clk   = Input(Clock())
     val addr  = Input(UInt(32.W))
-    val wdata = Input(UInt(32.W))
+    val wdata = Input(UInt(256.W))
     val en    = Input(UInt(1.W))
-    val wmask = Input(UInt(4.W))
+    val wmask = Input(UInt(32.W))
   })
   setInline(
     "MemWrite.v",
     """module MemWrite (
       |    input clk,
       |    input [31:0] addr,
-      |    input [31:0] wdata,
+      |    input [255:0] wdata,
       |    input        en,
-      |    input [ 3:0] wmask
+      |    input [31:0] wmask
       |);
       |    // synopsys translate_off
       |    import "DPI-C" function void mem_write(
       |        input int  addr,
-      |        input int  wdata,
-      |        input byte wmask
+      |        input bit[255:0]  wdata,
+      |        input int wmask
       |    );
       |    always @(posedge clk) begin
-      |        if (en) mem_write(addr, wdata, {4'b0,wmask});
+      |        if (en) mem_write(addr, wdata, wmask);
       |    end
       |    // synopsys translate_on
       |

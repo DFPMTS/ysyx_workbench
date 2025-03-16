@@ -1,19 +1,18 @@
 import chisel3._
 import chisel3.util._
-import os.truncate
-import os.stat
+import utils._
 
 // ar.valid and aw.valid MUST NOT be high at the same time
-class SRAM extends Module {
-  val io = IO(Flipped(new AXI4(32, 32)))
+class SRAM extends CoreModule {
+  val io = IO(Flipped(new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)))
 
   val read_lat  = 0.U // LFSR16(3)
   val write_lat = 0.U // LFSR16(3)
   val counter   = RegInit(0.U(3.W))
 
-  val addr_buffer = Reg(UInt(32.W))
-  val data_buffer = Reg(UInt(32.W))
-  val strb_buffer = Reg(UInt(4.W))
+  val addr_buffer = Reg(UInt(AXI_ADDR_WIDTH.W))
+  val data_buffer = Reg(UInt(AXI_DATA_WIDTH.W))
+  val strb_buffer = Reg(UInt((AXI_ADDR_WIDTH / 8).W))
 
   val addr = MuxLookup(Cat(io.ar.fire, io.aw.fire), addr_buffer)(
     Seq("b10".U -> io.ar.bits.addr, "b01".U -> io.aw.bits.addr)
@@ -21,7 +20,9 @@ class SRAM extends Module {
   val data = Mux(io.w.fire, io.w.bits.data, data_buffer)
   val strb = Mux(io.w.fire, io.w.bits.strb, strb_buffer)
 
-  val out_data_buffer = Reg(UInt(32.W))
+  val out_data_buffer = Reg(UInt(AXI_DATA_WIDTH.W))
+  val arId = Reg(UInt(4.W))
+  val awId = Reg(UInt(4.W))
 
   val s_Idle :: s_Read :: s_Write :: s_Wait_W :: s_WriteUp :: Nil = Enum(5)
 
@@ -33,6 +34,7 @@ class SRAM extends Module {
     is(s_Idle) {
       when(io.ar.fire) {
         next_state := s_Read
+        arId := io.ar.bits.id
       }.elsewhen(io.aw.valid) {
         next_state := s_WriteUp        
       }
@@ -45,8 +47,10 @@ class SRAM extends Module {
     is(s_WriteUp) {
       when(io.aw.fire && io.w.fire) {
           next_state := s_Write
+          awId := io.aw.bits.id
       }.elsewhen(io.aw.fire) {
           next_state := s_Wait_W
+          awId := io.aw.bits.id
       }
     }
     is(s_Wait_W) {
@@ -125,8 +129,8 @@ class SRAM extends Module {
   io.r.bits.resp := 0.U
   io.r.bits.data := out_data_buffer
   io.r.bits.last := true.B
-  io.r.bits.id   := 0.U
+  io.r.bits.id   := arId
 
   io.b.bits.resp := 0.U
-  io.b.bits.id   := 0.U
+  io.b.bits.id   := awId
 }

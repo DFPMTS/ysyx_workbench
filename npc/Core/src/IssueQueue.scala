@@ -70,6 +70,13 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
   stqLimitPtr.flag := ~io.IN_stqBasePtr.flag
   stqLimitPtr.index := io.IN_stqBasePtr.index
 
+  val stqBeforeVec = Wire(Vec(IQ_SIZE, Bool()))
+  for (i <- 0 until IQ_SIZE) {
+    
+      stqBeforeVec(i) := queue(i).stqPtr.isBefore(stqLimitPtr)
+  
+  }
+  dontTouch(stqBeforeVec)
 
   val readyVec = (0 until IQ_SIZE).map(i => {
     (i.U < headIndex && (queue(i).src1Ready || writebackReady(i)(0)) && 
