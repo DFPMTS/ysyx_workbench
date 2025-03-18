@@ -56,6 +56,16 @@ class MSHR extends CoreBundle {
   // * data
   val wdata = UInt(XLEN.W)
   val wmask = UInt(4.W)
+
+  def loadAddrInFlight(addr: UInt) = {
+    valid && 
+    memReadAddr(XLEN - 1, log2Up(CACHE_LINE_B)) === addr(XLEN - 1, log2Up(CACHE_LINE_B)) &&
+    !axiReadDone
+  }
+
+  def cacheLocation() = {
+    Cat(way, memWriteAddr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B)))
+  }
 }
 
 class CacheController extends CoreModule {
@@ -151,10 +161,15 @@ class CacheController extends CoreModule {
   val wMaskReg = Reg(UInt(4.W))
 
   // * forward load data
-  io.OUT_memLoadFoward.valid := io.OUT_axi.r.valid
-  io.OUT_memLoadFoward.bits.addr := mshr(axiRId).memReadAddr
-  io.OUT_memLoadFoward.bits.data := io.OUT_axi.r.bits.data
-  io.OUT_memLoadFoward.bits.uncached := mshr(axiRId).uncached
+  val memLoadFowardValidReg = RegInit(false.B)
+  val memLoadFowardReg = Reg(new MemLoadFoward)
+  memLoadFowardValidReg := io.OUT_axi.r.valid
+  memLoadFowardReg.addr := mshr(axiRId).memReadAddr
+  memLoadFowardReg.data := io.OUT_axi.r.bits.data
+  memLoadFowardReg.uncached := mshr(axiRId).uncached
+
+  io.OUT_memLoadFoward.valid := memLoadFowardValidReg
+  io.OUT_memLoadFoward.bits := memLoadFowardReg
 
   // * cache interface
   // ** cache read
@@ -228,6 +243,7 @@ class CacheController extends CoreModule {
       val arMSHR = mshr(arMSHRIndex)
       arValidReg := arMSHR.needReadMem
       arAddrReg := arMSHR.memReadAddr
+      arIdReg := arMSHRIndex
       arMSHR.needReadMem := false.B
     }.otherwise {
       arValidReg := false.B
@@ -238,11 +254,12 @@ class CacheController extends CoreModule {
   io.OUT_axi.ar.bits.len := 0.U
   io.OUT_axi.ar.bits.size := 2.U
   io.OUT_axi.ar.bits.burst := 1.U
-  io.OUT_axi.ar.bits.id := 0.U
+  io.OUT_axi.ar.bits.id := arIdReg
   
   // ** aw
   val awValidReg = RegInit(false.B)
   val awAddrReg = RegInit(0.U(AXI_ADDR_WIDTH.W))
+  val awIdReg = Reg(UInt(4.W))
 
   // ** Select MSHR to write Mem (AW channel)
   val awMSHRVec = mshr.map(e => (e.valid && e.needWriteMem))
@@ -253,6 +270,7 @@ class CacheController extends CoreModule {
       val awMSHR = mshr(awMSHRIndex)
       awValidReg := awMSHR.needWriteMem
       awAddrReg := awMSHR.memWriteAddr
+      awIdReg := awMSHRIndex
       awMSHR.needWriteMem := false.B
     }.otherwise {
       awValidReg := false.B
@@ -263,7 +281,7 @@ class CacheController extends CoreModule {
   io.OUT_axi.aw.bits.len := 0.U
   io.OUT_axi.aw.bits.size := 2.U
   io.OUT_axi.aw.bits.burst := 1.U
-  io.OUT_axi.aw.bits.id := 0.U
+  io.OUT_axi.aw.bits.id := awIdReg
 
   // ** w
   io.OUT_axi.w.valid := wValidReg

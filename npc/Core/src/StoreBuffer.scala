@@ -9,7 +9,7 @@ class StoreAck extends CoreBundle {
 
 class StoreBufferIO extends CoreBundle {
   val IN_storeUop = Flipped(Decoupled(new AGUUop))
-  val OUT_storeUop = Valid(new AGUUop)
+  val OUT_storeUop = Decoupled(new AGUUop)
   val IN_storeAck = Flipped(Valid(new StoreAck))
 
   val IN_storeBypassReq = Flipped(new StoreBypassReq)
@@ -30,7 +30,9 @@ class StoreBuffer extends CoreModule {
     uopValid := true.B
     uopIssued := false.B
   }.otherwise {
-    uopIssued := true.B
+    when(io.OUT_storeUop.fire) {
+      uopIssued := true.B
+    }
   }
 
   def getWmask(aguUop: AGUUop): UInt = {

@@ -242,9 +242,9 @@ class StoreBypassResp extends CoreBundle {
 }
 
 class NewLSUIO extends CoreBundle {
-  val IN_loadUop = Flipped(Valid(new AGUUop))
+  val IN_loadUop = Flipped(Decoupled(new AGUUop))
   val OUT_loadNegAck = Valid(new LoadNegAck)
-  val IN_storeUop = Flipped(Valid(new AGUUop))
+  val IN_storeUop = Flipped(Decoupled(new AGUUop))
   val OUT_storeAck = Valid(new StoreAck)
   // * Store Queue Bypass
   val OUT_storeBypassReq = new StoreBypassReq
@@ -279,7 +279,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   replaceCounter := Mux(replaceCounter === DCACHE_WAYS.U - 1.U, 0.U, replaceCounter + 1.U)
 
   // * Submodules
-  val loadResultBuffer = Module(new LoadResultBuffer)
+  val loadResultBuffer = Module(new LoadResultBuffer(2))
   val uncachedLSU = Module(new UncachedLSU)
 
   io.OUT_cacheCtrlUop.valid := false.B
@@ -303,25 +303,65 @@ class NewLSU extends CoreModule with HasLSUOps {
 
   val cacheCtrlUop = Reg(new CacheCtrlUop)
   val cacheCtrlUopValid = RegInit(false.B)  
+
+  val cacheUopNext = WireInit(0.U.asTypeOf(new CacheCtrlUop))
+  val cacheUopValidNext = WireInit(false.B)
+  
   io.OUT_cacheCtrlUop.valid := cacheCtrlUopValid
   io.OUT_cacheCtrlUop.bits := cacheCtrlUop
   when(io.OUT_cacheCtrlUop.fire) {  
     cacheCtrlUopValid := false.B
   }
 
-  val hasMSHRInFlight = io.IN_mshrs.map(_.valid).reduce(_ || _)
-  val idle = !writeTag && !cacheCtrlUopValid && loadResultBuffer.io.IN_loadResult.ready && io.OUT_dataReq.ready && io.OUT_tagReq.ready && !hasMSHRInFlight && !storeWriteData && !storeStageValid(0) && !loadStageValid(0)
+  def isLoadAddrAlreadyInFlight(addr: UInt) = {
+    io.IN_mshrs.map(e => e.loadAddrInFlight(addr)).reduce(_ || _) ||
+    (io.OUT_cacheCtrlUop.valid && io.OUT_cacheCtrlUop.bits.loadAddrAlreadyInFlight(addr))
+  }
+
+  def isMSHRConflict(uop: CacheCtrlUop) = {
+    val conflict = WireInit(false.B)
+    for(i <- 0 until NUM_MSHR) {
+      when (io.IN_mshrs(i).valid) {
+        // * Read after write: read must be processed after write to mem. Note that mshr(i)/uop can be different cache line
+        when(io.IN_mshrs(i).memWriteAddr(XLEN - 1, log2Up(CACHE_LINE_B)) === uop.readAddr()(XLEN - 1, log2Up(CACHE_LINE_B))) {
+          conflict := true.B
+        }
+        // * the cache line has another inflight operation
+        when(io.IN_mshrs(i).cacheLocation() === uop.cacheLocation()) {
+          conflict := true.B
+        }
+      }
+    }
+    
+    when(io.OUT_cacheCtrlUop.valid) {
+      // * RAW
+      when(io.OUT_cacheCtrlUop.bits.writeAddr()(XLEN - 1, log2Up(CACHE_LINE_B)) === uop.readAddr()(XLEN - 1, log2Up(CACHE_LINE_B))) {
+        conflict := true.B
+      }
+      // * same cache lien
+      when(io.OUT_cacheCtrlUop.bits.cacheLocation() === uop.cacheLocation()) {
+        conflict := true.B
+      }
+    }
+
+    conflict
+  }
+
+  val idle = !writeTag && io.OUT_dataReq.ready && io.OUT_tagReq.ready && !storeWriteData
   // ** For now, we only support one load/store at a time
   val serveLoad = idle && (!Addr.isUncached(io.IN_loadUop.bits.addr) || uncachedLSU.io.IN_loadUop.ready)
   val serveStore = idle && !io.IN_loadUop.valid && (!Addr.isUncached(io.IN_storeUop.bits.addr) || uncachedLSU.io.IN_storeUop.ready)
-  // ** and we generate negack as some kind of "not ready" signal
-  io.OUT_loadNegAck.valid := io.IN_loadUop.valid && !serveLoad
-  io.OUT_loadNegAck.bits.ldqPtr := io.IN_loadUop.bits.ldqPtr
-  io.OUT_loadNegAck.bits.dest := io.IN_loadUop.bits.dest
 
-  io.OUT_storeAck.valid := io.IN_storeUop.valid
-  io.OUT_storeAck.bits.index := io.IN_storeUop.bits.stqPtr.index
-  io.OUT_storeAck.bits.resp :=  !serveStore
+  io.IN_loadUop.ready := serveLoad
+  io.IN_storeUop.ready := serveStore
+
+  val loadNegAck = Reg(new LoadNegAck)
+  val loadNegAckValid = RegInit(false.B)
+  val storeAck = Reg(new StoreAck)
+  val storeAckValid = RegInit(false.B)
+
+  loadNegAckValid := false.B
+  storeAckValid := false.B
 
   val tagResp = Wire(Vec(DCACHE_WAYS, new DTag))
   tagResp := io.IN_tagResp.tags
@@ -338,7 +378,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   val inStoreUop = io.IN_storeUop.bits
   val storeIsUncached = Addr.isUncached(inStoreUop.addr)
   val storeIsInternalMMIO = Addr.isInternalMMIO(inStoreUop.addr)
-  val storeUop = io.IN_storeUop.valid && serveStore && (!storeIsUncached || storeIsInternalMMIO)
+  val storeUop = io.IN_storeUop.valid && serveStore
   storeStage(0) := inStoreUop
   storeStageValid(0) := storeUop
 
@@ -385,6 +425,23 @@ class NewLSU extends CoreModule with HasLSUOps {
     }
   }
 
+  /* 
+        writeTag := true.B
+      io.OUT_tagReq.valid := true.B
+      io.OUT_tagReq.bits.addr := loadUop.addr
+      io.OUT_tagReq.bits.write := true.B
+      io.OUT_tagReq.bits.way := replaceCounter
+      val dtag = Wire(new DTag)
+      dtag.valid := true.B
+      dtag.tag := loadUop.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+      io.OUT_tagReq.bits.data := dtag
+
+   */
+  val loadNeedCacheUop = WireInit(false.B)
+  val storeNeedCacheUop = WireInit(false.B)
+  dontTouch(loadNeedCacheUop)
+  dontTouch(storeNeedCacheUop)
+
   // ** Load/Store Stage 1
   
   // * Load Result
@@ -400,23 +457,13 @@ class NewLSU extends CoreModule with HasLSUOps {
   val loadTagHitOH = tagResp.map(e => e.valid && e.tag === loadTag)
   val loadTagHit = loadTagHitOH.reduce(_ || _)
   val loadTagHitWay = OHToUInt(loadTagHitOH)
-
-  val loadMSHRConflict = io.IN_mshrs(0).valid && 
-    io.IN_mshrs(0).memReadAddr(XLEN - 1, log2Up(CACHE_LINE_B * 8)) === loadStage(0).addr(XLEN - 1, log2Up(CACHE_LINE_B * 8))
-  val loadCacheCtrlConflict = cacheCtrlUopValid && 
-    Cat(cacheCtrlUop.rtag, cacheCtrlUop.index) === loadStage(0).addr(XLEN - 1, log2Up(CACHE_LINE_B * 8))
-  val loadHit = loadTagHit && !loadMSHRConflict && !loadCacheCtrlConflict
+  val loadHit = loadTagHit
   // * store cache hit or miss
   val storeTag = storeStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
   val storeTagHitOH = tagResp.map(e => e.valid && e.tag === storeTag)
   val storeTagHit = storeTagHitOH.reduce(_ || _)
   val storeTagHitWay = OHToUInt(storeTagHitOH)
-
-  val storeMSHRConflict = io.IN_mshrs(0).valid && 
-    io.IN_mshrs(0).memReadAddr(XLEN - 1, log2Up(CACHE_LINE_B * 8)) === storeStage(0).addr(XLEN - 1, log2Up(CACHE_LINE_B * 8))
-  val storeCacheCtrlConflict = cacheCtrlUopValid &&
-    Cat(cacheCtrlUop.rtag, cacheCtrlUop.index) === storeStage(0).addr(XLEN - 1, log2Up(CACHE_LINE_B * 8))
-  val storeHit = storeTagHit && !storeMSHRConflict && !storeCacheCtrlConflict
+  val storeHit = storeTagHit
 
   def getWmask(aguUop: AGUUop): UInt = {
     val memLen = aguUop.opcode(2, 1)
@@ -431,6 +478,33 @@ class NewLSU extends CoreModule with HasLSUOps {
     wmask
   }
 
+  val canServeCacheUop = (!cacheCtrlUopValid || io.OUT_cacheCtrlUop.ready) && 
+                         (!cacheUopValidNext || !isMSHRConflict(cacheUopNext))
+
+  when(loadNeedCacheUop && canServeCacheUop) {
+    // * Write tag
+    writeTag := true.B
+    io.OUT_tagReq.valid := true.B
+    io.OUT_tagReq.bits.addr := loadStage(0).addr
+    io.OUT_tagReq.bits.write := true.B
+    io.OUT_tagReq.bits.way := replaceCounter
+    val dtag = Wire(new DTag)
+    dtag.valid := true.B
+    dtag.tag := loadStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+    io.OUT_tagReq.bits.data := dtag
+  }.elsewhen(storeNeedCacheUop && canServeCacheUop) {
+    // * Write tag
+    writeTag := true.B
+    io.OUT_tagReq.valid := true.B
+    io.OUT_tagReq.bits.addr := storeStage(0).addr
+    io.OUT_tagReq.bits.write := true.B
+    io.OUT_tagReq.bits.way := replaceCounter
+    val dtag = Wire(new DTag)
+    dtag.valid := true.B
+    dtag.tag := storeStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+    io.OUT_tagReq.bits.data := dtag
+  }
+
   when(loadStageValid(0) || uncachedLSU.io.OUT_loadUop.valid) {
     val bypassData =  Wire(Vec(4, UInt(8.W)))
     val bypassDataMask = io.IN_storeBypassResp.mask | io.IN_storeBufferBypassResp.mask
@@ -443,7 +517,8 @@ class NewLSU extends CoreModule with HasLSUOps {
     }
     val loadMask = getWmask(loadStage(0))
     val isInternalMMIO = Addr.isInternalMMIO(loadStage(0).addr)
-    val hit = (loadHit || (~bypassDataMask & loadMask) === 0.U) || isInternalMMIO
+    val loadAddrAlreadyInFlight = isLoadAddrAlreadyInFlight(loadStage(0).addr)
+    val loadCacheHit = ((loadHit || (~bypassDataMask & loadMask) === 0.U) || isInternalMMIO) && !loadAddrAlreadyInFlight
     val wordOffset = loadStage(0).addr(log2Up(CACHE_LINE_B) - 1, 2)
     dontTouch(wordOffset)
     val loadWord = dataResp(loadTagHitWay)(wordOffset).asUInt
@@ -465,38 +540,56 @@ class NewLSU extends CoreModule with HasLSUOps {
 
     val loadUop = Mux(serveUncache, uncacheLoadUop, loadStage(0))
 
-    when(!serveUncache && !isInternalMMIO && !hit) {
-      // * Cache Miss
-      // * Write tag
-      writeTag := true.B
-      io.OUT_tagReq.valid := true.B
-      io.OUT_tagReq.bits.addr := loadUop.addr
-      io.OUT_tagReq.bits.write := true.B
-      io.OUT_tagReq.bits.way := replaceCounter
-      val dtag = Wire(new DTag)
-      dtag.valid := true.B
-      dtag.tag := loadUop.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
-      io.OUT_tagReq.bits.data := dtag
-      // * Cache Controller
-      cacheCtrlUopValid := true.B
-      cacheCtrlUop.index := loadUop.addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
-      cacheCtrlUop.rtag := loadUop.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
-      cacheCtrlUop.wtag := tagResp(replaceCounter).tag
-      cacheCtrlUop.way := replaceCounter
-      cacheCtrlUop.wmask := 0.U
-      cacheCtrlUop.wdata := 0.U
-      cacheCtrlUop.opcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
-    }
+
+    // * If there is no space in LoadResultBuffer, must fail
+
+    // * For cached load, miss when [tag miss] || [mshr conflict]
+    // * For uncached/internal MMIO load, never miss
+
+    // * One load have two control signals: [miss] and [need cache uop]
+    // * negAck: miss && !canServeCacheUop
+
+    val miss = !serveUncache && !isInternalMMIO && !loadCacheHit
+    val loadMiss = miss && !loadAddrAlreadyInFlight && loadResultBuffer.io.IN_loadResult.ready    
+    // ! ?????? 逻辑一团乱, 跑sum继续debug
+    // * NegAck
+    loadNegAckValid := false.B
+    loadNegAck.dest := loadUop.dest
+    loadNegAck.ldqPtr := loadUop.ldqPtr
+    // * LoadResult
     loadResultValid := true.B
     loadResult.data := Mux(serveUncache, uncacheLoadData, Mux(isInternalMMIO, io.IN_mmioResp.data, finalData.asUInt))
-    loadResult.ready := Mux(serveUncache || isInternalMMIO, true.B, hit)
+    loadResult.ready := Mux(serveUncache || isInternalMMIO, true.B, loadCacheHit)
     loadResult.bypassMask := Mux(serveUncache || isInternalMMIO, Fill(XLEN/8, "b1".U), bypassDataMask | ~loadMask)
     loadResult.addr := loadUop.addr
     loadResult.opcode := loadUop.opcode
     loadResult.prd := loadUop.prd
     loadResult.robPtr := loadUop.robPtr
     loadResult.dest := loadUop.dest
-  }.elsewhen(storeStageValid(0)) {
+
+    when(!loadResultBuffer.io.IN_loadResult.ready) {
+      loadNegAckValid := true.B
+    }.elsewhen(miss) {
+      when(!loadAddrAlreadyInFlight) {
+        loadNeedCacheUop := true.B
+        // * Cache Miss Info
+        cacheUopValidNext := true.B
+        cacheUopNext.index := loadUop.addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
+        cacheUopNext.rtag := loadUop.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+        cacheUopNext.wtag := tagResp(replaceCounter).tag
+        cacheUopNext.way := replaceCounter
+        cacheUopNext.wmask := 0.U
+        cacheUopNext.wdata := 0.U
+        cacheUopNext.opcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
+      }
+      
+      when(loadNeedCacheUop && !canServeCacheUop) {
+        loadNegAckValid := true.B
+        loadResultValid := false.B
+      }
+    }
+  }
+  when(!loadStageValid(0) && storeStageValid(0)) {
     val memLen = storeStage(0).opcode(2, 1)
     val addrOffset = storeStage(0).addr(log2Up(XLEN/8) - 1, 0)
     val wmask = MuxLookup(memLen, 0.U(4.W))(
@@ -506,10 +599,18 @@ class NewLSU extends CoreModule with HasLSUOps {
         2.U(2.W) -> "b1111".U
       )
     ) << addrOffset
-    val isInternalMMIO = Addr.isInternalMMIO(storeStage(0).addr)
-    when(isInternalMMIO){
 
-    }.elsewhen(storeHit) {
+    storeAckValid := true.B
+    storeAck.index := storeStage(0).stqPtr.index
+    storeAck.resp := 1.U
+    val storeAddrAlreadyInFlight = isLoadAddrAlreadyInFlight(storeStage(0).addr)
+    val isInternalMMIO = Addr.isInternalMMIO(storeStage(0).addr)
+    val isUncached = Addr.isUncached(storeStage(0).addr)
+    when(isUncached) {
+      storeAck.resp := 0.U
+    }.elsewhen(isInternalMMIO){
+      storeAck.resp := 0.U
+    }.elsewhen(storeHit && !storeAddrAlreadyInFlight) {
       val offset = storeStage(0).addr(log2Up(CACHE_LINE_B) - 1, 2)
       // * Cache Hit - Write data
       io.OUT_dataReq.valid := true.B
@@ -519,31 +620,39 @@ class NewLSU extends CoreModule with HasLSUOps {
       io.OUT_dataReq.bits.wmask := wmask << (offset * 4.U)
       io.OUT_dataReq.bits.data := storeStage(0).wdata << (storeStage(0).addr(log2Up(CACHE_LINE_B) - 1, 0) << 3)
       storeWriteData := true.B
-    }.otherwise {
-      // * Cache Miss
-      // * Write tag
-      writeTag := true.B
-      io.OUT_tagReq.valid := true.B
-      io.OUT_tagReq.bits.addr := storeStage(0).addr
-      io.OUT_tagReq.bits.write := true.B
-      io.OUT_tagReq.bits.way := replaceCounter
-      val dtag = Wire(new DTag)
-      dtag.valid := true.B
-      dtag.tag := storeStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
-      io.OUT_tagReq.bits.data := dtag
+      when (io.OUT_dataReq.ready) {     
+        storeAck.resp := 0.U 
+      }
+    }.elsewhen(!storeAddrAlreadyInFlight) {
+      storeNeedCacheUop := true.B
       // * Cache Controller
-      cacheCtrlUopValid := true.B  
-      cacheCtrlUop.index := storeStage(0).addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
-      cacheCtrlUop.rtag := storeStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
-      cacheCtrlUop.way := replaceCounter
-      cacheCtrlUop.wtag := tagResp(replaceCounter).tag
-      cacheCtrlUop.wdata := storeStage(0).wdata << (storeStage(0).addr(1, 0) << 3)
-      cacheCtrlUop.wmask := wmask
-      cacheCtrlUop.offset := storeStage(0).addr(log2Up(CACHE_LINE_B) - 1, 2)
-      cacheCtrlUop.opcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
+      cacheUopValidNext := true.B  
+      cacheUopNext.index := storeStage(0).addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
+      cacheUopNext.rtag := storeStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+      cacheUopNext.way := replaceCounter
+      cacheUopNext.wtag := tagResp(replaceCounter).tag
+      cacheUopNext.wdata := storeStage(0).wdata << (storeStage(0).addr(1, 0) << 3)
+      cacheUopNext.wmask := wmask
+      cacheUopNext.offset := storeStage(0).addr(log2Up(CACHE_LINE_B) - 1, 2)
+      cacheUopNext.opcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
+      
+      when (canServeCacheUop) {
+        storeAck.resp := 0.U
+      }
     }
   }
 
+  when(canServeCacheUop) {
+    cacheCtrlUopValid := cacheUopValidNext
+    cacheCtrlUop := cacheUopNext
+  }
+
+  io.OUT_loadNegAck.valid := loadNegAckValid
+  io.OUT_loadNegAck.bits := loadNegAck
+
+  io.OUT_storeAck.valid := storeAckValid
+  io.OUT_storeAck.bits := storeAck
+  
   // * Output 
   io.OUT_writebackUop <> loadResultBuffer.io.OUT_writebackUop
 }
@@ -592,7 +701,7 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
   // Forward load data to all entries
   for (i <- 0 until N) {
     when(io.IN_memLoadFoward.valid &&
-          io.IN_memLoadFoward.bits.addr(XLEN - 1, log2Up(AXI_DATA_WIDTH - 1)) === entries(i).addr(XLEN - 1, log2Up(AXI_DATA_WIDTH - 1))) {
+          io.IN_memLoadFoward.bits.addr(XLEN - 1, log2Up(AXI_DATA_WIDTH / 8)) === entries(i).addr(XLEN - 1, log2Up(AXI_DATA_WIDTH / 8))) {
       val data = Wire(Vec(4, UInt(8.W)))
       data := entries(i).data.asTypeOf(data)
       val offset = Cat(entries(i).addr(log2Up(CACHE_LINE_B) - 1, 2), 0.U(2.W))

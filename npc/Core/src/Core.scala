@@ -244,10 +244,8 @@ class Core extends CoreModule {
 
   loadArb.io.IN_AGUUop <> loadQueue.io.OUT_ldUop
   loadArb.io.IN_PTWUop <> ptw.io.OUT_PTWUop
-  lsu.io.IN_loadUop.valid := loadArb.io.OUT_AGUUop.valid
-  lsu.io.IN_loadUop.bits := loadArb.io.OUT_AGUUop.bits
+  lsu.io.IN_loadUop <> loadArb.io.OUT_AGUUop
   lsu.io.IN_flush := flush
-  loadArb.io.OUT_AGUUop.ready := true.B
   
   val aguUop = Wire(Valid(new AGUUop))
   dontTouch(aguUop)

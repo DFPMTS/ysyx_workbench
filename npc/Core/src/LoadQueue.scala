@@ -93,7 +93,6 @@ class LoadQueue extends CoreModule {
   }
 
   // * issue logic
-  uopValid := false.B
   when(io.OUT_ldUop.ready || !uopValid) {
     uop := ldq(ldqIssueIndex)
     uopValid := hasIssueReady

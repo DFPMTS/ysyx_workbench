@@ -73,8 +73,8 @@ int main(int argc, char *argv[]) {
     running.store(false);
   });
   while (running.load()) {
-    // if (state.getInstRetired() > 555331000) {
-    // begin_wave = true;
+    // if (state.getInstRetired() > 416450) {
+    //   begin_wave = true;
     // }
     cpu_step();
     state.log(totalCycles);

@@ -344,6 +344,23 @@ class CacheCtrlUop extends CoreBundle {
   val offset = UInt(log2Up(CACHE_LINE_B/4).W)
   val wdata = UInt(32.W)
   val opcode = UInt(4.W)
+  
+  def loadAddrAlreadyInFlight(addr: UInt) = {
+    (opcode === CacheOpcode.LOAD || opcode === CacheOpcode.REPLACE) &&
+    addr(XLEN - 1, log2Up(CACHE_LINE_B)) === Cat(rtag, index)
+  }
+
+  def readAddr() = {
+    Cat(rtag, index, offset, 0.U(2.W))
+  }
+
+  def writeAddr() = {
+    Cat(wtag, index, 0.U(log2Up(CACHE_LINE_B).W))
+  }
+
+  def cacheLocation() = {
+    Cat(way, index)
+  }
 }
 
 object Addr {

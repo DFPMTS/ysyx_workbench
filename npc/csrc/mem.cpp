@@ -156,7 +156,7 @@ void mem_read(uint32_t addr, svBitVecVal *result) {
     valid = true;
     // retval = host_read(guest_to_host(addr));
     if (begin_wave) {
-      printf("addr = 0x%08x\n", raw_addr);
+      printf("addr = 0x%08x\n", addr);
     }
 
     for (int i = 0; i < 8; ++i) {
@@ -213,6 +213,13 @@ void mem_write(uint32_t addr, const svBitVecVal *wdata, uint32_t wmask) {
   //   }
   // #endif
   if (in_pmem(addr)) {
+    if (begin_wave) {
+      printf("addr = 0x%08x\n", addr);
+      printf("wmask = 0x%08x\n", wmask);
+      for (int i = 0; i < 8; ++i) {
+        printf("wdata[%d] = 0x%08x\n", i, ((uint32_t *)wdata)[i]);
+      }
+    }
     // host_write(guest_to_host(addr), wdata, wmask);
     for (int i = 0; i < 32; ++i) {
       if ((wmask >> i) & 1) {
