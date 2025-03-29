@@ -227,6 +227,8 @@ class DecodeUop extends CoreBundle{
   val predTarget = UInt(XLEN.W)
   val compressed = Bool()
 
+  val lockBackend = Bool()
+
   // * debug
   val inst = UInt(32.W)
 }
@@ -253,6 +255,8 @@ class RenameUop extends CoreBundle {
   
   val fuType = UInt(FuTypeWidth.W)
   val opcode = UInt(OpcodeWidth.W)
+
+  val lockBackend = Bool()
 
   val predTarget = UInt(XLEN.W)
   val compressed = Bool()
@@ -313,25 +317,25 @@ class CommitUop extends CoreBundle {
 }
 
 object CacheOpcode extends HasDecodeConfig {
-  val LOAD = 0.U(4.W)       // cache[index0][assoc_id0] <- mem[addr0]
-  val REPLACE = 1.U(4.W)    // mem[addr0] <- cache[index0][assoc_id0], cache[index1][assoc_id1] <- mem[addr1]
+  val LOAD       = 0.U(4.W) // cache[index0][assoc_id0] <- mem[addr0]
+  val REPLACE    = 1.U(4.W) // mem[addr0] <- cache[index0][assoc_id0], cache[index1][assoc_id1] <- mem[addr1]
   val INVALIDATE = 2.U(4.W) // mem[addr0] <- cache[index0][assoc_id0]
 
   val UNCACHED_LB = 8.U(4.W)
   val UNCACHED_LH = 9.U(4.W)
   val UNCACHED_LW = 10.U(4.W)
-  val UNCACHED_SB = 11.U(4.W)
-  val UNCACHED_SH = 12.U(4.W)
-  val UNCACHED_SW = 13.U(4.W)
+  val UNCACHED_SB = 12.U(4.W)
+  val UNCACHED_SH = 13.U(4.W)
+  val UNCACHED_SW = 14.U(4.W)
 
   def isUnCached(opcode: UInt) = {
-    opcode === UNCACHED_LB || opcode === UNCACHED_LH || opcode === UNCACHED_LW || opcode === UNCACHED_SB || opcode === UNCACHED_SH || opcode === UNCACHED_SW
+    opcode(3)
   }
   def isUnCachedLoad(opcode: UInt) = {
-    opcode === UNCACHED_LB || opcode === UNCACHED_LH || opcode === UNCACHED_LW
+    isUnCached(opcode) && !opcode(2)
   }
   def isUnCachedStore(opcode: UInt) = {
-    opcode === UNCACHED_SB || opcode === UNCACHED_SH || opcode === UNCACHED_SW
+    isUnCached(opcode) && opcode(2)
   }
 }
 

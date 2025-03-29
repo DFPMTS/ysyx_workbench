@@ -6,8 +6,8 @@ import utils._
 class SRAM extends CoreModule {
   val io = IO(Flipped(new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)))
 
-  val read_lat  = 0.U // LFSR16(3)
-  val write_lat = 0.U // LFSR16(3)
+  val read_lat  = 80.U // LFSR16(3)
+  val write_lat = 80.U // LFSR16(3)
   val counter   = RegInit(0.U(3.W))
 
   val addr_buffer = Reg(UInt(AXI_ADDR_WIDTH.W))

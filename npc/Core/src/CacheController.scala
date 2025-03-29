@@ -214,12 +214,12 @@ class CacheController extends CoreModule {
     val rMSHR = mshr(rMSHRIndex)
     val wdata = Wire(Vec(CACHE_LINE_B, UInt(8.W)))
     wdata := io.OUT_axi.r.bits.data.asTypeOf(wdata)
-    val inCacheLineOffset = Cat(rMSHR.memReadAddr(log2Up(CACHE_LINE_B) - 1, 2), 0.U(2.W))
-    for (i <- 0 until 4) {
-      when(rMSHR.wmask(i)) {
-        wdata(inCacheLineOffset + i.U) := rMSHR.wdata((i + 1) * 8 - 1, i * 8)
-      }
-    }
+    // val inCacheLineOffset = Cat(rMSHR.memReadAddr(log2Up(CACHE_LINE_B) - 1, 2), 0.U(2.W))
+    // for (i <- 0 until 4) {
+    //   when(rMSHR.wmask(i)) {
+    //     wdata(inCacheLineOffset + i.U) := rMSHR.wdata((i + 1) * 8 - 1, i * 8)
+    //   }
+    // }
     io.OUT_DDataWrite.bits.addr := rMSHR.memReadAddr
     io.OUT_DDataWrite.bits.data := wdata.asUInt
     io.OUT_DDataWrite.bits.way := rMSHR.way

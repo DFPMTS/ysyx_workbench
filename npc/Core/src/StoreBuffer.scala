@@ -11,6 +11,7 @@ class StoreBufferIO extends CoreBundle {
   val IN_storeUop = Flipped(Decoupled(new AGUUop))
   val OUT_storeUop = Decoupled(new AGUUop)
   val IN_storeAck = Flipped(Valid(new StoreAck))
+  val OUT_storeBufferEmpty = Bool()
 
   val IN_storeBypassReq = Flipped(new StoreBypassReq)
   val OUT_storeBypassResp = new StoreBypassResp
@@ -83,6 +84,7 @@ class StoreBuffer extends CoreModule {
   // * Issue logic
   io.OUT_storeUop.valid := uopValid && !uopIssued
   io.OUT_storeUop.bits := uop
+  io.OUT_storeBufferEmpty := !uopValid
 
   when(io.IN_storeAck.valid) {
     // * success

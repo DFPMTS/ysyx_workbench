@@ -12,8 +12,9 @@ class SchedulerIO extends CoreBundle {
 class Scheduler extends CoreModule {
   val io = IO(new SchedulerIO)
 
+  // * If the uop's Fu is not in any port, ready will be true
   for (i <- 0 until ISSUE_WIDTH) {
-    io.OUT_issueQueueReady(i) := false.B
+    io.OUT_issueQueueReady(i) := true.B
   }
 
   for (i <- 0 until MACHINE_WIDTH) {

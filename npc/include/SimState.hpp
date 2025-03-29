@@ -42,11 +42,11 @@ public:
 #define UOP renameUop
 #define V_UOP V_RENAME_UOP
 #define V_UOP_VALID V_RENAME_VALID
-#define V_UOP_READY V_RENAME_READY
+// #define V_UOP_READY V_RENAME_READY
 #define UOP_FIELDS RENAME_FIELDS
     REPEAT_1(BIND_FIELDS)
     REPEAT_1(BIND_VALID)
-    REPEAT_1(BIND_READY)
+    // REPEAT_1(BIND_READY)
 
     // * readRegUop
 #define UOP readRegUop
@@ -335,7 +335,7 @@ public:
            inst->stqPtr_index);
     printf("      src1   = %d/%u/0x%x\n", inst->src1, inst->src1, inst->src1);
     printf("      src2   = %d/%u/0x%x\n", inst->src2, inst->src2, inst->src2);
-    if (inst->fuType == FuType::LSU) {
+    if (inst->fuType == FuType::LSU || inst->fuType == FuType::AGU) {
       printf("      paddr = 0x%x\n", inst->paddr);
     }
     printf("      result = %d/%u/0x%x\n", inst->result, inst->result,

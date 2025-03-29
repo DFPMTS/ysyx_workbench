@@ -172,7 +172,7 @@ class AGU extends CoreModule {
     }
   }
 
-  val storeWbUopValid = io.OUT_AGUUop.valid && LSUOp.isStore(io.OUT_AGUUop.bits.opcode)
+  val storeWbUopValid = io.OUT_AGUUop.valid && io.OUT_AGUUop.bits.fuType === FuType.LSU && LSUOp.isStore(io.OUT_AGUUop.bits.opcode)
   val storeWbUop = WireInit(0.U.asTypeOf(new WritebackUop))
   storeWbUop.data := 0.U
   storeWbUop.dest := Dest.ROB

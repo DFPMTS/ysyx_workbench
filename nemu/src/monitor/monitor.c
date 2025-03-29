@@ -75,6 +75,7 @@ static long load_img() {
   
   if (!is_cpt) {
     // * load checkpoint
+    Log("Loading checkpoint header...");
     char *cpt_name =
         "/home/dfpmts/ysyx-workbench/nemu/checkpoint/cpt.bin";
     FILE *fp_cpt = fopen(cpt_name, "rb");

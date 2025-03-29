@@ -9,6 +9,7 @@ class StoreQueueIO extends CoreBundle {
   val IN_commitStqPtr = Flipped(RingBufferPtr(STQ_SIZE))
   val OUT_stUop       = Decoupled(new AGUUop)
   val OUT_stqBasePtr  = RingBufferPtr(STQ_SIZE)
+  val OUT_storeQueueEmpty = Bool()
 
   val IN_storeBypassReq = Flipped(new StoreBypassReq)
   val OUT_storeBypassResp = new StoreBypassResp
@@ -28,7 +29,7 @@ class StoreQueue extends CoreModule {
   val uopValid = RegInit(false.B)
 
   // Enqueue logic
-  when(io.IN_AGUUop.fire && LSUOp.isStore(io.IN_AGUUop.bits.opcode)) {
+  when(io.IN_AGUUop.fire && (io.IN_AGUUop.bits.fuType === FuType.LSU && LSUOp.isStore(io.IN_AGUUop.bits.opcode))) {
     stq(io.IN_AGUUop.bits.stqPtr.index)       := io.IN_AGUUop.bits
     stqValid(io.IN_AGUUop.bits.stqPtr.index)  := true.B
     // committed(io.IN_AGUUop.bits.stqPtr.index)  := false.B
@@ -148,7 +149,7 @@ class StoreQueue extends CoreModule {
       stqBasePtr := stqBasePtr + 1.U
     }
   }
-
+  io.OUT_storeQueueEmpty := !hasIssueReady
   io.OUT_stUop.valid := uopValid
   io.OUT_stUop.bits  := uop
 }

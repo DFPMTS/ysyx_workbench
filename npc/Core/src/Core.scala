@@ -52,6 +52,7 @@ class Core extends CoreModule {
   val loadQueue = Module(new LoadQueue)
   val storeQueue = Module(new StoreQueue)
   val storeBuffer = Module(new StoreBuffer)
+  val amoUnit = Module(new AmoUnit)
   val lsu  = Module(new NewLSU)
   val dtlb = Module(new TLB(size = 2, id = 1))
   val ptw  = Module(new PTW)
@@ -70,11 +71,9 @@ class Core extends CoreModule {
   // * rename
   val renameUop = Wire(Vec(ISSUE_WIDTH, new RenameUop))
   val renameRobValid = Wire(Vec(ISSUE_WIDTH, Bool()))
-  val renameRobReady = Wire(Bool())
   val renameIQValid = Wire(Vec(ISSUE_WIDTH, Bool()))
   dontTouch(renameUop)  
   dontTouch(renameRobValid)
-  dontTouch(renameRobReady)
   dontTouch(renameIQValid)
   
   // * read register
@@ -123,7 +122,8 @@ class Core extends CoreModule {
   rename.io.IN_commitUop <> commitUop
   rename.io.IN_writebackUop <> writebackUop
   rename.io.IN_issueQueueReady := scheduler.io.OUT_issueQueueReady
-  rename.io.IN_robReady := renameRobReady
+  rename.io.IN_robEmpty := rob.io.OUT_robEmpty
+  rename.io.IN_backendLocked := rob.io.OUT_backendLocked
   rename.io.IN_flush := flush
   rename.io.IN_robTailPtr := rob.io.OUT_robTailPtr
 
@@ -143,7 +143,6 @@ class Core extends CoreModule {
   rob.io.IN_writebackUop <> writebackUop
   rob.io.IN_flush := flush
 
-  rob.io.OUT_renameUopReady <> renameRobReady
   rob.io.OUT_flagUop <> flagUop
   rob.io.OUT_commitUop <> commitUop
   rob.io.IN_stqBasePtr := storeQueue.io.OUT_stqBasePtr
@@ -280,6 +279,13 @@ class Core extends CoreModule {
   // ** Internal MMIO
   lsu.io.OUT_mmioReq <> internalMMIO.io.IN_mmioReq
   lsu.io.IN_mmioResp <> internalMMIO.io.OUT_mmioResp
+
+  // ** Amo Unit
+  amoUnit.io.IN_AGUUop <> aguUop
+  amoUnit.io.OUT_amoUop <> lsu.io.IN_amoUop
+  amoUnit.io.IN_amoAck <> lsu.io.OUT_amoAck
+  amoUnit.io.IN_storeBufferEmpty := storeBuffer.io.OUT_storeBufferEmpty
+  amoUnit.io.IN_storeQueueEmpty := storeQueue.io.OUT_storeQueueEmpty
 
   // ** Cache 
   lsu.io.OUT_tagReq <> dcache.io.IN_tagReq

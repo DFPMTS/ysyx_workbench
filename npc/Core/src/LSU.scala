@@ -246,6 +246,8 @@ class NewLSUIO extends CoreBundle {
   val OUT_loadNegAck = Valid(new LoadNegAck)
   val IN_storeUop = Flipped(Decoupled(new AGUUop))
   val OUT_storeAck = Valid(new StoreAck)
+  val IN_amoUop = Flipped(Decoupled(new AGUUop))
+  val OUT_amoAck = Valid(new StoreAck)
   // * Store Queue Bypass
   val OUT_storeBypassReq = new StoreBypassReq
   val IN_storeBypassResp = Flipped(new StoreBypassResp)
@@ -281,6 +283,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   // * Submodules
   val loadResultBuffer = Module(new LoadResultBuffer(2))
   val uncachedLSU = Module(new UncachedLSU)
+  val amoALU = Module(new AMOALU)
 
   io.OUT_cacheCtrlUop.valid := false.B
   io.OUT_cacheCtrlUop.bits := 0.U.asTypeOf(new CacheCtrlUop)
@@ -301,6 +304,12 @@ class NewLSU extends CoreModule with HasLSUOps {
   val storeStage = Reg(Vec(2, new AGUUop))
   val storeStageValid = RegInit(VecInit(Seq.fill(2)(false.B)))
 
+  // * Amo State Machine
+  val sAmoIdle :: sAmoLoad :: sAmoALU :: sAmoStore :: sAmoWriteback :: Nil = Enum(5)
+  val amoState = RegInit(sAmoIdle)
+  val amoUopReg = Reg(new AGUUop)
+
+  // * Cache Control
   val cacheCtrlUop = Reg(new CacheCtrlUop)
   val cacheCtrlUopValid = RegInit(false.B)  
 
@@ -347,11 +356,13 @@ class NewLSU extends CoreModule with HasLSUOps {
     conflict
   }
 
-  val idle = !writeTag && io.OUT_dataReq.ready && io.OUT_tagReq.ready && !storeWriteData
+  val idle = !writeTag && io.OUT_dataReq.ready && io.OUT_tagReq.ready && !storeWriteData && amoState === sAmoIdle
   // ** For now, we only support one load/store at a time
-  val serveLoad = idle && (!Addr.isUncached(io.IN_loadUop.bits.addr) || uncachedLSU.io.IN_loadUop.ready)
-  val serveStore = idle && !io.IN_loadUop.valid && (!Addr.isUncached(io.IN_storeUop.bits.addr) || uncachedLSU.io.IN_storeUop.ready)
+  val serveAmo = idle && io.IN_amoUop.valid
+  val serveLoad = idle && (!Addr.isUncached(io.IN_loadUop.bits.addr) || uncachedLSU.io.IN_loadUop.ready) && !io.IN_amoUop.valid
+  val serveStore = idle && (!Addr.isUncached(io.IN_storeUop.bits.addr) || uncachedLSU.io.IN_storeUop.ready) && !io.IN_amoUop.valid && !io.IN_loadUop.valid 
 
+  io.IN_amoUop.ready := serveAmo
   io.IN_loadUop.ready := serveLoad
   io.IN_storeUop.ready := serveStore
 
@@ -359,13 +370,16 @@ class NewLSU extends CoreModule with HasLSUOps {
   val loadNegAckValid = RegInit(false.B)
   val storeAck = Reg(new StoreAck)
   val storeAckValid = RegInit(false.B)
+  val amoAck = Reg(new StoreAck)
+  val amoAckValid = RegInit(false.B)
 
   loadNegAckValid := false.B
   storeAckValid := false.B
+  amoAckValid := false.B
 
   val tagResp = Wire(Vec(DCACHE_WAYS, new DTag))
   tagResp := io.IN_tagResp.tags
-  val dataResp = io.IN_dataResp.data
+  val dataResp = WireInit(io.IN_dataResp.data)
 
   // ** Load/Store Stage 0
   val inLoadUop = io.IN_loadUop.bits
@@ -401,6 +415,11 @@ class NewLSU extends CoreModule with HasLSUOps {
 
   io.OUT_mmioReq := 0.U.asTypeOf(new MMIOReq)
 
+  // * Amo 
+  val inAmoUop = io.IN_amoUop.bits
+  val amoUop = io.IN_amoUop.valid && serveAmo
+  amoUopReg := inAmoUop
+
   when(loadUop) {
     when(loadIsInternalMMIO) {
       io.OUT_mmioReq.ren := true.B
@@ -423,24 +442,21 @@ class NewLSU extends CoreModule with HasLSUOps {
       io.OUT_tagReq.valid := true.B
       io.OUT_tagReq.bits.addr := inStoreUop.addr
     }
+  }.elsewhen(amoUop) { // amoState === sAmoIdle && amoUop
+    // * Tag
+    io.OUT_tagReq.valid := true.B
+    io.OUT_tagReq.bits.addr := inAmoUop.addr
+    // * Data
+    io.OUT_dataReq.valid := true.B
+    io.OUT_dataReq.bits.addr := inAmoUop.addr
   }
 
-  /* 
-        writeTag := true.B
-      io.OUT_tagReq.valid := true.B
-      io.OUT_tagReq.bits.addr := loadUop.addr
-      io.OUT_tagReq.bits.write := true.B
-      io.OUT_tagReq.bits.way := replaceCounter
-      val dtag = Wire(new DTag)
-      dtag.valid := true.B
-      dtag.tag := loadUop.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
-      io.OUT_tagReq.bits.data := dtag
-
-   */
   val loadNeedCacheUop = WireInit(false.B)
   val storeNeedCacheUop = WireInit(false.B)
+  val amoNeedCacheUop = WireInit(false.B)
   dontTouch(loadNeedCacheUop)
   dontTouch(storeNeedCacheUop)
+  dontTouch(amoNeedCacheUop)
 
   // ** Load/Store Stage 1
   
@@ -464,6 +480,12 @@ class NewLSU extends CoreModule with HasLSUOps {
   val storeTagHit = storeTagHitOH.reduce(_ || _)
   val storeTagHitWay = OHToUInt(storeTagHitOH)
   val storeHit = storeTagHit
+  // * Amo cache hit or miss
+  val amoTag = amoUopReg.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+  val amoTagHitOH = tagResp.map(e => e.valid && e.tag === amoTag)
+  val amoTagHit = amoTagHitOH.reduce(_ || _)
+  val amoTagHitWay = OHToUInt(amoTagHitOH)
+  val amoHit = amoTagHit
 
   def getWmask(aguUop: AGUUop): UInt = {
     val memLen = aguUop.opcode(2, 1)
@@ -502,6 +524,17 @@ class NewLSU extends CoreModule with HasLSUOps {
     val dtag = Wire(new DTag)
     dtag.valid := true.B
     dtag.tag := storeStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+    io.OUT_tagReq.bits.data := dtag
+  }.elsewhen(amoNeedCacheUop && canServeCacheUop) {
+    // * Write tag
+    writeTag := true.B
+    io.OUT_tagReq.valid := true.B
+    io.OUT_tagReq.bits.addr := amoUopReg.addr
+    io.OUT_tagReq.bits.write := true.B
+    io.OUT_tagReq.bits.way := replaceCounter
+    val dtag = Wire(new DTag)
+    dtag.valid := true.B
+    dtag.tag := amoUopReg.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
     io.OUT_tagReq.bits.data := dtag
   }
 
@@ -604,6 +637,8 @@ class NewLSU extends CoreModule with HasLSUOps {
     storeAck.index := storeStage(0).stqPtr.index
     storeAck.resp := 1.U
     val storeAddrAlreadyInFlight = isLoadAddrAlreadyInFlight(storeStage(0).addr)
+    dontTouch(storeAddrAlreadyInFlight)
+    dontTouch(storeHit)
     val isInternalMMIO = Addr.isInternalMMIO(storeStage(0).addr)
     val isUncached = Addr.isUncached(storeStage(0).addr)
     when(isUncached) {
@@ -636,8 +671,90 @@ class NewLSU extends CoreModule with HasLSUOps {
       cacheUopNext.offset := storeStage(0).addr(log2Up(CACHE_LINE_B) - 1, 2)
       cacheUopNext.opcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
       
-      when (canServeCacheUop) {
-        storeAck.resp := 0.U
+      // when (canServeCacheUop) {
+      //   storeAck.resp := 0.U
+      // }
+    }
+  }
+
+  val amoLoadData = Reg(UInt(XLEN.W))
+  val amoStoreData = Reg(UInt(XLEN.W))
+  val amoHitWayReg = Reg(UInt(log2Up(DCACHE_WAYS).W))
+  val amoSuccess = WireInit(false.B)
+
+  val amoWriteback = Reg(new WritebackUop)
+  val amoCanWriteback = WireInit(false.B)
+
+  when(amoSuccess) {
+    amoWriteback.data := amoLoadData
+    amoWriteback.prd := amoUopReg.prd
+    amoWriteback.robPtr := amoUopReg.robPtr
+    amoWriteback.flag := 0.U
+    amoWriteback.target := 0.U
+    amoWriteback.dest := amoUopReg.dest
+  }
+
+  amoALU.io.IN_opcode := amoUopReg.opcode
+  amoALU.io.IN_src1 := amoLoadData
+  amoALU.io.IN_src2 := amoUopReg.wdata
+  when(amoState === sAmoALU) {
+    amoStoreData := amoALU.io.OUT_res
+  }
+
+  switch(amoState) {
+    is(sAmoIdle) {
+      when(amoUop) {
+        amoState := sAmoLoad
+      }
+    }
+    is(sAmoLoad) {
+      val amoAddrAlreadyInFlight = isLoadAddrAlreadyInFlight(amoUopReg.addr)
+      // * Tag / Data is available
+      when(!amoHit || amoAddrAlreadyInFlight) {
+        amoAckValid := true.B
+        amoAck.resp := 1.U      
+      }
+
+      when(!amoHit && !amoAddrAlreadyInFlight) {
+        amoNeedCacheUop := true.B
+        // * Cache Controller           
+        cacheUopValidNext := true.B
+        cacheUopNext.index := amoUopReg.addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
+        cacheUopNext.rtag := amoUopReg.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+        cacheUopNext.wtag := tagResp(replaceCounter).tag
+        cacheUopNext.way := replaceCounter
+        cacheUopNext.wmask := 0.U
+        cacheUopNext.wdata := 0.U
+        cacheUopNext.opcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
+        cacheUopNext.offset := amoUopReg.addr(log2Up(CACHE_LINE_B) - 1, 2)
+      }
+
+      amoHitWayReg := amoTagHitWay
+      amoLoadData := dataResp(amoTagHitWay)(amoUopReg.addr(log2Up(CACHE_LINE_B) - 1, 2))
+      amoState := Mux(amoHit && !amoAddrAlreadyInFlight, sAmoALU, sAmoIdle)
+    }
+    is(sAmoALU) {
+      amoState := sAmoStore
+    }
+    is(sAmoStore) {
+      val offset = amoUopReg.addr(log2Up(CACHE_LINE_B) - 1, 2)
+      io.OUT_dataReq.valid := true.B
+      io.OUT_dataReq.bits.addr := amoUopReg.addr
+      io.OUT_dataReq.bits.write := true.B
+      io.OUT_dataReq.bits.way := amoHitWayReg
+      io.OUT_dataReq.bits.wmask := "b1111".U << (offset * 4.U)
+      io.OUT_dataReq.bits.data := amoStoreData << (offset * 32.U)
+
+      amoSuccess := io.OUT_dataReq.ready
+      
+      amoAckValid := true.B
+      amoAck.resp := Mux(amoSuccess, 0.U, 1.U)
+
+      amoState := Mux(amoSuccess, sAmoWriteback, sAmoIdle)
+    }
+    is(sAmoWriteback) {
+      when(amoCanWriteback) {
+        amoState := sAmoIdle
       }
     }
   }
@@ -652,9 +769,18 @@ class NewLSU extends CoreModule with HasLSUOps {
 
   io.OUT_storeAck.valid := storeAckValid
   io.OUT_storeAck.bits := storeAck
+
+  io.OUT_amoAck.valid := amoAckValid
+  io.OUT_amoAck.bits := amoAck
   
   // * Output 
-  io.OUT_writebackUop <> loadResultBuffer.io.OUT_writebackUop
+  when(loadResultBuffer.io.OUT_writebackUop.valid) {
+    io.OUT_writebackUop := loadResultBuffer.io.OUT_writebackUop
+  }.otherwise {
+    amoCanWriteback := true.B
+    io.OUT_writebackUop.valid := amoState === sAmoWriteback
+    io.OUT_writebackUop.bits := amoWriteback
+  }
 }
 
 class LoadResult extends CoreBundle{

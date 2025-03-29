@@ -57,7 +57,7 @@ class LoadQueue extends CoreModule {
   }
 
   // * enqueue
-  when(io.IN_AGUUop.fire && LSUOp.isLoad(io.IN_AGUUop.bits.opcode)) {
+  when(io.IN_AGUUop.fire && io.IN_AGUUop.bits.fuType === FuType.LSU && LSUOp.isLoad(io.IN_AGUUop.bits.opcode)) {
     ldq(io.IN_AGUUop.bits.ldqPtr.index) := io.IN_AGUUop.bits
     ldqValid(io.IN_AGUUop.bits.ldqPtr.index) := true.B
     ldqIssued(io.IN_AGUUop.bits.ldqPtr.index) := false.B

@@ -49,6 +49,7 @@ class IDU extends Module with HasDecodeConstants with HasPerfCounters {
 
   uopNext.fuType    := Mux(illegalInst, FuType.FLAG,         decodeSignal.fuType)
   uopNext.opcode    := Mux(illegalInst, FlagOp.ILLEGAL_INST, decodeSignal.opcode)
+  uopNext.lockBackend := decodeSignal.lockBackend
   
   when (decodeSignal.fuType === FuType.CSR && (decodeSignal.opcode === CSROp.CSRRS || decodeSignal.opcode === CSROp.CSRRC || 
   decodeSignal.opcode === CSROp.CSRRSI || decodeSignal.opcode === CSROp.CSRRCI) && rs1 === 0.U) {

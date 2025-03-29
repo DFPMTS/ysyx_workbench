@@ -10,7 +10,7 @@
 #include <svdpi.h>
 
 #define OFFSET 0x80000000
-#define SIZE 0x08000000
+#define SIZE 0x80000000
 
 #define DEVICE_BASE 0xa0000000
 
@@ -91,6 +91,7 @@ void serial_write(paddr_t offset, mem_word_t wdata) {
 
 void load_img(const char *img) {
   // * first, allocate mem
+  // printf("Allocating %zu bytes for MEM\n", MEM_SIZE);
   mem = new uint8_t[MEM_SIZE];
   assert(mem);
   memset(mem, 0x23, MEM_SIZE);
@@ -111,8 +112,16 @@ void load_img(const char *img) {
     fseek(fd, 0, SEEK_END);
     auto size = ftell(fd);
     fseek(fd, 0, SEEK_SET);
+    printf("Loading %ld bytes to MEM\n", size);
 #ifdef NPC
-    assert(fread(mem, 1, size, fd) == size);
+    // assert(fread(mem, 1, size, fd) == size);
+    auto read_size1 = fread(mem, 1, size, fd);
+    auto read_size2 = fread(mem + read_size1, 1, size - read_size1, fd);
+    printf("read_size1 = %ld, read_size2 = %ld\n", read_size1, read_size2);
+    // if (read_size != size) {
+    //   printf("Error reading image, read %ld bytes\n", read_size);
+    //   exit(1);
+    // }
 #else
     // Log("Loading %d bytes to MROM\n", size);
     // assert(fread(mrom, 1, size, fd) == size);

@@ -36,7 +36,7 @@ class testRename extends CoreModule {
   rename.io.IN_issueQueueReady.foreach(x => {
     x := true.B
   })
-  rename.io.IN_robReady := true.B
+
   io.renameUop(0).bits := rename.io.OUT_renameUop(0) 
   io.renameUop(0).valid := rename.io.OUT_robValid(0)
 }
