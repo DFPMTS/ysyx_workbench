@@ -99,7 +99,7 @@ class AGU extends CoreModule {
   io.IN_readRegUop.ready := tlbMissQueue.io.IN_uop.ready
 
   val inUop = io.IN_readRegUop.bits
-  val inValid = io.IN_readRegUop.valid
+  val inValid = io.IN_readRegUop.fire
 
   val memLen = Mux(inUop.fuType === FuType.AMO, 2.U, uopNext.opcode(2, 1))
   val addrMisalign = MuxLookup(memLen, false.B)(Seq(
@@ -154,16 +154,16 @@ class AGU extends CoreModule {
   val misalignFault = WireInit(0.U(FLAG_W))
   val pageFault = WireInit(0.U(FLAG_W))
 
-  when(inUop.fuType === FuType.AMO) {
-    when(inUop.opcode === AMOOp.LR_W) {
+  when(uopNext.fuType === FuType.AMO) {
+    when(uopNext.opcode === AMOOp.LR_W) {
       misalignFault := FlagOp.LOAD_ADDR_MISALIGNED
       pageFault := FlagOp.LOAD_PAGE_FAULT
     }.otherwise {
       misalignFault := FlagOp.STORE_ADDR_MISALIGNED
       pageFault := FlagOp.STORE_PAGE_FAULT
     }
-  }.elsewhen(inUop.fuType === FuType.LSU) {
-    when(inUop.opcode(3)) {
+  }.elsewhen(uopNext.fuType === FuType.LSU) {
+    when(uopNext.opcode(3)) {
       misalignFault := FlagOp.STORE_ADDR_MISALIGNED
       pageFault := FlagOp.STORE_PAGE_FAULT
     }.otherwise {

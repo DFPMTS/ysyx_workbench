@@ -17,7 +17,7 @@ enum class FuType : CData {
   LSU = 2,
   MUL = 3,
   DIV = 4,
-  AGU = 5,
+  AMO = 5,
   CSR = 6,
   FLAG = 7
 };

@@ -36,7 +36,7 @@ class RingBufferPtr(size: Int) extends CoreBundle {
   }
 
   def -(value: UInt): RingBufferPtr = {
-    val nextPtr = this + (size.U - value)
+    val nextPtr = this + (2.U * size.U - value)
     nextPtr
   }
 

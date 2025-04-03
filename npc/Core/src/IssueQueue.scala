@@ -83,7 +83,6 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
                         (queue(i).src2Ready || writebackReady(i)(1))) &&
     (!hasFU(FuType.LSU).B || queue(i).fuType =/= FuType.LSU || !LSUOp.isLoad(queue(i).opcode) || queue(i).ldqPtr.isBefore(ldqLimitPtr)) &&
     (!hasFU(FuType.LSU).B || queue(i).fuType =/= FuType.LSU || !LSUOp.isStore(queue(i).opcode) || queue(i).stqPtr.isBefore(stqLimitPtr)) &&
-    (!hasFU(FuType.LSU).B || queue(i).fuType =/= FuType.AMO || queue(i).stqPtr.isBefore(stqLimitPtr)) &&
     (!hasFU(FuType.CSR).B || queue(i).fuType =/= FuType.CSR || queue(i).robPtr.index === io.IN_robTailPtr.index) && 
     ((queue(i).fuType =/= FuType.ALU && queue(i).fuType =/= FuType.BRU) || !wbReverved(0)) && 
     (queue(i).fuType =/= FuType.DIV || !io.IN_idivBusy)

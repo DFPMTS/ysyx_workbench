@@ -309,6 +309,10 @@ class NewLSU extends CoreModule with HasLSUOps {
   val amoState = RegInit(sAmoIdle)
   val amoUopReg = Reg(new AGUUop)
 
+  // * Reservation 
+  val reservation = Reg(UInt(XLEN.W))
+  val reservationValid = RegInit(false.B)
+
   // * Cache Control
   val cacheCtrlUop = Reg(new CacheCtrlUop)
   val cacheCtrlUopValid = RegInit(false.B)  
@@ -417,6 +421,8 @@ class NewLSU extends CoreModule with HasLSUOps {
 
   // * Amo 
   val inAmoUop = io.IN_amoUop.bits
+  val inAmoIsLr = inAmoUop.opcode === AMOOp.LR_W
+  val inAmoIsSc = inAmoUop.opcode === AMOOp.SC_W
   val amoUop = io.IN_amoUop.valid && serveAmo
   amoUopReg := inAmoUop
 
@@ -677,22 +683,27 @@ class NewLSU extends CoreModule with HasLSUOps {
     }
   }
 
+  val amoIsLr = amoUopReg.opcode === AMOOp.LR_W
+  val amoIsSc = amoUopReg.opcode === AMOOp.SC_W  
   val amoLoadData = Reg(UInt(XLEN.W))
   val amoStoreData = Reg(UInt(XLEN.W))
   val amoHitWayReg = Reg(UInt(log2Up(DCACHE_WAYS).W))
   val amoSuccess = WireInit(false.B)
+  val scFail = RegInit(false.B)
 
-  val amoWriteback = Reg(new WritebackUop)
+  val amoWriteback = Wire(new WritebackUop)
   val amoCanWriteback = WireInit(false.B)
 
-  when(amoSuccess) {
-    amoWriteback.data := amoLoadData
-    amoWriteback.prd := amoUopReg.prd
-    amoWriteback.robPtr := amoUopReg.robPtr
-    amoWriteback.flag := 0.U
-    amoWriteback.target := 0.U
-    amoWriteback.dest := amoUopReg.dest
+  when(amoIsSc) {
+    amoWriteback.data := scFail
+  }.otherwise {
+    amoWriteback.data := amoLoadData    
   }
+  amoWriteback.prd := amoUopReg.prd
+  amoWriteback.robPtr := amoUopReg.robPtr
+  amoWriteback.flag := 0.U
+  amoWriteback.target := 0.U
+  amoWriteback.dest := amoUopReg.dest
 
   amoALU.io.IN_opcode := amoUopReg.opcode
   amoALU.io.IN_src1 := amoLoadData
@@ -701,10 +712,18 @@ class NewLSU extends CoreModule with HasLSUOps {
     amoStoreData := amoALU.io.OUT_res
   }
 
+  val inScFail =  !reservationValid || io.IN_amoUop.bits.addr =/= reservation
+
   switch(amoState) {
     is(sAmoIdle) {
-      when(amoUop) {
-        amoState := sAmoLoad
+      when(amoUop) {        
+        when(inAmoIsSc && inScFail) {
+          scFail := true.B
+          amoState := sAmoWriteback
+        }.otherwise {
+          scFail := false.B
+          amoState := sAmoLoad
+        }
       }
     }
     is(sAmoLoad) {
@@ -731,7 +750,7 @@ class NewLSU extends CoreModule with HasLSUOps {
 
       amoHitWayReg := amoTagHitWay
       amoLoadData := dataResp(amoTagHitWay)(amoUopReg.addr(log2Up(CACHE_LINE_B) - 1, 2))
-      amoState := Mux(amoHit && !amoAddrAlreadyInFlight, sAmoALU, sAmoIdle)
+      amoState := Mux(amoHit && !amoAddrAlreadyInFlight, Mux(amoIsSc, sAmoStore, sAmoALU), sAmoIdle)
     }
     is(sAmoALU) {
       amoState := sAmoStore
@@ -743,7 +762,7 @@ class NewLSU extends CoreModule with HasLSUOps {
       io.OUT_dataReq.bits.write := true.B
       io.OUT_dataReq.bits.way := amoHitWayReg
       io.OUT_dataReq.bits.wmask := "b1111".U << (offset * 4.U)
-      io.OUT_dataReq.bits.data := amoStoreData << (offset * 32.U)
+      io.OUT_dataReq.bits.data := Mux(amoIsSc, amoUopReg.wdata, amoStoreData) << (offset * 32.U)
 
       amoSuccess := io.OUT_dataReq.ready
       
@@ -754,6 +773,12 @@ class NewLSU extends CoreModule with HasLSUOps {
     }
     is(sAmoWriteback) {
       when(amoCanWriteback) {
+        when(amoIsLr) {
+          reservation := amoUopReg.addr
+          reservationValid := true.B
+        }.elsewhen(amoIsSc) {
+          reservationValid := false.B
+        }
         amoState := sAmoIdle
       }
     }

@@ -53,6 +53,10 @@ public:
   }
 };
 
+extern "C" {
+void mem_read(uint32_t addr, svBitVecVal *result);
+}
+
 int main(int argc, char *argv[]) {
   // Verilated::commandArgs(argc, argv);
   gpr = [&](int index) { return state.getReg(index); };
@@ -72,13 +76,20 @@ int main(int argc, char *argv[]) {
     puts("Vtop: SIGINT received");
     running.store(false);
   });
+  uint32_t temp[8];
+  // begin_wave = true;
+  // mem_read(0x828c9684, temp);
+  // begin_wave = false;
   while (running.load()) {
-    // if (state.getInstRetired() > 416450) {
+    // if (state.getInstRetired() > 2423300) {
     //   begin_wave = true;
     // }
     cpu_step();
     state.log(totalCycles);
     ++totalCycles;
+    if (state.getInstRetired() % 1000000 == 0) {
+      printf("Total instructions:\t %lu\n", state.getInstRetired());
+    }
   }
   std::cerr << "Simulation End" << std::endl;
   printf("Total cycles:\t %lu\n", totalCycles);
