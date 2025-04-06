@@ -81,7 +81,8 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
   val readyVec = (0 until IQ_SIZE).map(i => {
     (i.U < headIndex && (queue(i).src1Ready || writebackReady(i)(0)) && 
                         (queue(i).src2Ready || writebackReady(i)(1))) &&
-    (!hasFU(FuType.LSU).B || queue(i).fuType =/= FuType.LSU || !LSUOp.isLoad(queue(i).opcode) || queue(i).ldqPtr.isBefore(ldqLimitPtr)) &&
+    // * Load ops should also check for stqPtr since it needs to make sure every store before it is committed
+    (!hasFU(FuType.LSU).B || queue(i).fuType =/= FuType.LSU || !LSUOp.isLoad(queue(i).opcode) || (queue(i).ldqPtr.isBefore(ldqLimitPtr) && queue(i).stqPtr.isBefore(stqLimitPtr))) &&
     (!hasFU(FuType.LSU).B || queue(i).fuType =/= FuType.LSU || !LSUOp.isStore(queue(i).opcode) || queue(i).stqPtr.isBefore(stqLimitPtr)) &&
     (!hasFU(FuType.CSR).B || queue(i).fuType =/= FuType.CSR || queue(i).robPtr.index === io.IN_robTailPtr.index) && 
     ((queue(i).fuType =/= FuType.ALU && queue(i).fuType =/= FuType.BRU) || !wbReverved(0)) && 

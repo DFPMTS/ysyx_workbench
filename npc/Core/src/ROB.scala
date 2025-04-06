@@ -120,8 +120,8 @@ class ROB extends CoreModule {
     flagUopValid := false.B
   }
 
-  val loadCommited = (0 until COMMIT_WIDTH).map(i => deqValid(i) && deqEntry(i).isLoad)
-  val storeCommited = (0 until COMMIT_WIDTH).map(i => deqValid(i) && deqEntry(i).isStore)
+  val loadCommited = (0 until COMMIT_WIDTH).map(i => deqValid(i) && deqEntry(i).isLoad && deqEntry(i).flag === FlagOp.NONE)
+  val storeCommited = (0 until COMMIT_WIDTH).map(i => deqValid(i) && deqEntry(i).isStore && deqEntry(i).flag === FlagOp.NONE)
 
   when(io.IN_flush) {
     robHeadPtr := RingBufferPtr(size = ROB_SIZE, flag = 0.U, index = 0.U)

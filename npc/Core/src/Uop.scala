@@ -345,7 +345,7 @@ class CacheCtrlUop extends CoreBundle {
   val way = UInt(log2Up(DCACHE_WAYS).W)
   val wtag = UInt(DCACHE_TAG.W)
   val wmask = UInt(4.W)
-  val offset = UInt(log2Up(CACHE_LINE_B/4).W)
+  val offset = UInt(log2Up(CACHE_LINE_B).W)
   val wdata = UInt(32.W)
   val opcode = UInt(4.W)
   
@@ -355,7 +355,7 @@ class CacheCtrlUop extends CoreBundle {
   }
 
   def readAddr() = {
-    Cat(rtag, index, offset, 0.U(2.W))
+    Cat(rtag, index, offset)
   }
 
   def writeAddr() = {

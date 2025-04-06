@@ -62,15 +62,15 @@ target("Vtop")
 --   add_files("vsrc/*.sv")  
 --   add_includedirs("$(buildir)")
 
-target("Multiplier_tb")  
-  add_rules("verilator.binary")
-  set_toolchains("@verilator")
+-- target("Multiplier_tb")  
+--   add_rules("verilator.binary")
+--   set_toolchains("@verilator")
 
-  add_values("verilator.flags", "--trace-fst")
+--   add_values("verilator.flags", "--trace-fst")
 
-  add_files("testbench/Multiplier_tb.cpp")
-  add_files("vsrc/*.sv")  
-  add_includedirs("$(buildir)")
+--   add_files("testbench/Multiplier_tb.cpp")
+--   add_files("vsrc/*.sv")  
+--   add_includedirs("$(buildir)")
 
 
 target("chisel")  

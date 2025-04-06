@@ -4,6 +4,8 @@
 #include "cpu.hpp"
 #include "debug.hpp"
 #include "difftest.hpp"
+#include "func_sym.hpp"
+#include "lightsss.hpp"
 #include "mem.hpp"
 #include "monitor.hpp"
 #include "status.hpp"
@@ -58,10 +60,13 @@ void mem_read(uint32_t addr, svBitVecVal *result);
 }
 
 int main(int argc, char *argv[]) {
+  srand(time(0));
+  fprintf(stderr, "MAIN begin : pid=%d\n", getpid());
   // Verilated::commandArgs(argc, argv);
   gpr = [&](int index) { return state.getReg(index); };
   PC = [&]() { return state.getPC(); };
   init_monitor(argc, argv);
+  LightSSS lightsss;
   SimulationSpeed sim_speed;
   bool commit = false;
   bool booted = false;
@@ -71,26 +76,68 @@ int main(int argc, char *argv[]) {
   Log("Simulation begin");
   sim_speed.initTimer();
   int T = 400;
-  begin_wave = true;
+  // begin_wave = true;
+  // begin_log = true;
+  bool forked = false;
   signal(SIGINT, [](int) {
-    puts("Vtop: SIGINT received");
+    fprintf(stderr, "Vtop: SIGINT received");
+    stop = Stop::INTERRUPT;
     running.store(false);
   });
   uint32_t temp[8];
-  // begin_wave = true;
-  // mem_read(0x828c9684, temp);
-  // begin_wave = false;
+  uint64_t lastForkCycle = 0;
   while (running.load()) {
-    // if (state.getInstRetired() > 2423300) {
+    // if (totalCycles > 600000) {
     //   begin_wave = true;
     // }
+    if (!lightsss.is_child()) {
+      if (totalCycles > lastForkCycle + FORK_CYCLE || !forked) {
+        forked = true;
+        auto ret = lightsss.do_fork();
+        switch (ret) {
+        case FORK_CHILD:
+          top->atClone();
+          begin_wave = true;
+          break;
+
+        default:
+          break;
+        }
+        // if (lightsss.is_child()) {
+        //   fprintf(stderr, "[CHILD] pid(%d) forked on cycle %ld\n", getpid(),
+        //           totalCycles);
+
+        // } else {
+        //   fprintf(stderr, "[PARENT] pid(%d) forked on cycle %ld\n", getpid(),
+        //           totalCycles);
+        // }
+        lastForkCycle = totalCycles;
+      }
+    }
+
     cpu_step();
     state.log(totalCycles);
+
     ++totalCycles;
-    if (state.getInstRetired() % 1000000 == 0) {
-      printf("Total instructions:\t %lu\n", state.getInstRetired());
-    }
   }
+
+  if (!lightsss.is_child()) {
+    fflush(stdout);
+    fprintf(stderr, "[PARENT] pid(%d) endCycles %lu\n", getpid(),
+            lightsss.get_end_cycles());
+    if (stop != Stop::EBREAK) {
+      lightsss.wakeup_child(totalCycles);
+      fprintf(stderr, "[PARENT] wakeup_child end\n");
+    }
+    lightsss.do_clear();
+    if (stop != Stop::EBREAK && stop != Stop::INTERRUPT) {
+      return -1;
+    }
+  } else {
+    fprintf(stderr, "[CHILD] pid(%d) endCycles %lu execution end\n", getpid(),
+            lightsss.get_end_cycles());
+  }
+
   std::cerr << "Simulation End" << std::endl;
   printf("Total cycles:\t %lu\n", totalCycles);
   printf("Total instructions:\t %lu\n", state.getInstRetired());
@@ -124,5 +171,10 @@ int main(int argc, char *argv[]) {
   printPerfCounters();
   sim_speed.printSimulationSpeed(totalCycles);
   auto good = (stop == Stop::EBREAK) && (retval == 0);
+  // * Clean up
+  close_log();
+  close_difftest();
+  top->final();
+  delete top;
   return !good;
 }

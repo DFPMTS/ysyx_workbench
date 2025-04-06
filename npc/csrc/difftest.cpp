@@ -17,9 +17,11 @@ ref_difftest_raise_intr_t ref_difftest_raise_intr;
 difftest_context_t ref;
 difftest_context_t dut;
 
+void *ref_handle = NULL;
+
 void init_difftest(const char *diff_so_file) {
   assert(diff_so_file != NULL);
-  auto ref_handle = dlopen(diff_so_file, RTLD_LAZY);
+  ref_handle = dlopen(diff_so_file, RTLD_LAZY);
   assert(ref_handle);
 
   ref_difftest_init = (ref_difftest_init_t)dlsym(ref_handle, "difftest_init");
@@ -51,6 +53,8 @@ void init_difftest(const char *diff_so_file) {
   dut.pc = RESET_VECTOR;
   ref_difftest_regcpy(&dut, DIFFTEST_TO_REF);
 }
+
+void close_difftest() { dlclose(ref_handle); }
 
 static inline bool difftest_check_reg(const char *name, vaddr_t pc, word_t ref,
                                       word_t dut) {

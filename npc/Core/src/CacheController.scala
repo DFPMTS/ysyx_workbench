@@ -105,8 +105,8 @@ class CacheController extends CoreModule {
     newMSHR.opcode := uop.opcode
     newMSHR.wdata := uop.wdata
     newMSHR.wmask := uop.wmask
-    val raddr = Cat(uop.rtag, uop.index, uop.offset, 0.U(2.W))
-    val waddr = Cat(uop.wtag, uop.index, 0.U(log2Up(CACHE_LINE_B).W))
+    val raddr = Cat(uop.rtag, uop.index, uop.offset)
+    val waddr = Cat(uop.wtag, uop.index, uop.offset)
     when(uop.opcode === CacheOpcode.LOAD) {
       // * just load to cache
       newMSHR.memReadAddr := raddr

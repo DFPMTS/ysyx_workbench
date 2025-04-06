@@ -37,6 +37,7 @@ class TLBResp extends MMUResp {
 
 class PTWReq extends CoreBundle {
   val vpn = UInt(PAGE_NR_LEN.W)
+  val stqPtr = RingBufferPtr(STQ_SIZE)
 }
 
 class PTWResp extends MMUResp {
@@ -150,6 +151,7 @@ class AGU extends CoreModule {
   val ptwReqNext = Wire(new PTWReq)
   val ptwReqNextValid = WireInit(false.B)
   ptwReqNext.vpn := uopNext.addr(XLEN - 1, 12)
+  ptwReqNext.stqPtr := uopNext.stqPtr
 
   val misalignFault = WireInit(0.U(FLAG_W))
   val pageFault = WireInit(0.U(FLAG_W))

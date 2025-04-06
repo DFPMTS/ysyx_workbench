@@ -5,6 +5,7 @@ import os.read.inputStream
 
 class PTWUop extends CoreBundle {
   val addr = UInt(XLEN.W)
+  val stqPtr = RingBufferPtr(STQ_SIZE)
 }
 
 class PTWIO extends CoreBundle {
@@ -36,6 +37,7 @@ class PTW extends CoreModule {
   }
 
   val vpn = Reg(UInt(PAGE_NR_LEN.W))
+  val stqPtr = Reg(RingBufferPtr(STQ_SIZE))
   val id  = Reg(UInt(1.W))
   val pte = Reg(new PTE)
   val inPTE = io.IN_writebackUop.bits.data.asTypeOf(new PTE)
@@ -76,10 +78,12 @@ class PTW extends CoreModule {
     PTWUopValid := true.B
   }
   io.OUT_PTWUop.bits.addr := Mux(state === sL1, Cat(io.IN_VMCSR.rootPPN, vpn1, 0.U(2.W)), Cat(pte.ppn1, pte.ppn0, vpn0, 0.U(2.W)))
+  io.OUT_PTWUop.bits.stqPtr := stqPtr
   io.OUT_PTWUop.valid := PTWUopValid
 
   when(ptwReq.fire) {
     vpn := ptwReq.bits.vpn
+    stqPtr := ptwReq.bits.stqPtr
     id := reqId
   }
 

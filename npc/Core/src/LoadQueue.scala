@@ -50,7 +50,9 @@ class LoadQueue extends CoreModule {
   val uopValid = RegInit(false.B)
 
   def storeCommited(stqPtr: RingBufferPtr, commitStqPtr: RingBufferPtr) = {
-    stqPtr.isBefore(commitStqPtr)
+    val flagDiff = stqPtr.flag ^ commitStqPtr.flag
+    val indexLeq = stqPtr.index <= commitStqPtr.index
+    (flagDiff ^ indexLeq).asBool
   }
 
   // * enqueue

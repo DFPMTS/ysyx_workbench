@@ -140,7 +140,7 @@ or         -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.OR,     
 and        -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.AND,                  ImmType.X, N),
 fence      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.NONE,          ImmType.X, N), // TODO
 fence_i    -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.NONE,          ImmType.X, N), // TODO
-sfence_vma -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.SFENCE_VMA,    ImmType.X, N),
+sfence_vma -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.SFENCE_VMA,    ImmType.X, Y),
 ecall      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.ECALL,         ImmType.X, N),
 ebreak     -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.EBREAK,        ImmType.X, N),
 csrrw      -> List(N, Y, SrcType.REG,  SrcType.ZERO, FuType.CSR,  CSROp.CSRRW,                ImmType.I, N),

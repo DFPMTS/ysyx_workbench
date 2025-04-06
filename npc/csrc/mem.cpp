@@ -115,13 +115,12 @@ void load_img(const char *img) {
     printf("Loading %ld bytes to MEM\n", size);
 #ifdef NPC
     // assert(fread(mem, 1, size, fd) == size);
-    auto read_size1 = fread(mem, 1, size, fd);
-    auto read_size2 = fread(mem + read_size1, 1, size - read_size1, fd);
-    printf("read_size1 = %ld, read_size2 = %ld\n", read_size1, read_size2);
-    // if (read_size != size) {
-    //   printf("Error reading image, read %ld bytes\n", read_size);
-    //   exit(1);
-    // }
+    auto read_size = fread(mem, 1, size, fd);
+    if (read_size != size) {
+      printf("Error reading image, read %ld bytes\n", read_size);
+      exit(1);
+    }
+    fclose(fd);
 #else
     // Log("Loading %d bytes to MROM\n", size);
     // assert(fread(mrom, 1, size, fd) == size);
@@ -187,7 +186,14 @@ void mem_read(uint32_t addr, svBitVecVal *result) {
     access_device = true;
     valid = true;
     retval = uart_io_handler(raw_addr - UART_BASE, 1, 0, false);
-    retval <<= (raw_addr - addr) * 8;
+    for (int i = 0; i < 8; ++i) {
+      result[i] = rand();
+    }
+    if (raw_addr - addr < 4) {
+      result[0] = retval << (8 * (raw_addr - addr));
+    } else {
+      result[1] = retval << (8 * (raw_addr - addr - 4));
+    }
   }
   // #ifdef MTRACE
   //   if (begin_wave) {

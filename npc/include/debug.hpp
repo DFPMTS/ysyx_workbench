@@ -35,4 +35,6 @@ extern FILE *log_fd;
 
 void init_log(const char *log_file);
 
+void close_log();
+
 #endif

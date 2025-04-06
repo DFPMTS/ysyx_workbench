@@ -13,3 +13,10 @@ void init_log(const char *log_file) {
     assert(0);
   }
 }
+
+void close_log() {
+  if (log_fd) {
+    fclose(log_fd);
+    log_fd = NULL;
+  }
+}

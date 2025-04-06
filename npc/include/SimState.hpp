@@ -102,7 +102,6 @@ public:
 
 #define CSRS csr
     CSR_FIELDS(BIND_CSRS_FIELD);
-    printf("stvec: %p\n", csr.stvec);
     printf("bind uops done\n");
   }
 
@@ -111,10 +110,10 @@ public:
     // if (waitDifftest) {
     //   printf("wait difftest: %d\n", difftestCountdown);
     // }
-    if (begin_wave) {
+    if (begin_wave || begin_log) {
       printf("cycle: %ld\n", cycle);
     }
-    if (cycle > lastCommit + 200) {
+    if (cycle > lastCommit + 500) {
       Log("CPU hangs");
       stop = Stop::CPU_HANG;
       running.store(false);
@@ -158,7 +157,7 @@ public:
     }
     // * fix PC with redirect
     if (V_REDIRECT_VALID) {
-      if (begin_wave) {
+      if (begin_wave || begin_log) {
         printf("PC redirect to %x\n", V_REDIRECT_PC);
       }
       pc = V_REDIRECT_PC;
@@ -222,11 +221,11 @@ public:
             access_device = true;
           }
         }
-        if (begin_wave) {
+        if (begin_wave || begin_log) {
           printInst(&inst, robIndex);
         }
         if (*uop.rd) {
-          if (begin_wave) {
+          if (begin_wave || begin_log) {
             printf("      archTable[%d] = %d\n", *uop.rd, *uop.prd);
           }
           archTable[*uop.rd] = *uop.prd;
@@ -257,7 +256,7 @@ public:
         // * the writeback may go to ROB or PTW
         if ((Dest)*uop.dest == Dest::ROB) {
           if (*uop.prd) {
-            if (begin_wave) {
+            if (begin_wave || begin_log) {
               printf("writeback: pReg[%d] = %d\n", *uop.prd,
                      *writebackUop[i].data);
             }
@@ -278,7 +277,7 @@ public:
         auto &inst = insts[robIndex];
         auto &uop = aguUop[i];
         inst.paddr = *aguUop[i].addr;
-        if (begin_wave) {
+        if (begin_wave || begin_log) {
           printf("AGU: [%3d] paddr = %x\n", robIndex, inst.paddr);
         }
       }

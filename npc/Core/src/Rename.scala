@@ -43,10 +43,10 @@ class Rename extends CoreModule {
   // ** robPtr/ldqPtr/stqPtr allocation
   val robHeadPtr = RegInit(RingBufferPtr(size = ROB_SIZE, flag = 0.U, index = 0.U))
   val ldqHeadPtr = RegInit(RingBufferPtr(size = LDQ_SIZE, flag = 0.U, index = 0.U))
-  val stqHeadPtr = RegInit(RingBufferPtr(size = STQ_SIZE, flag = 0.U, index = 0.U) - 1.U)
+  val stqHeadPtr = RegInit(RingBufferPtr(size = STQ_SIZE, flag = 0.U, index = 0.U))
 
   val ldqInc = io.IN_decodeUop.map(uop => uop.fire && uop.bits.fuType === FuType.LSU && LSUOp.isLoad(uop.bits.opcode))
-  val stqInc = io.IN_decodeUop.map(uop => uop.fire && (uop.bits.fuType === FuType.LSU || uop.bits.fuType === FuType.AMO) && LSUOp.isStore(uop.bits.opcode))
+  val stqInc = io.IN_decodeUop.map(uop => uop.fire && uop.bits.fuType === FuType.LSU && LSUOp.isStore(uop.bits.opcode))
 
   val ldqIncPrefixSum = ldqInc.scanLeft(0.U)(_ +& _)
   val stqIncPrefixSum = stqInc.scanLeft(0.U)(_ +& _)
@@ -58,7 +58,7 @@ class Rename extends CoreModule {
     robHeadPtr := RingBufferPtr(size = ROB_SIZE, flag = 0.U, index = 0.U)
     ldqHeadPtr.flag := io.IN_ldqTailPtr.flag
     ldqHeadPtr.index := io.IN_ldqTailPtr.index
-    stqHeadPtr := io.IN_stqTailPtr - 1.U
+    stqHeadPtr := io.IN_stqTailPtr
   }.otherwise {
     val inFiredCnt = PopCount(io.IN_decodeUop.map(_.fire))
     robHeadPtr := robHeadPtr + inFiredCnt
@@ -136,7 +136,7 @@ class Rename extends CoreModule {
 
     uopNext(i).robPtr := robHeadPtr + i.U
     uopNext(i).ldqPtr := ldqPtr(i)
-    uopNext(i).stqPtr := stqPtr(i + 1)
+    uopNext(i).stqPtr := stqPtr(i)
 
     uopNext(i).inst := decodeUop.inst
     uopNext(i).rs1 := decodeUop.rs1

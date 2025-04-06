@@ -16,6 +16,7 @@ static const char *regs[] = {"$0", "ra", "sp",  "gp",  "tp", "t0", "t1", "t2",
 
 static uint32_t *gprs[32];
 bool begin_wave = false;
+bool begin_log = false;
 
 void check_gpr_bound(int id) { assert(id >= 0 && id < 32); }
 

@@ -27,7 +27,7 @@ class LoadArbiter extends CoreModule {
     io.OUT_AGUUop.bits.dest := Dest.PTW
     io.OUT_AGUUop.bits.robPtr := ZERO.asTypeOf(io.OUT_AGUUop.bits.robPtr)
     io.OUT_AGUUop.bits.ldqPtr := ZERO.asTypeOf(io.OUT_AGUUop.bits.ldqPtr)
-    io.OUT_AGUUop.bits.stqPtr := ZERO.asTypeOf(io.OUT_AGUUop.bits.stqPtr)
+    io.OUT_AGUUop.bits.stqPtr := io.IN_PTWUop.bits.stqPtr
     
     io.OUT_AGUUop.bits.predTarget := ZERO
     io.OUT_AGUUop.bits.compressed := false.B

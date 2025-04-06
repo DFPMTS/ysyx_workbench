@@ -23,6 +23,11 @@ constexpr size_t PSRAM_SIZE = 0x00400000;
 constexpr size_t SDRAM_BASE = 0xA0000000;
 constexpr size_t SDRAM_SIZE = 0x02000000;
 
+constexpr size_t WAIT_INTERVAL = 1;
+constexpr size_t SLOT_SIZE = 2;
+
+constexpr size_t FORK_CYCLE = 100000;
+
 using word_t = uint32_t;
 
 #endif

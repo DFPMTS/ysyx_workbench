@@ -115,7 +115,7 @@ class StoreQueue extends CoreModule {
         }
       }
     }
-  }.elsewhen(stqBasePtr.flag =/= io.IN_storeBypassReq.stqPtr.flag && stqBasePtr.index >= io.IN_storeBypassReq.stqPtr.index) {
+  }.elsewhen(stqBasePtr.flag =/= io.IN_storeBypassReq.stqPtr.flag) {
     for (i <- 0 until LDQ_SIZE) {
       when(addrMatch(io.IN_storeBypassReq.addr, stq(i).addr) && i.U >= stqBasePtr.index && stqValid(i)) {
         for (j <- 0 until 4) {
@@ -127,7 +127,7 @@ class StoreQueue extends CoreModule {
       }
     }
     for (i <- 0 until LDQ_SIZE) {
-      when(addrMatch(io.IN_storeBypassReq.addr, stq(i).addr) && i.U <= io.IN_storeBypassReq.stqPtr.index && stqValid(i)) {
+      when(addrMatch(io.IN_storeBypassReq.addr, stq(i).addr) && i.U < io.IN_storeBypassReq.stqPtr.index && stqValid(i)) {
         for (j <- 0 until 4) {
           when(wmask(i)(j)) {
             bypassDataNext(j) := shiftedData(i)((j + 1) * 8 - 1, j * 8)
@@ -149,7 +149,7 @@ class StoreQueue extends CoreModule {
       stqBasePtr := stqBasePtr + 1.U
     }
   }
-  io.OUT_storeQueueEmpty := !hasIssueReady
+  io.OUT_storeQueueEmpty := !hasIssueReady && !uopValid
   io.OUT_stUop.valid := uopValid
   io.OUT_stUop.bits  := uop
 }

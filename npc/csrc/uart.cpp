@@ -78,9 +78,8 @@ static void send_key_uart(char keycode) {
 
 uint8_t uart_io_handler(uint32_t offset, int len, uint8_t wdata,
                         bool is_write) {
-  // printf("uart offset=%d, len=%d, wdata=%d, is_write=%d\n", offset, len,
-  // wdata,
-  //        is_write);
+  // log_write("uart offset=%d, len=%d, wdata=%d, is_write=%d\n", offset, len,
+  //           wdata, is_write);
   assert(len == 1);
   if (is_write) {
     uart_base[offset] = wdata;

@@ -2,6 +2,7 @@ import chisel3._
 import chisel3.util._
 import utils._
 import os.stat
+import dataclass.data
 
 trait HasLSUOps {
   def U    = 0.U(1.W)
@@ -674,7 +675,7 @@ class NewLSU extends CoreModule with HasLSUOps {
       cacheUopNext.wtag := tagResp(replaceCounter).tag
       cacheUopNext.wdata := storeStage(0).wdata << (storeStage(0).addr(1, 0) << 3)
       cacheUopNext.wmask := wmask
-      cacheUopNext.offset := storeStage(0).addr(log2Up(CACHE_LINE_B) - 1, 2)
+      cacheUopNext.offset := storeStage(0).addr(log2Up(CACHE_LINE_B) - 1, 0)
       cacheUopNext.opcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
       
       // when (canServeCacheUop) {
@@ -745,12 +746,12 @@ class NewLSU extends CoreModule with HasLSUOps {
         cacheUopNext.wmask := 0.U
         cacheUopNext.wdata := 0.U
         cacheUopNext.opcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
-        cacheUopNext.offset := amoUopReg.addr(log2Up(CACHE_LINE_B) - 1, 2)
+        cacheUopNext.offset := amoUopReg.addr(log2Up(CACHE_LINE_B) - 1, 0)
       }
 
       amoHitWayReg := amoTagHitWay
       amoLoadData := dataResp(amoTagHitWay)(amoUopReg.addr(log2Up(CACHE_LINE_B) - 1, 2))
-      amoState := Mux(amoHit && !amoAddrAlreadyInFlight, Mux(amoIsSc, sAmoStore, sAmoALU), sAmoIdle)
+      amoState := Mux(amoHit && !amoAddrAlreadyInFlight, Mux(amoIsSc, sAmoStore, Mux(amoIsLr, sAmoWriteback, sAmoALU)), sAmoIdle)
     }
     is(sAmoALU) {
       amoState := sAmoStore
@@ -954,6 +955,7 @@ class UncachedLSU extends CoreModule {
 
         cacheCtrlUop.index := io.IN_loadUop.bits.addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
         cacheCtrlUop.rtag := io.IN_loadUop.bits.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+        cacheCtrlUop.offset := io.IN_loadUop.bits.addr(log2Up(CACHE_LINE_B) - 1, 0)
         cacheCtrlUop.opcode := MuxLookup(io.IN_loadUop.bits.opcode, CacheOpcode.UNCACHED_LB)(Seq(
           LSUOp.LB -> CacheOpcode.UNCACHED_LB,
           LSUOp.LBU -> CacheOpcode.UNCACHED_LB,
@@ -968,6 +970,7 @@ class UncachedLSU extends CoreModule {
 
         cacheCtrlUop.index := io.IN_storeUop.bits.addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
         cacheCtrlUop.wtag := io.IN_storeUop.bits.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+        cacheCtrlUop.offset := io.IN_storeUop.bits.addr(log2Up(CACHE_LINE_B) - 1, 0)
         cacheCtrlUop.opcode := MuxLookup(io.IN_storeUop.bits.opcode, CacheOpcode.UNCACHED_SB)(Seq(
           LSUOp.SB -> CacheOpcode.UNCACHED_SB,
           LSUOp.SH -> CacheOpcode.UNCACHED_SH,
@@ -990,7 +993,10 @@ class UncachedLSU extends CoreModule {
     is (sWaitLoadResp) {
       when(io.IN_memLoadFoward.valid && io.IN_memLoadFoward.bits.uncached) {        
         state := sLoadFin
-        loadData := io.IN_memLoadFoward.bits.data
+        val offset = loadUop.addr(log2Up(CACHE_LINE_B) - 1, 2)
+        val dataVec = Wire(Vec(CACHE_LINE_B/4, UInt(32.W)))
+        dataVec := io.IN_memLoadFoward.bits.data.asTypeOf(dataVec)
+        loadData := dataVec(offset)
       }
     }
     is (sWaitStoreResp) {
