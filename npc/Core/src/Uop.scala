@@ -339,6 +339,11 @@ object CacheOpcode extends HasDecodeConfig {
   }
 }
 
+object CacheId extends HasCoreParameters {
+  val ICACHE = 0.U(CACHE_ID_LEN.W)
+  val DCACHE = 1.U(CACHE_ID_LEN.W)
+}
+
 class CacheCtrlUop extends CoreBundle {
   val index = UInt(log2Up(DCACHE_SETS).W)
   val rtag = UInt(DCACHE_TAG.W)
@@ -348,9 +353,11 @@ class CacheCtrlUop extends CoreBundle {
   val offset = UInt(log2Up(CACHE_LINE_B).W)
   val wdata = UInt(32.W)
   val opcode = UInt(4.W)
+  val cacheId = UInt(CACHE_ID_LEN.W)
   
-  def loadAddrAlreadyInFlight(addr: UInt) = {
+  def loadAddrAlreadyInFlight(cacheId: UInt, addr: UInt) = {
     (opcode === CacheOpcode.LOAD || opcode === CacheOpcode.REPLACE) &&
+    this.cacheId === cacheId &&
     addr(XLEN - 1, log2Up(CACHE_LINE_B)) === Cat(rtag, index)
   }
 

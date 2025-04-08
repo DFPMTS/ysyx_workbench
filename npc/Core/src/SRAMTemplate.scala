@@ -1,6 +1,7 @@
 import chisel3._
 import chisel3.util._
 import utils._
+import firrtl.ir.ReadUnderWrite
 
 
 class SRAMTemplateR(N: Int, ways: Int, width: Int, writeWidth: Int) extends CoreBundle {
@@ -44,24 +45,13 @@ class SRAMTemplate(N: Int, ways: Int, width: Int, writeWidth: Int) extends CoreM
   val PhysicalSet = Vec(ways * numEntries, UInt(writeWidth.W))
   val Line = Vec(numEntries, UInt(writeWidth.W))
   val Set = Vec(ways, Line)
-  val array = SyncReadMem(N, PhysicalSet)
+  val array = SyncReadMem(N, PhysicalSet, ReadUnderWrite.New)
 
   val writeDataVec = Fill(ways, io.rw.wdata).asTypeOf(PhysicalSet) 
   val writeMaskVec = (io.rw.wmask << (io.rw.way * numEntries.U)).take(numEntries * ways)
 
   // * Port0: R 读通道
-  val rDataVec = Wire(Set)
-  rDataVec := array.read(io.r.addr, io.r.en).asTypeOf(Set)
-  // * try bypass
-  when (io.r.addr === io.rw.addr && io.rw.en && io.rw.write) {
-    val writeLine = io.rw.wdata.asTypeOf(Line)
-    for (i <- 0 until numEntries) {
-      when(io.rw.wmask(i)) {
-        rDataVec(io.rw.way)(i) := writeLine(i)
-      }    
-    }    
-  }
-  io.r.rdata := rDataVec.asTypeOf(io.r.rdata)
+  io.r.rdata := array.read(io.r.addr, io.r.en).asTypeOf(io.r.rdata)
 
   // * Port1: RW 读写通道
   io.rw.rdata := array.readWrite(io.rw.addr, writeDataVec, writeMaskVec.asBools, io.rw.en, io.rw.write).asTypeOf(io.rw.rdata)

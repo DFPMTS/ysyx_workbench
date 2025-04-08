@@ -11,6 +11,20 @@ class IFUIO extends CoreBundle {
   // * Output, inst + pc
   val out = Decoupled(new InstSignal)
 
+  // * ICache Interface 
+  val OUT_ITagRead = Valid(new ITagRead)
+  val OUT_ITagWrite = Valid(new ITagWrite)
+  val IN_ITagResp = Flipped(new ITagResp)
+
+  val OUT_IDataRead = Valid(new IDataRead)
+  val IN_IDataResp = Flipped(new IDataResp)
+
+  // * Cache Controller Interface
+  val OUT_cacheCtrlUop = Decoupled(new CacheCtrlUop)
+
+  // * MSHR 
+  val IN_mshrs = Flipped(Vec(NUM_MSHR, new MSHR))
+
   //* VM
   val OUT_TLBReq = Valid(new TLBReq)
   val IN_TLBResp = Flipped(Valid(new TLBResp))
@@ -18,61 +32,136 @@ class IFUIO extends CoreBundle {
   val IN_PTWResp = Flipped(Valid(new PTWResp))
   val IN_VMCSR   = Flipped(new VMCSR)
   val IN_trapCSR = Flipped(new TrapCSR)
-
-  // * AXI master interface
-  val master = new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
 }
 
 // * PTW Request id = 0
-class IFU extends Module with HasPerfCounters {
+class IFU extends Module with HasPerfCounters with HasCoreParameters {
   val io = IO(new IFUIO)
 
-  val icache      = Module(new ICache)
+  val instBuffer = Module(new InstBuffer)
 
-  val vpc      = RegInit(UInt(32.W), Config.resetPC)
+  val replaceCounter = RegInit(0.U(2.W))
+  replaceCounter := Mux(replaceCounter === DCACHE_WAYS.U - 1.U, 0.U, replaceCounter + 1.U)
 
-  val pcNext      = Wire(UInt(32.W))
-  val pcValidNext = WireInit(false.B)
+  val vPC      = RegInit(UInt(XLEN.W), Config.resetPC)
+  // * Static Next vPC
+  val vPCNext  = WireInit(Cat(vPC(XLEN - 1, log2Up(FETCH_WIDTH * 4)) + 1.U, 0.U(log2Up(FETCH_WIDTH * 4).W)))
 
-  val pc          = Reg(UInt(32.W))
-  val vpc1        = Reg(UInt(32.W))
+  val phyPCNext      = Wire(UInt(XLEN.W))
+  val phyPCValidNext = WireInit(false.B)
+
+  val phyPC       = Reg(UInt(XLEN.W))
+  val phyPCValid  = RegInit(false.B)
+  val vPC1        = Reg(UInt(XLEN.W))
   val pageFault   = Reg(Bool())
   val interrupt   = Reg(Bool())
   val flushBuffer = RegInit(false.B)
-  val validBuffer = RegInit(false.B)
-  val arValid     = RegInit(false.B)
-  val insert   = Wire(Bool())
-  val flush    = flushBuffer || io.redirect.valid
-  val flushNow = io.redirect.valid && (!validBuffer || arValid || icache.io.out.valid)
-  val flushFin = flushNow || (flushBuffer && icache.io.out.fire)
-  flushBuffer := Mux(
-    io.redirect.valid && validBuffer && !arValid && !icache.io.out.valid,
-    true.B,
-    Mux(icache.io.out.fire, false.B, flushBuffer)
-  )  
-  val flushPCBuffer = RegEnable(io.redirect.pc, io.redirect.valid)
-  val flushPC       = Mux(io.redirect.valid, io.redirect.pc, flushPCBuffer)
 
-  // * vpc -> (pcNext, pcValidNext) => (pc, arValid/validBuffer)
+  val cacheMiss = WireInit(false.B)
+  val needCacheOp = WireInit(false.B)
+  val canServeCacheUop = Wire(Bool())
+  val cacheCtrlUopNext = WireInit(0.U.asTypeOf(new CacheCtrlUop))
+  
+  val outValid = RegInit(false.B)
+  val outInst = Reg(new InstSignal)
+
+  val cacheCtrlUop = Reg(new CacheCtrlUop)
+  val cacheCtrlUopValid = RegInit(false.B)
+
+  // * ICache miss replay as a redirect
+  val fetchRedirect = Wire(new RedirectSignal)
+  
+  val redirect = Mux(io.redirect.valid, io.redirect, fetchRedirect)
+
+  // * Stage 0: PC addr translation
+  // ** vpc -> (pcNext, pcValidNext) => (pc, arValid/validBuffer)
   val doTranslate = io.IN_VMCSR.mode === 1.U && io.IN_VMCSR.priv < Priv.M
   io.OUT_TLBReq.valid := doTranslate
-  io.OUT_TLBReq.bits.vpn := vpc(31, 12)
-  pcValidNext := !doTranslate || io.IN_TLBResp.valid
-  pcNext := Mux(doTranslate, io.IN_TLBResp.bits.vaddrToPaddr(vpc), vpc)    
+  io.OUT_TLBReq.bits.vpn := vPC(31, 12)
+  phyPCValidNext := (!doTranslate || io.IN_TLBResp.valid) && instBuffer.io.fetchCanContinue
+  phyPCNext := Mux(doTranslate, io.IN_TLBResp.bits.vaddrToPaddr(vPC), vPC)    
 
-  when(flushFin) {
-    vpc := flushPC
-    validBuffer := false.B
-    arValid := false.B
+  val dataResp = WireInit(io.IN_IDataResp.data)
+  io.OUT_ITagWrite := 0.U.asTypeOf(io.OUT_ITagWrite)
+
+  // * Stage 0: ICache access 
+  // ** Tag
+  io.OUT_ITagRead.valid := true.B
+  io.OUT_ITagRead.bits.addr := vPC
+  // ** Data
+  io.OUT_IDataRead.valid := true.B
+  io.OUT_IDataRead.bits.addr := vPC
+
+  // * Stage 1: Translation check / ICache hit check
+  val tagHitVec = VecInit(io.IN_ITagResp.tags.map(e => e.valid && e.tag === phyPC(XLEN - 1, XLEN - ICACHE_TAG)))
+  val tagHitWay = OHToUInt(tagHitVec)
+  val tagHit = tagHitVec.reduce(_ || _)
+
+  when(phyPCValid) {
+    val alreadyInFlight = MSHRChecker.isLoadAddrAlreadyInFlight(io.IN_mshrs, io.OUT_cacheCtrlUop, CacheId.ICACHE, phyPC)
+    cacheMiss := !tagHit || alreadyInFlight
+    when(cacheMiss && !alreadyInFlight) {
+      needCacheOp := true.B
+      cacheCtrlUopNext.cacheId := CacheId.ICACHE
+      cacheCtrlUopNext.rtag := phyPC(XLEN - 1, XLEN - ICACHE_TAG)
+      cacheCtrlUopNext.wtag := 0.U
+      cacheCtrlUopNext.wmask := 0.U
+      cacheCtrlUopNext.offset := phyPC(log2Up(CACHE_LINE_B) - 1, 0)
+      cacheCtrlUopNext.wdata := 0.U
+      cacheCtrlUopNext.opcode := CacheOpcode.LOAD
+      cacheCtrlUopNext.index := phyPC(log2Up(CACHE_LINE_B) + log2Up(ICACHE_SETS) - 1, log2Up(CACHE_LINE_B))
+      cacheCtrlUopNext.way := replaceCounter
+    }
+  }
+
+  // * redirect / vPC generation
+  when(redirect.valid) {
+    vPC := redirect.pc
+    outValid := redirect.valid
+    phyPCValid := false.B
     pageFault := false.B
     interrupt := false.B
   }.otherwise {
-    vpc := Mux(pcValidNext && insert, vpc + 4.U, vpc)
-    validBuffer := Mux(insert, pcValidNext, validBuffer)
-    arValid := Mux(insert, pcValidNext, Mux(icache.io.in.fire, false.B, arValid))
-    pageFault := Mux(insert, doTranslate && io.IN_TLBResp.valid && io.IN_TLBResp.bits.executePermFail(io.IN_VMCSR), pageFault)
-    interrupt := Mux(insert, io.IN_trapCSR.interrupt, interrupt)
+    vPC := Mux(phyPCValidNext, vPCNext, vPC)
+    phyPCValid := phyPCValidNext
+    pageFault := doTranslate && io.IN_TLBResp.valid && io.IN_TLBResp.bits.executePermFail(io.IN_VMCSR)
+    interrupt := io.IN_trapCSR.interrupt
   }
+  phyPC := phyPCNext
+  vPC1 := vPC
+  
+  // ** Fetch redirect
+  fetchRedirect.valid := phyPCValid && cacheMiss
+  fetchRedirect.pc := vPC1
+  dontTouch(redirect)
+  dontTouch(fetchRedirect)
+
+  // ** Output
+  when(io.redirect.valid) {
+    outValid := false.B
+  }.otherwise {   
+    outValid := phyPCValid && !cacheMiss
+  }
+  outInst.pc := vPC1
+  outInst.inst := dataResp(tagHitWay)(vPC1(log2Up(CACHE_LINE_B) - 1, 2))
+  outInst.interrupt := interrupt
+  outInst.pageFault := pageFault
+  outInst.access_fault := false.B
+  instBuffer.io.flush := io.redirect.valid
+  instBuffer.io.in.valid := outValid
+  instBuffer.io.in.bits := outInst
+
+  io.out <> instBuffer.io.out
+
+  // ** Write Tag
+  val ITagWrite = Reg(Valid(new ITagWrite))
+  io.OUT_ITagWrite := ITagWrite
+  ITagWrite.valid := needCacheOp && canServeCacheUop
+  ITagWrite.bits.addr := phyPC
+  ITagWrite.bits.way := replaceCounter
+  ITagWrite.bits.data.valid := true.B
+  ITagWrite.bits.data.tag := phyPC(XLEN - 1, XLEN - ICACHE_TAG)
+
 
   // ** PTW Req logic
   val ptwReqValid = RegInit(false.B)
@@ -82,36 +171,30 @@ class IFU extends Module with HasPerfCounters {
   when(io.IN_PTWResp.valid && io.IN_PTWResp.bits.id === 0.U) {
     ptwReqValid := false.B
   }
-  ptwReq.vpn := vpc(31, 12)
+  ptwReq.vpn := vPC(31, 12)
 
   io.OUT_PTWReq.valid := ptwReqValid
-  io.OUT_PTWReq.bits  := ptwReq
+  io.OUT_PTWReq.bits  := ptwReq 
 
-  // * pc -> icache
-  insert := (~validBuffer || io.out.fire) || flushFin
-  
-  pc := Mux(insert && pcValidNext, pcNext, pc)
-  vpc1 := Mux(insert, vpc, vpc1)
-
-  io.master <> icache.io.master
-
-  icache.io.in.valid    := arValid && ~reset.asBool && !flush && !pageFault && !interrupt
-  icache.io.in.bits     := pc
-  icache.io.flushICache := io.flushICache
-
-  val addrOffset = pc(2)
-  val retData    = icache.io.out.bits
-  io.out.valid             := validBuffer && (icache.io.out.valid || pageFault || interrupt) && !flush
-  io.out.bits.pc           := vpc1
-  io.out.bits.inst         := retData
-  io.out.bits.access_fault := false.B
-  io.out.bits.pageFault    := pageFault
-  io.out.bits.interrupt    := interrupt
-
-  icache.io.out.ready := io.out.ready || flush
+  // ** CacheCtrlUop
+  io.OUT_cacheCtrlUop.valid := cacheCtrlUopValid
+  io.OUT_cacheCtrlUop.bits := cacheCtrlUop
+  val conflict = MSHRChecker.conflict(io.IN_mshrs, io.OUT_cacheCtrlUop, cacheCtrlUopNext)
+  dontTouch(conflict)
+  canServeCacheUop := (!cacheCtrlUopValid || io.OUT_cacheCtrlUop.fire) &&
+    !conflict
+  when (io.OUT_cacheCtrlUop.fire) {
+    cacheCtrlUopValid := false.B
+  }
+  when (needCacheOp && canServeCacheUop) {
+    cacheCtrlUopValid := true.B
+    cacheCtrlUop := cacheCtrlUopNext
+  }
+  dontTouch(needCacheOp)
+  dontTouch(canServeCacheUop)
 
   monitorEvent(ifuFinished, io.out.fire)
-  monitorEvent(ifuStalled, validBuffer && ~reset.asBool)
+  monitorEvent(ifuStalled, outValid && ~reset.asBool)
 }
 
 class FetchCacheLine extends CoreModule {

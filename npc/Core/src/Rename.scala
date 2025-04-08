@@ -72,6 +72,7 @@ class Rename extends CoreModule {
                                          decodeUop.bits.fuType =/= FuType.FLAG && 
                                          decodeUop.bits.rd =/= 0.U)
   val renameStall = freeList.io.OUT_renameStall || (robHeadPtr.distanceTo(io.IN_robTailPtr) < ISSUE_WIDTH.U)
+  dontTouch(renameStall)
   for (i <- 0 until ISSUE_WIDTH) {
     // * Allocate PReg
     freeList.io.IN_renameReqValid(i) := allocatePReg(i)
@@ -156,6 +157,7 @@ class Rename extends CoreModule {
     uopValid(i) && uop(i).lockBackend
   }))
   val isBlocked = Wire(Vec(ISSUE_WIDTH, Bool()))
+  dontTouch(isBlocked)
   isBlocked(0) := isValidLockInst(0) && !io.IN_robEmpty
   // * IN_backendLocked: blocks all inst uncoditionally
   // * Logic: inst(0) blocked: self lock backend && rob not empty

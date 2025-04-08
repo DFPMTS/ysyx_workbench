@@ -319,6 +319,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   val cacheCtrlUopValid = RegInit(false.B)  
 
   val cacheUopNext = WireInit(0.U.asTypeOf(new CacheCtrlUop))
+  cacheUopNext.cacheId := CacheId.DCACHE
   val cacheUopValidNext = WireInit(false.B)
   
   io.OUT_cacheCtrlUop.valid := cacheCtrlUopValid
@@ -328,37 +329,11 @@ class NewLSU extends CoreModule with HasLSUOps {
   }
 
   def isLoadAddrAlreadyInFlight(addr: UInt) = {
-    io.IN_mshrs.map(e => e.loadAddrInFlight(addr)).reduce(_ || _) ||
-    (io.OUT_cacheCtrlUop.valid && io.OUT_cacheCtrlUop.bits.loadAddrAlreadyInFlight(addr))
+    MSHRChecker.isLoadAddrAlreadyInFlight(io.IN_mshrs, io.OUT_cacheCtrlUop, CacheId.DCACHE, addr)
   }
 
   def isMSHRConflict(uop: CacheCtrlUop) = {
-    val conflict = WireInit(false.B)
-    for(i <- 0 until NUM_MSHR) {
-      when (io.IN_mshrs(i).valid) {
-        // * Read after write: read must be processed after write to mem. Note that mshr(i)/uop can be different cache line
-        when(io.IN_mshrs(i).memWriteAddr(XLEN - 1, log2Up(CACHE_LINE_B)) === uop.readAddr()(XLEN - 1, log2Up(CACHE_LINE_B))) {
-          conflict := true.B
-        }
-        // * the cache line has another inflight operation
-        when(io.IN_mshrs(i).cacheLocation() === uop.cacheLocation()) {
-          conflict := true.B
-        }
-      }
-    }
-    
-    when(io.OUT_cacheCtrlUop.valid) {
-      // * RAW
-      when(io.OUT_cacheCtrlUop.bits.writeAddr()(XLEN - 1, log2Up(CACHE_LINE_B)) === uop.readAddr()(XLEN - 1, log2Up(CACHE_LINE_B))) {
-        conflict := true.B
-      }
-      // * same cache lien
-      when(io.OUT_cacheCtrlUop.bits.cacheLocation() === uop.cacheLocation()) {
-        conflict := true.B
-      }
-    }
-
-    conflict
+    MSHRChecker.conflict(io.IN_mshrs, io.OUT_cacheCtrlUop, uop)
   }
 
   val idle = !writeTag && io.OUT_dataReq.ready && io.OUT_tagReq.ready && !storeWriteData && amoState === sAmoIdle
@@ -940,6 +915,7 @@ class UncachedLSU extends CoreModule {
   val state = RegInit(sIdle)
   val cacheCtrlUop = Reg(new CacheCtrlUop)
   cacheCtrlUop := 0.U.asTypeOf(new CacheCtrlUop)
+  cacheCtrlUop.cacheId := CacheId.DCACHE
 
   val loadUop = Reg(new AGUUop)
   val loadData = Reg(UInt(XLEN.W))

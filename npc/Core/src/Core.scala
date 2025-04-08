@@ -15,6 +15,7 @@ class Core extends CoreModule {
 
   // * Cache
   val dcache = Module(new DCache)
+  val icache = Module(new NewICache)
   val cacheController = Module(new CacheController)
 
   val ifu = Module(new IFU)
@@ -58,9 +59,6 @@ class Core extends CoreModule {
   val ptw  = Module(new PTW)
   val loadArb = Module(new LoadArbiter)
 
-
-  val arbiter = Module(new AXI_Arbiter)
-
   val xtvalRecoder = Module(new XtvalRecoder)
   val flagHandler = Module(new FlagHandler)
   val flush = Wire(Bool())
@@ -102,7 +100,6 @@ class Core extends CoreModule {
 
   // * IF
   ifu.io.redirect := redirect
-  arbiter.io.winMaster.viewAs[AXI4ysyxSoC] <> io.master
   ifu.io.flushICache := false.B
   ifu.io.OUT_TLBReq <> itlb.io.IN_TLBReq
   ifu.io.IN_TLBResp <> itlb.io.OUT_TLBResp
@@ -110,6 +107,16 @@ class Core extends CoreModule {
   ifu.io.IN_PTWResp <> ptw.io.OUT_PTWResp
   ifu.io.IN_VMCSR <> csr.io.OUT_VMCSR
   ifu.io.IN_trapCSR <> csr.io.OUT_trapCSR
+  ifu.io.OUT_ITagRead <> icache.io.IN_tagRead
+  ifu.io.OUT_ITagWrite <> icache.io.IN_tagWrite
+  ifu.io.IN_ITagResp <> icache.io.OUT_tagResp
+  ifu.io.OUT_IDataRead <> icache.io.IN_dataRead
+  ifu.io.IN_IDataResp <> icache.io.OUT_dataResp
+  ifu.io.IN_mshrs <> cacheController.io.OUT_MSHR
+  ifu.io.OUT_cacheCtrlUop <> cacheController.io.IN_cacheCtrlUop(2)
+
+  icache.io.IN_ctrlDataWrite <> cacheController.io.OUT_IDataWrite  
+
   itlb.io.IN_PTWResp <> ptw.io.OUT_PTWResp
   itlb.io.IN_TLBFlush := TLBFlush
 
@@ -303,8 +310,7 @@ class Core extends CoreModule {
   dcache.io.OUT_ctrlDataResp <> cacheController.io.IN_DDataResp
 
   // * AXI4 master
-  arbiter.io.IFUMaster <> ifu.io.master
-  arbiter.io.LSUMaster <> cacheController.io.OUT_axi
+  io.master <> cacheController.io.OUT_axi.viewAs[AXI4ysyxSoC]
 
   // AXI4 slave
   io.slave.awready := false.B

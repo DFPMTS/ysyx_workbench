@@ -59,6 +59,9 @@ trait HasCoreParameters {
   // * Number of MSHR
   def NUM_MSHR = 4
 
+  // * Cache Id Length
+  def CACHE_ID_LEN = 1
+
   // * Cache Line Size in Bytes
   def CACHE_LINE_B = 32
 
@@ -70,6 +73,18 @@ trait HasCoreParameters {
 
   // * DCache Tag Width
   def DCACHE_TAG = XLEN - log2Up(DCACHE_SETS) - log2Up(CACHE_LINE_B)
+
+  // * Inst Fetch Width
+  def FETCH_WIDTH = 1
+
+  // * ICache Ways
+  def ICACHE_WAYS = 1
+
+  // * ICache Sets
+  def ICACHE_SETS = 4
+
+  // * ICache Tag Width
+  def ICACHE_TAG = XLEN - log2Up(ICACHE_SETS) - log2Up(CACHE_LINE_B)
 
   // * AXI Data Width
   def AXI_DATA_WIDTH = 256

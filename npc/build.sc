@@ -18,12 +18,12 @@ object Core extends ScalaModule with ScalafmtModule { m =>
   override def ivyDeps = Agg(
     if (useChisel7) ivy"org.chipsalliance::chisel:7.0.0-M1"
     else
-      ivy"org.chipsalliance::chisel:6.6.0"
+      ivy"org.chipsalliance::chisel:6.7.0"
   )
   override def scalacPluginIvyDeps = Agg(
     if (useChisel7) ivy"org.chipsalliance:::chisel-plugin:7.0.0-M1"
     else
-      ivy"org.chipsalliance:::chisel-plugin:6.6.0"
+      ivy"org.chipsalliance:::chisel-plugin:6.7.0"
   )
   object test extends ScalaTests with Utest {
     override def ivyDeps = m.ivyDeps() ++ Agg(

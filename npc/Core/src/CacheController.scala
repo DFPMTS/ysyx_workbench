@@ -16,13 +16,15 @@ class MemLoadFoward extends CoreBundle {
 
 class CacheControllerIO extends CoreBundle {
   // * Cache Controller Uop
-  val IN_cacheCtrlUop = Flipped(Vec(2, Decoupled(new CacheCtrlUop)))
+  val IN_cacheCtrlUop = Flipped(Vec(3, Decoupled(new CacheCtrlUop)))
 
   // * Cache Array Management
   // ** Data Cache Tag & Data
   val OUT_DDataRead = Valid(new DDataReq)
   val OUT_DDataWrite = Valid(new DDataReq)
   val IN_DDataResp = Flipped(new DDataResp)
+  // ** Inst Cache Data
+  val OUT_IDataWrite = Valid(new IDataWrite)
 
   // ** Instruction Cache Tag & Data
   val OUT_MSHR = Vec(NUM_MSHR, new MSHR)
@@ -40,6 +42,7 @@ class CacheControllerIO extends CoreBundle {
 class MSHR extends CoreBundle {
   val valid = Bool()
   val uncached = Bool()
+  val cacheId = UInt(CACHE_ID_LEN.W)
   val opcode = UInt(OpcodeWidth.W)
   val way = UInt(log2Up(DCACHE_WAYS).W)
   // * read from Mem
@@ -57,14 +60,88 @@ class MSHR extends CoreBundle {
   val wdata = UInt(XLEN.W)
   val wmask = UInt(4.W)
 
-  def loadAddrInFlight(addr: UInt) = {
-    valid && 
+  def loadAddrInFlight(cacheId: UInt, addr: UInt) = {
+    valid && this.cacheId === cacheId &&
     memReadAddr(XLEN - 1, log2Up(CACHE_LINE_B)) === addr(XLEN - 1, log2Up(CACHE_LINE_B)) &&
     !axiReadDone
   }
 
   def cacheLocation() = {
-    Cat(way, memWriteAddr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B)))
+    Cat(way, memReadAddr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B)))// !
+  }
+}
+
+/* 
+  def isLoadAddrAlreadyInFlight(addr: UInt) = {
+    io.IN_mshrs.map(e => e.loadAddrInFlight(addr)).reduce(_ || _) ||
+    (io.OUT_cacheCtrlUop.valid && io.OUT_cacheCtrlUop.bits.loadAddrAlreadyInFlight(addr))
+  }
+
+  def isMSHRConflict(uop: CacheCtrlUop) = {
+    val conflict = WireInit(false.B)
+    for(i <- 0 until NUM_MSHR) {
+      when (io.IN_mshrs(i).valid) {
+        // * Read after write: read must be processed after write to mem. Note that mshr(i)/uop can be different cache line
+        when(io.IN_mshrs(i).memWriteAddr(XLEN - 1, log2Up(CACHE_LINE_B)) === uop.readAddr()(XLEN - 1, log2Up(CACHE_LINE_B))) {
+          conflict := true.B
+        }
+        // * the cache line has another inflight operation
+        when(io.IN_mshrs(i).cacheLocation() === uop.cacheLocation()) {
+          conflict := true.B
+        }
+      }
+    }
+    
+    when(io.OUT_cacheCtrlUop.valid) {
+      // * RAW
+      when(io.OUT_cacheCtrlUop.bits.writeAddr()(XLEN - 1, log2Up(CACHE_LINE_B)) === uop.readAddr()(XLEN - 1, log2Up(CACHE_LINE_B))) {
+        conflict := true.B
+      }
+      // * same cache lien
+      when(io.OUT_cacheCtrlUop.bits.cacheLocation() === uop.cacheLocation()) {
+        conflict := true.B
+      }
+    }
+
+    conflict
+  }
+ */
+object MSHRChecker extends HasCoreParameters {
+
+  def isLoadAddrAlreadyInFlight(mshr: Vec[MSHR], OUT_uop: DecoupledIO[CacheCtrlUop], cacheId: UInt, addr: UInt) = {
+    mshr.map(_.loadAddrInFlight(cacheId, addr)).reduce(_ || _) ||
+    (OUT_uop.valid && OUT_uop.bits.loadAddrAlreadyInFlight(cacheId, addr))
+  }
+
+  def conflict(mshr: Vec[MSHR], OUT_uop: DecoupledIO[CacheCtrlUop], uop: CacheCtrlUop) = {
+    val conflict = WireInit(false.B)
+    val mshrConflict = Wire(Vec(NUM_MSHR, Bool()))    
+    dontTouch(mshrConflict)
+    for (i <- 0 until NUM_MSHR) {
+      mshrConflict(i) := false.B
+      when(mshr(i).valid && mshr(i).cacheId === uop.cacheId) {
+        // * Read after write: read must be processed after write to mem. Note that mshr(i)/uop can be different cache line
+        when(mshr(i).memWriteAddr(XLEN - 1, log2Up(CACHE_LINE_B)) === uop.readAddr()(XLEN - 1, log2Up(CACHE_LINE_B))) {
+          mshrConflict(i) := true.B
+        }
+        // * the cache line has another inflight operation
+        when(mshr(i).cacheLocation() === uop.cacheLocation()) {
+          mshrConflict(i) := true.B
+        }
+      }
+    }
+    conflict := mshrConflict.reduce(_ || _)
+    when(OUT_uop.valid && OUT_uop.bits.cacheId === uop.cacheId) {
+      // * RAW
+      when(OUT_uop.bits.writeAddr()(XLEN - 1, log2Up(CACHE_LINE_B)) === uop.readAddr()(XLEN - 1, log2Up(CACHE_LINE_B))) {
+        conflict := true.B
+      }
+      // * same cache line
+      when(OUT_uop.bits.cacheLocation() === uop.cacheLocation()) {
+        conflict := true.B
+      }
+    }
+    conflict
   }
 }
 
@@ -81,7 +158,7 @@ class CacheController extends CoreModule {
   val mshrFreeIndex = PriorityEncoder(mshrFree)
   val canAllocateMSHR = mshrFree.reduce(_ || _)
 
-  for (i <- 0 until 2) {
+  for (i <- 0 until 3) {
     io.IN_cacheCtrlUop(i).ready := false.B
   }
   io.IN_cacheCtrlUop(uopValidIndex).ready := canAllocateMSHR
@@ -93,6 +170,7 @@ class CacheController extends CoreModule {
     mshr(mshrFreeIndex) := newMSHR
 
     newMSHR.valid := true.B
+    newMSHR.cacheId := uop.cacheId
     newMSHR.way := uop.way
     newMSHR.memReadAddr := 0.U
     newMSHR.memWriteAddr := 0.U
@@ -209,6 +287,7 @@ class CacheController extends CoreModule {
   }
   // ** cache write
   io.OUT_DDataWrite := 0.U.asTypeOf(io.OUT_DDataWrite)
+  io.OUT_IDataWrite := 0.U.asTypeOf(io.OUT_IDataWrite)
   when(io.OUT_axi.r.valid) {
     val rMSHRIndex = io.OUT_axi.r.bits.id
     val rMSHR = mshr(rMSHRIndex)
@@ -220,12 +299,20 @@ class CacheController extends CoreModule {
     //     wdata(inCacheLineOffset + i.U) := rMSHR.wdata((i + 1) * 8 - 1, i * 8)
     //   }
     // }
-    io.OUT_DDataWrite.bits.addr := rMSHR.memReadAddr
-    io.OUT_DDataWrite.bits.data := wdata.asUInt
-    io.OUT_DDataWrite.bits.way := rMSHR.way
-    io.OUT_DDataWrite.bits.wmask := Fill(CACHE_LINE_B, 1.U(1.W))
-    io.OUT_DDataWrite.bits.write := true.B
-    io.OUT_DDataWrite.valid := !CacheOpcode.isUnCached(rMSHR.opcode)
+    when(rMSHR.cacheId === CacheId.DCACHE) {       
+      io.OUT_DDataWrite.bits.addr := rMSHR.memReadAddr
+      io.OUT_DDataWrite.bits.data := wdata.asUInt
+      io.OUT_DDataWrite.bits.way := rMSHR.way
+      io.OUT_DDataWrite.bits.wmask := Fill(CACHE_LINE_B, 1.U(1.W))
+      io.OUT_DDataWrite.bits.write := true.B
+      io.OUT_DDataWrite.valid := !CacheOpcode.isUnCached(rMSHR.opcode)
+    }.elsewhen(rMSHR.cacheId === CacheId.ICACHE) {
+      io.OUT_IDataWrite.bits.addr := rMSHR.memReadAddr
+      io.OUT_IDataWrite.bits.data := wdata.asTypeOf(io.OUT_IDataWrite.bits.data)
+      io.OUT_IDataWrite.bits.way := rMSHR.way
+      io.OUT_IDataWrite.bits.wmask := Fill(CACHE_LINE_B, 1.U(1.W))
+      io.OUT_IDataWrite.valid := true.B
+    }
     rMSHR.axiReadDone := true.B
   }
 
