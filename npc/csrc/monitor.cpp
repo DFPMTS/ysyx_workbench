@@ -53,7 +53,7 @@ void init_monitor(int argc, char *argv[]) {
   load_img(img_file);
   init_func_sym(elf_file);
   init_cpu();
-  init_disasm("riscv32-pc-linux-gnu");
+  init_disasm();
 #ifdef DIFFTEST
   init_difftest(diff_so_file);
 #endif

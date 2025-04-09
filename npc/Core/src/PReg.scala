@@ -4,7 +4,7 @@ import utils._
 
 class PRegIO extends CoreBundle {
   val IN_pRegIndex = Flipped(Vec(MACHINE_WIDTH, Vec(2, UInt(PREG_IDX_W))))
-  val IN_writebackUop = Flipped(Vec(MACHINE_WIDTH, Valid(new WritebackUop)))
+  val IN_writebackUop = Flipped(Vec(WRITEBACK_WIDTH, Valid(new WritebackUop)))
   val OUT_pRegVal = Vec(MACHINE_WIDTH, Vec(2, UInt(XLEN.W)))
 }
 
@@ -23,7 +23,7 @@ class PReg extends CoreModule {
     }
   }
 
-  for (i <- 0 until MACHINE_WIDTH) {
+  for (i <- 0 until WRITEBACK_WIDTH) {
     val writebackValid = io.IN_writebackUop(i).valid
     val writebackUop = io.IN_writebackUop(i).bits
     when (writebackValid && writebackUop.prd =/= ZERO) {

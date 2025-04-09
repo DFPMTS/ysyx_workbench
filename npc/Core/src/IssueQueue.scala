@@ -5,7 +5,7 @@ import org.fusesource.jansi.internal.Kernel32.FOCUS_EVENT_RECORD
 
 class IssueQueueIO extends CoreBundle {
   val IN_renameUop = Flipped(Decoupled(new RenameUop))
-  val IN_writebackUop = Flipped(Vec(MACHINE_WIDTH, Valid(new WritebackUop)))
+  val IN_writebackUop = Flipped(Vec(WRITEBACK_WIDTH, Valid(new WritebackUop)))
   val OUT_issueUop = Decoupled(new RenameUop)
   val IN_robTailPtr = Input(RingBufferPtr(ROB_SIZE))
   val IN_stqBasePtr = Flipped(RingBufferPtr(STQ_SIZE))
@@ -47,7 +47,7 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
   for (j <- 0 until IQ_SIZE) {
     writebackReady(j)(0) := false.B
     writebackReady(j)(1) := false.B
-    for (i <- 0 until MACHINE_WIDTH) {
+    for (i <- 0 until WRITEBACK_WIDTH) {
       val writebackValid = io.IN_writebackUop(i).valid
       val writebackUop = io.IN_writebackUop(i).bits
       when (writebackValid) {
@@ -130,7 +130,7 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
     val renameUop = io.IN_renameUop.bits
     queue(enqIndex) := renameUop
     // * fix srcReady
-    for (i <- 0 until MACHINE_WIDTH) {
+    for (i <- 0 until WRITEBACK_WIDTH) {
       val writebackValid = io.IN_writebackUop(i).valid
       val writebackUop = io.IN_writebackUop(i).bits
       when (writebackValid) {

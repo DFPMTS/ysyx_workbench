@@ -3,13 +3,22 @@ import chisel3.util._
 import chisel3.SpecifiedDirection.Flip
 import utils._
 
+class FetchGroup extends CoreBundle {
+  val pc = UInt(XLEN.W)
+  val insts = Vec(FETCH_WIDTH, UInt(32.W))
+  val pageFault = Bool()
+  val interrupt = Bool()
+  val access_fault = Bool()
+}
+
 class IFUIO extends CoreBundle {
   // * Invalidate whole ICache
   val flushICache = Input(Bool())
   // * Redirect PC
   val redirect = Input(new RedirectSignal)
   // * Output, inst + pc
-  val out = Decoupled(new InstSignal)
+  val out = Vec(FETCH_WIDTH, Valid(new InstSignal))
+  val IN_ready = Flipped(Bool())
 
   // * ICache Interface 
   val OUT_ITagRead = Valid(new ITagRead)
@@ -38,14 +47,15 @@ class IFUIO extends CoreBundle {
 class IFU extends Module with HasPerfCounters with HasCoreParameters {
   val io = IO(new IFUIO)
 
-  val instBuffer = Module(new InstBuffer)
+  val fetchBuffer = Module(new FetchBuffer)
+  val instAligner = Module(new InstAligner)
 
   val replaceCounter = RegInit(0.U(2.W))
   replaceCounter := Mux(replaceCounter === DCACHE_WAYS.U - 1.U, 0.U, replaceCounter + 1.U)
 
   val vPC      = RegInit(UInt(XLEN.W), Config.resetPC)
   // * Static Next vPC
-  val vPCNext  = WireInit(Cat(vPC(XLEN - 1, log2Up(FETCH_WIDTH * 4)) + 1.U, 0.U(log2Up(FETCH_WIDTH * 4).W)))
+  val vPCNext  = WireInit(Cat(vPC(XLEN - 1, log2Ceil(FETCH_WIDTH * 4)) + 1.U, 0.U(log2Ceil(FETCH_WIDTH * 4).W)))
 
   val phyPCNext      = Wire(UInt(XLEN.W))
   val phyPCValidNext = WireInit(false.B)
@@ -62,8 +72,8 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   val canServeCacheUop = Wire(Bool())
   val cacheCtrlUopNext = WireInit(0.U.asTypeOf(new CacheCtrlUop))
   
-  val outValid = RegInit(false.B)
-  val outInst = Reg(new InstSignal)
+  val fetchValid = RegInit(false.B)
+  val fetchGroup = Reg(new FetchGroup)
 
   val cacheCtrlUop = Reg(new CacheCtrlUop)
   val cacheCtrlUopValid = RegInit(false.B)
@@ -78,7 +88,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   val doTranslate = io.IN_VMCSR.mode === 1.U && io.IN_VMCSR.priv < Priv.M
   io.OUT_TLBReq.valid := doTranslate
   io.OUT_TLBReq.bits.vpn := vPC(31, 12)
-  phyPCValidNext := (!doTranslate || io.IN_TLBResp.valid) && instBuffer.io.fetchCanContinue
+  phyPCValidNext := (!doTranslate || io.IN_TLBResp.valid) && fetchBuffer.io.fetchCanContinue
   phyPCNext := Mux(doTranslate, io.IN_TLBResp.bits.vaddrToPaddr(vPC), vPC)    
 
   val dataResp = WireInit(io.IN_IDataResp.data)
@@ -117,7 +127,6 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   // * redirect / vPC generation
   when(redirect.valid) {
     vPC := redirect.pc
-    outValid := redirect.valid
     phyPCValid := false.B
     pageFault := false.B
     interrupt := false.B
@@ -136,22 +145,30 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   dontTouch(redirect)
   dontTouch(fetchRedirect)
 
-  // ** Output
+  // ** Fetch Buffer
   when(io.redirect.valid) {
-    outValid := false.B
+    fetchValid := false.B
   }.otherwise {   
-    outValid := phyPCValid && !cacheMiss
+    fetchValid := phyPCValid && !cacheMiss
   }
-  outInst.pc := vPC1
-  outInst.inst := dataResp(tagHitWay)(vPC1(log2Up(CACHE_LINE_B) - 1, 2))
-  outInst.interrupt := interrupt
-  outInst.pageFault := pageFault
-  outInst.access_fault := false.B
-  instBuffer.io.flush := io.redirect.valid
-  instBuffer.io.in.valid := outValid
-  instBuffer.io.in.bits := outInst
+  val fetchGroupIndex = if(FETCH_WIDTH == CACHE_LINE_B / 4) 0.U else phyPC(log2Up(CACHE_LINE_B) - 1, log2Ceil(FETCH_WIDTH) + 2)
+  val fetchGroups = Wire(Vec((CACHE_LINE_B / 4) /FETCH_WIDTH, Vec(FETCH_WIDTH, UInt(32.W))))
+  fetchGroups := dataResp(tagHitWay).asTypeOf(fetchGroups)
+  fetchGroup.pc := vPC1
+  fetchGroup.insts := fetchGroups(fetchGroupIndex)
+  fetchGroup.interrupt := interrupt
+  fetchGroup.pageFault := pageFault
+  fetchGroup.access_fault := false.B
 
-  io.out <> instBuffer.io.out
+  fetchBuffer.io.flush := io.redirect.valid
+  fetchBuffer.io.in.valid := fetchValid
+  fetchBuffer.io.in.bits := fetchGroup
+
+  // ** Inst Aligner
+  instAligner.io.IN_fetchGroup <> fetchBuffer.io.out
+  instAligner.io.IN_ready <> io.IN_ready
+  instAligner.io.OUT_insts <> io.out
+  instAligner.io.IN_flush := io.redirect.valid
 
   // ** Write Tag
   val ITagWrite = Reg(Valid(new ITagWrite))
@@ -193,8 +210,8 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   dontTouch(needCacheOp)
   dontTouch(canServeCacheUop)
 
-  monitorEvent(ifuFinished, io.out.fire)
-  monitorEvent(ifuStalled, outValid && ~reset.asBool)
+  monitorEvent(ifuFinished, io.out(0).fire)
+  monitorEvent(ifuStalled, io.out(0).valid && ~reset.asBool)
 }
 
 class FetchCacheLine extends CoreModule {

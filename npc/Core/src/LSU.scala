@@ -383,6 +383,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   uncachedLSU.io.IN_storeUop.bits := io.IN_storeUop.bits
   uncachedLSU.io.IN_memLoadFoward := io.IN_memLoadFoward
   uncachedLSU.io.IN_uncacheStoreResp := io.IN_uncacheStoreResp
+  uncachedLSU.io.IN_flush := io.IN_flush
 
   uncachedLSU.io.OUT_cacheCtrlUop.ready := false.B
   uncachedLSU.io.OUT_loadUop.ready := false.B
@@ -827,7 +828,7 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
   
   // Forward load data to all entries
   for (i <- 0 until N) {
-    when(io.IN_memLoadFoward.valid &&
+    when(valid(i) && io.IN_memLoadFoward.valid &&
           io.IN_memLoadFoward.bits.addr(XLEN - 1, log2Up(AXI_DATA_WIDTH / 8)) === entries(i).addr(XLEN - 1, log2Up(AXI_DATA_WIDTH / 8))) {
       val data = Wire(Vec(4, UInt(8.W)))
       data := entries(i).data.asTypeOf(data)
@@ -893,6 +894,8 @@ class UncachedLSUIO extends CoreBundle {
 
   val OUT_loadUop = Decoupled(new AGUUop)
   val OUT_loadData = UInt(XLEN.W)
+
+  val IN_flush = Flipped(Bool())
 }
 
 class UncachedLSU extends CoreModule {
@@ -985,7 +988,11 @@ class UncachedLSU extends CoreModule {
         state := sIdle
       }
     }
-}
+  }
+
+  when(io.IN_flush) {
+    state := sIdle
+  }
 
   io.OUT_cacheCtrlUop.valid := state === sLoadReq || state === sStoreReq
   io.OUT_cacheCtrlUop.bits := cacheCtrlUop

@@ -11,7 +11,6 @@ class RenameIO extends CoreBundle {
   val OUT_robValid = Vec(ISSUE_WIDTH, Output(Bool()))
   val IN_robTailPtr = Input(RingBufferPtr(ROB_SIZE))
   val IN_robEmpty = Flipped(Bool())
-  val IN_backendLocked = Flipped(Bool())
   // * ldq/stq tail
   val IN_ldqTailPtr = Input(RingBufferPtr(LDQ_SIZE))
   val IN_stqTailPtr = Input(RingBufferPtr(STQ_SIZE))
@@ -19,7 +18,7 @@ class RenameIO extends CoreBundle {
   val OUT_issueQueueValid = Vec(ISSUE_WIDTH, Output(Bool()))  
   val IN_issueQueueReady = Flipped(Vec(ISSUE_WIDTH, Bool()))
   // * writeback
-  val IN_writebackUop = Flipped(Vec(MACHINE_WIDTH, Valid(new WritebackUop)))
+  val IN_writebackUop = Flipped(Vec(WRITEBACK_WIDTH, Valid(new WritebackUop)))
   // * commit
   val IN_commitUop = Flipped(Vec(COMMIT_WIDTH, Valid(new CommitUop)))
   val OUT_robHeadPtr = Output(RingBufferPtr(ROB_SIZE))
@@ -31,7 +30,12 @@ class Rename extends CoreModule {
 
   // * Main signals: renameUop
   val uop = Reg(Vec(ISSUE_WIDTH, new RenameUop))
-  val uopValid = RegInit(VecInit(Seq.fill(ISSUE_WIDTH)(false.B)))
+  val uopRobValid = RegInit(VecInit(Seq.fill(ISSUE_WIDTH)(false.B)))
+  val uopIQValid = RegInit(VecInit(Seq.fill(ISSUE_WIDTH)(false.B)))
+  val uopValid = Wire(Vec(ISSUE_WIDTH, Bool()))
+  for (i <- 0 until ISSUE_WIDTH) {
+    uopValid(i) := uopRobValid(i) || uopIQValid(i)
+  }
   val uopNext = Wire(Vec(ISSUE_WIDTH, new RenameUop))
 
   // * Submodules
@@ -39,6 +43,9 @@ class Rename extends CoreModule {
   val freeList = Module(new FreeList)
 
   // * Dataflow
+
+  // ** Backend Lock
+  val backendLocked = RegInit(false.B)
 
   // ** robPtr/ldqPtr/stqPtr allocation
   val robHeadPtr = RegInit(RingBufferPtr(size = ROB_SIZE, flag = 0.U, index = 0.U))
@@ -97,7 +104,7 @@ class Rename extends CoreModule {
   }
 
   // ** RenamingTable <- Writeback
-  for (i <- 0 until MACHINE_WIDTH) {
+  for (i <- 0 until WRITEBACK_WIDTH) {
     renamingTable.io.IN_writebackValid(i) := io.IN_writebackUop(i).valid
     renamingTable.io.IN_writebackPReg(i) := io.IN_writebackUop(i).bits.prd
   }
@@ -163,11 +170,12 @@ class Rename extends CoreModule {
   // * Logic: inst(0) blocked: self lock backend && rob not empty
   // *        inst(i) blocked: inst(i-1) blocked || (inst(i) lock backend && (rob not empty or inst before not issued))
   for (i <- 1 until ISSUE_WIDTH) {
-    isBlocked(i) :=  isBlocked(i - 1) || ((uopValid.asUInt(0, i).orR || !io.IN_robEmpty) && isValidLockInst(i))
+    isBlocked(i) := isBlocked(i - 1) || ((uopValid.asUInt(i - 1, 0).orR || !io.IN_robEmpty) && isValidLockInst(i)) || 
+                    isValidLockInst.asUInt(i - 1, 0).orR
   }
 
   // ** maintain current uop
-  for (i <- 0 until MACHINE_WIDTH) {
+  for (i <- 0 until WRITEBACK_WIDTH) {
     when (io.IN_writebackUop(i).valid && io.IN_writebackUop(i).bits.prd =/= ZERO) {
       for (j <- 0 until ISSUE_WIDTH) {
         when (uop(j).prs1 === io.IN_writebackUop(i).bits.prd) {
@@ -186,20 +194,25 @@ class Rename extends CoreModule {
     }
   }
 
-  val issueQueueValid = VecInit((0 until ISSUE_WIDTH).map(i => 
-    inValid(i)))
+  val needIQ = VecInit((0 until ISSUE_WIDTH).map(i => 
+    inValid(i) && uopNext(i).fuType =/= FuType.FLAG))
 
   // ** update uopValid
   when (io.IN_flush) {
-    uopValid := VecInit(Seq.fill(ISSUE_WIDTH)(false.B))
+    uopRobValid := VecInit(Seq.fill(ISSUE_WIDTH)(false.B))
+    uopIQValid := VecInit(Seq.fill(ISSUE_WIDTH)(false.B))
   }.elsewhen(inReady) {
-    uopValid := inValid
+    uopRobValid := inValid
+    uopIQValid := needIQ
   }.otherwise {
     for (i <- 0 until ISSUE_WIDTH) {
       when(outIssueQueueFire(i)) {
-        uopValid(i) := false.B
+        uopIQValid(i) := false.B
       }
-    }    
+      when(io.OUT_robValid(i)) {
+        uopRobValid(i) := false.B
+      }
+    }
   }
 
   // ** Flush submodules
@@ -211,12 +224,22 @@ class Rename extends CoreModule {
   // ** Decode <- Rename
   for (i <- 0 until ISSUE_WIDTH) {
     io.IN_decodeUop(i).ready := inReady
-  }  
-
+  }
   // ** Rename -> Issue
   for (i <- 0 until ISSUE_WIDTH) {
-    io.OUT_robValid(i) := io.OUT_issueQueueValid(i) && io.IN_issueQueueReady(i)
-    io.OUT_issueQueueValid(i) := uopValid(i) && !io.IN_backendLocked && !isBlocked(i)
+    io.OUT_robValid(i) := uopRobValid(i) && !backendLocked && !isBlocked(i)
+    io.OUT_issueQueueValid(i) := uopIQValid(i) && !backendLocked && !isBlocked(i)
     io.OUT_renameUop(i) := uop(i)
   }
+
+  val lockInstIssued = (0 until ISSUE_WIDTH).map(i => {
+    io.OUT_renameUop(i).lockBackend && io.OUT_issueQueueValid(i) && io.IN_issueQueueReady(i)
+  }).reduce(_ || _)
+
+  when(lockInstIssued) {
+    backendLocked := true.B
+  }.elsewhen (io.IN_robEmpty) {
+    backendLocked := false.B
+  }
+  
 }

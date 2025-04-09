@@ -11,6 +11,7 @@ trait HasDecodeConfig {
 
   def Y = 1.U(1.W)
   def N = 0.U(1.W)
+
 }
 
 trait HasCoreParameters {
@@ -18,8 +19,9 @@ trait HasCoreParameters {
   def IDLEN = 4  
 
   // * Issue Width
-  def ISSUE_WIDTH = 1
+  def ISSUE_WIDTH = 4
   def MACHINE_WIDTH = 4
+  def WRITEBACK_WIDTH = 5
   def COMMIT_WIDTH = 1
 
 
@@ -66,22 +68,22 @@ trait HasCoreParameters {
   def CACHE_LINE_B = 32
 
   // * DCache Ways
-  def DCACHE_WAYS = 1
+  def DCACHE_WAYS = 4
 
   // * DCache Sets
-  def DCACHE_SETS = 4
+  def DCACHE_SETS = 16
 
   // * DCache Tag Width
   def DCACHE_TAG = XLEN - log2Up(DCACHE_SETS) - log2Up(CACHE_LINE_B)
 
   // * Inst Fetch Width
-  def FETCH_WIDTH = 1
+  def FETCH_WIDTH = 4
 
   // * ICache Ways
-  def ICACHE_WAYS = 1
+  def ICACHE_WAYS = 4
 
   // * ICache Sets
-  def ICACHE_SETS = 4
+  def ICACHE_SETS = 16
 
   // * ICache Tag Width
   def ICACHE_TAG = XLEN - log2Up(ICACHE_SETS) - log2Up(CACHE_LINE_B)

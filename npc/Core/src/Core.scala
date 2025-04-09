@@ -27,15 +27,15 @@ class Core extends CoreModule {
   val iq = Seq(
     Module(new IssueQueue(Seq(FuType.ALU, FuType.MUL, FuType.CSR))),
     Module(new IssueQueue(Seq(FuType.ALU, FuType.DIV))),
-    Module(new IssueQueue(Seq(FuType.LSU))),
     Module(new IssueQueue(Seq(FuType.ALU))),
+    Module(new IssueQueue(Seq(FuType.LSU))),
   )
   val dispatcher = Seq(
     Module(new Dispatcher(
-      Seq(Seq(FuType.ALU, FuType.BRU), Seq(FuType.MUL), Seq(FuType.CSR))
+      Seq(Seq(FuType.ALU), Seq(FuType.MUL), Seq(FuType.CSR))
     )),
     Module(new Dispatcher(
-      Seq(Seq(FuType.ALU, FuType.BRU), Seq(FuType.DIV))
+      Seq(Seq(FuType.ALU), Seq(FuType.DIV))
     )),
   )
 
@@ -49,6 +49,8 @@ class Core extends CoreModule {
   val alu1 = Module(new ALU)
   val div  = Module(new DIV)
   // * Port 2
+  val alu2 = Module(new ALU)
+  // * Port 3
   val agu  = Module(new AGU)
   val loadQueue = Module(new LoadQueue)
   val storeQueue = Module(new StoreQueue)
@@ -58,6 +60,7 @@ class Core extends CoreModule {
   val dtlb = Module(new TLB(size = 2, id = 1))
   val ptw  = Module(new PTW)
   val loadArb = Module(new LoadArbiter)
+
 
   val xtvalRecoder = Module(new XtvalRecoder)
   val flagHandler = Module(new FlagHandler)
@@ -79,8 +82,8 @@ class Core extends CoreModule {
   dontTouch(readRegUop)
 
   // * writeback
-  val writebackUop = Wire(Vec(MACHINE_WIDTH, Valid(new WritebackUop)))
-  for (i <- 0 until MACHINE_WIDTH) {
+  val writebackUop = Wire(Vec(WRITEBACK_WIDTH, Valid(new WritebackUop)))
+  for (i <- 0 until WRITEBACK_WIDTH) {
     writebackUop(i).valid := false.B
     writebackUop(i).bits := 0.U.asTypeOf(new WritebackUop)
   }
@@ -122,15 +125,15 @@ class Core extends CoreModule {
 
   // * DE
   idu.io.IN_inst <> ifu.io.out
+  idu.io.OUT_ready <> ifu.io.IN_ready
   idu.io.IN_flush := flush
 
   // * Rename
-  rename.io.IN_decodeUop(0) <> idu.io.OUT_decodeUop
+  rename.io.IN_decodeUop <> idu.io.OUT_decodeUop
   rename.io.IN_commitUop <> commitUop
   rename.io.IN_writebackUop <> writebackUop
   rename.io.IN_issueQueueReady := scheduler.io.OUT_issueQueueReady
   rename.io.IN_robEmpty := rob.io.OUT_robEmpty
-  rename.io.IN_backendLocked := rob.io.OUT_backendLocked
   rename.io.IN_flush := flush
   rename.io.IN_robTailPtr := rob.io.OUT_robTailPtr
 
@@ -225,8 +228,13 @@ class Core extends CoreModule {
   port1wbsel.io.IN_uop(1) := div.io.OUT_writebackUop
   writebackUop(1) := port1wbsel.io.OUT_uop
 
-  // ** Port 2: LSU
-  agu.io.IN_readRegUop <> readRegUop(2)
+  // ** Port 2: ALU / BRU
+  alu2.io.IN_flush := flush
+  alu2.io.IN_readRegUop <> readRegUop(2)
+  alu2.io.OUT_writebackUop <> writebackUop(2)
+
+  // ** Port 3: LSU
+  agu.io.IN_readRegUop <> readRegUop(3)
 
   agu.io.OUT_TLBReq <> dtlb.io.IN_TLBReq
   agu.io.IN_TLBResp <> dtlb.io.OUT_TLBResp
@@ -234,17 +242,18 @@ class Core extends CoreModule {
   dtlb.io.IN_PTWResp <> ptw.io.OUT_PTWResp
   dtlb.io.IN_TLBFlush := TLBFlush
   ptw.io.IN_VMCSR := csr.io.OUT_VMCSR
-  ptw.io.IN_writebackUop <> writebackUop(2)
+  ptw.io.IN_writebackUop <> writebackUop(3)
   ptw.io.IN_TLBFlush := TLBFlush
   ptw.io.IN_loadNegAck <> lsu.io.OUT_loadNegAck
 
   agu.io.IN_VMCSR := csr.io.OUT_VMCSR
   agu.io.OUT_PTWReq <> ptw.io.IN_PTWReq(1)
 
-  agu.io.OUT_writebackUop <> writebackUop(3)
+  agu.io.OUT_writebackUop <> writebackUop(4)
   agu.io.IN_PTWResp <> ptw.io.OUT_PTWResp
   agu.io.IN_flush := flush
   
+  xtvalRecoder.io.IN_robTailPtr := rob.io.OUT_robTailPtr
   xtvalRecoder.io.IN_flush := flush
   xtvalRecoder.io.IN_tval := agu.io.OUT_xtvalRec
 
@@ -273,7 +282,7 @@ class Core extends CoreModule {
   storeBuffer.io.OUT_storeUop <> lsu.io.IN_storeUop
   storeBuffer.io.IN_storeAck <> lsu.io.OUT_storeAck
 
-  writebackUop(2) := lsu.io.OUT_writebackUop
+  writebackUop(3) := lsu.io.OUT_writebackUop
 
   // ** Store Queue Bypass
   lsu.io.IN_storeBypassResp <> storeQueue.io.OUT_storeBypassResp

@@ -4,7 +4,7 @@ import utils._
 
 class ROBIO extends CoreBundle {
   val IN_renameUop = Flipped(Vec(ISSUE_WIDTH, Valid(new RenameUop)))
-  val IN_writebackUop = Flipped(Vec(MACHINE_WIDTH, Valid(new WritebackUop)))
+  val IN_writebackUop = Flipped(Vec(WRITEBACK_WIDTH, Valid(new WritebackUop)))
   val OUT_commitUop = Vec(COMMIT_WIDTH, Valid(new CommitUop))  
   val OUT_robTailPtr = RingBufferPtr(ROB_SIZE)
   val OUT_ldqTailPtr = RingBufferPtr(LDQ_SIZE)
@@ -12,7 +12,6 @@ class ROBIO extends CoreBundle {
   val IN_stqBasePtr = Flipped(RingBufferPtr(STQ_SIZE))
   val IN_renameRobHeadPtr = Input(RingBufferPtr(ROB_SIZE))
   val OUT_flagUop = Valid(new FlagUop)
-  val OUT_backendLocked = Bool()
   val OUT_robEmpty = Bool()
 
   val IN_flush = Input(Bool())
@@ -44,15 +43,6 @@ class ROB extends CoreModule {
   // ** Ldq/Stq tail
   val ldqCommitPtr = RegInit(RingBufferPtr(size = LDQ_SIZE, flag = 0.U, index = 0.U))
   val stqCommitPtr = RegInit(RingBufferPtr(size = STQ_SIZE, flag = 0.U, index = 0.U))
-
-  // ** Control
-  val backendLocked = RegInit(false.B)
-
-  when(io.IN_renameUop.map(uop => uop.valid && uop.bits.lockBackend).reduce(_||_)) {
-    backendLocked := true.B
-  }.elsewhen(robHeadPtr.isEmpty(robTailPtr)) {
-    backendLocked := false.B
-  }
 
   // ** enqueue
   for (i <- 0 until ISSUE_WIDTH) {
@@ -137,7 +127,7 @@ class ROB extends CoreModule {
   io.OUT_flagUop.bits := flagUop  
 
   // ** writeback
-  for (i <- 0 until MACHINE_WIDTH) {
+  for (i <- 0 until WRITEBACK_WIDTH) {
     val wbPtr = io.IN_writebackUop(i).bits.robPtr
     val wbEntry = rob(wbPtr.index)
     when (io.IN_writebackUop(i).valid && io.IN_writebackUop(i).bits.dest === Dest.ROB) {
@@ -148,7 +138,6 @@ class ROB extends CoreModule {
   }
 
   io.OUT_robEmpty := robHeadPtr.isEmpty(robTailPtr)
-  io.OUT_backendLocked := backendLocked
   io.OUT_robTailPtr := robTailPtr
   io.OUT_ldqTailPtr := ldqCommitPtr
   io.OUT_stqTailPtr := stqCommitPtr

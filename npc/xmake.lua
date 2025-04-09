@@ -9,6 +9,7 @@ target("Vtop")
     local llvm_ldflags = os.iorun("llvm-config --libs")
     target:add("cxxflags",llvm_cxxflags,"-fPIE")
     target:add("ldflags",llvm_ldflags)
+    target:add("cxxflags","-I $(env NEMU_HOME)/tools/capstone/repo/include")
     local sdl2_cxxflags = os.iorun("sdl2-config --cflags")
     local sdl2_ldflags = os.iorun("sdl2-config --libs") .. "-lSDL2_image -lSDL2_ttf"
     target:add("cxxflags",sdl2_cxxflags)

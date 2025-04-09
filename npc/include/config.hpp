@@ -28,6 +28,10 @@ constexpr size_t SLOT_SIZE = 2;
 
 constexpr size_t FORK_CYCLE = 100000;
 
+constexpr size_t ISSUE_WIDTH = 4;
+constexpr size_t MACHINE_WIDTH = 4;
+constexpr size_t WRITEBACK_WIDTH = 5;
+
 using word_t = uint32_t;
 
 #endif

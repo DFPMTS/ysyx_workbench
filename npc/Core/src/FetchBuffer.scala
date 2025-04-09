@@ -1,23 +1,24 @@
 import chisel3._
 import chisel3.util._
 import utils._
+import coursier.Fetch
 
-class InstBufferIO extends CoreBundle {
-  val in = Flipped(Valid(new InstSignal))
+class FetchBufferIO extends CoreBundle {
+  val in = Flipped(Valid(new FetchGroup))
   val fetchCanContinue = Bool()
-  val out = Decoupled(new InstSignal)
+  val out = Decoupled(new FetchGroup)
   val flush = Input(Bool())
 }
 
-class InstBuffer extends CoreModule {
-  val io = IO(new InstBufferIO)
+class FetchBuffer extends CoreModule {
+  val io = IO(new FetchBufferIO)
 
-  val INST_BUFFER_SIZE = 4
-  val buffer = Reg(Vec(INST_BUFFER_SIZE, new InstSignal))
-  val outReg = Reg(new InstSignal)
+  val FETCH_BUFFER_SIZE = 4
+  val buffer = Reg(Vec(FETCH_BUFFER_SIZE, new FetchGroup))
+  val outReg = Reg(new FetchGroup)
   val outValid = RegInit(false.B)
-  val head = RegInit(RingBufferPtr(size = INST_BUFFER_SIZE, flag = 0.U, index = 0.U))
-  val tail = RegInit(RingBufferPtr(size = INST_BUFFER_SIZE, flag = 0.U, index = 0.U))
+  val head = RegInit(RingBufferPtr(size = FETCH_BUFFER_SIZE, flag = 0.U, index = 0.U))
+  val tail = RegInit(RingBufferPtr(size = FETCH_BUFFER_SIZE, flag = 0.U, index = 0.U))
 
   io.fetchCanContinue := head.distanceTo(tail) < 2.U
   val empty = head === tail

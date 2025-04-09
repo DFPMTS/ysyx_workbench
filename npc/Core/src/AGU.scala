@@ -237,6 +237,8 @@ class AGU extends CoreModule {
 
   when(io.IN_flush) {
     uopValid := false.B
+    wbUopValid := false.B
+    ptwReqValid := false.B
   }
 
   io.OUT_AGUUop.valid := uopValid

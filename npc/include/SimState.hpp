@@ -14,10 +14,10 @@
 
 class SimState {
 public:
-  RenameUop renameUop[4];
-  WritebackUop writebackUop[4];
-  ReadRegUop readRegUop[4];
-  CommitUop commitUop[4];
+  RenameUop renameUop[ISSUE_WIDTH];
+  WritebackUop writebackUop[WRITEBACK_WIDTH];
+  ReadRegUop readRegUop[MACHINE_WIDTH];
+  CommitUop commitUop[1];
   FlagUop flagUop[1];
   CSRCtrl csrCtrl[1];
   AGUUop aguUop[1];
@@ -44,8 +44,8 @@ public:
 #define V_UOP_VALID V_RENAME_VALID
 // #define V_UOP_READY V_RENAME_READY
 #define UOP_FIELDS RENAME_FIELDS
-    REPEAT_1(BIND_FIELDS)
-    REPEAT_1(BIND_VALID)
+    REPEAT_4(BIND_FIELDS)
+    REPEAT_4(BIND_VALID)
     // REPEAT_1(BIND_READY)
 
     // * readRegUop
@@ -65,8 +65,8 @@ public:
 #define V_UOP_VALID V_WRITEBACK_VALID
 #define UOP_FIELDS WRITEBACK_FIELDS
 
-    REPEAT_4(BIND_FIELDS)
-    REPEAT_4(BIND_VALID)
+    REPEAT_5(BIND_FIELDS)
+    REPEAT_5(BIND_VALID)
 
     // * commitUop
 #define UOP commitUop
@@ -248,7 +248,7 @@ public:
     }
 
     // * writeback
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < WRITEBACK_WIDTH; ++i) {
       if (*writebackUop[i].valid && *writebackUop[i].ready) {
         auto robIndex = *writebackUop[i].robPtr_index;
         auto &inst = insts[robIndex];
@@ -257,7 +257,7 @@ public:
         if ((Dest)*uop.dest == Dest::ROB) {
           if (*uop.prd) {
             if (begin_wave || begin_log) {
-              printf("writeback: pReg[%d] = %d\n", *uop.prd,
+              printf("writeback[%d]: pReg[%d] = %d\n", i, *uop.prd,
                      *writebackUop[i].data);
             }
             pReg[*uop.prd] = *writebackUop[i].data;
@@ -284,7 +284,7 @@ public:
     }
 
     // * read register
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < MACHINE_WIDTH; ++i) {
       if (*readRegUop[i].valid && *readRegUop[i].ready) {
         auto robIndex = *readRegUop[i].robPtr_index;
         auto &inst = insts[robIndex];
@@ -294,7 +294,7 @@ public:
     }
 
     // * rename
-    for (int i = 0; i < 1; ++i) {
+    for (int i = 0; i < ISSUE_WIDTH; ++i) {
       if (*renameUop[i].valid && *renameUop[i].ready) {
         auto &inst = insts[*renameUop[i].robPtr_index];
         auto &uop = renameUop[i];

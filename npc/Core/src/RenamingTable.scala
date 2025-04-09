@@ -14,8 +14,8 @@ class RenamingTableIO extends CoreBundle {
   val IN_renameWritePReg = Flipped(Vec(ISSUE_WIDTH, UInt(PREG_IDX_W)))
 
   // * Writeback
-  val IN_writebackValid = Flipped(Vec(MACHINE_WIDTH, Bool()))
-  val IN_writebackPReg = Flipped(Vec(MACHINE_WIDTH, UInt(PREG_IDX_W)))
+  val IN_writebackValid = Flipped(Vec(WRITEBACK_WIDTH, Bool()))
+  val IN_writebackPReg = Flipped(Vec(WRITEBACK_WIDTH, UInt(PREG_IDX_W)))
   
   // * Commit
   val IN_commitValid = Flipped(Vec(COMMIT_WIDTH, Bool()))
@@ -46,7 +46,7 @@ class RenamingTable extends CoreModule {
         // * read readyTable
         io.OUT_renameReadReady(i)(j) := readyTable(io.OUT_renameReadPReg(i)(j))
         // * bypass from current cycle's writeback
-        for (k <- 0 until MACHINE_WIDTH) {
+        for (k <- 0 until WRITEBACK_WIDTH) {
           when (io.IN_writebackValid(k) && io.IN_writebackPReg(k) === io.OUT_renameReadPReg(i)(j)) {
             io.OUT_renameReadReady(i)(j) := true.B
           }
@@ -71,7 +71,7 @@ class RenamingTable extends CoreModule {
   }
 
   // * Writeback
-  for (i <- 0 until MACHINE_WIDTH) {  
+  for (i <- 0 until WRITEBACK_WIDTH) {  
     when (io.IN_writebackValid(i) && io.IN_writebackPReg(i) =/= 0.U) {
       readyTable(io.IN_writebackPReg(i)) := true.B
     }    

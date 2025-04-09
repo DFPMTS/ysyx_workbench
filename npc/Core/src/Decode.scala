@@ -101,10 +101,10 @@ class Decode extends CoreModule {
 
   val defaultCtrl: List[BitPat] = List(Y, N, BitPat.dontCare(2), BitPat.dontCare(2), BitPat.dontCare(FuTypeWidth), BitPat.dontCare(OpcodeWidth), ImmType.X, N)
   val lut: List[(BitPat, List[BitPat])] = List(
-lui        -> List(N, Y, SrcType.ZERO, SrcType.IMM,  FuType.ALU,  ALUOp.ADD,                  ImmType.U, Y),
-auipc      -> List(N, Y, SrcType.PC,   SrcType.IMM,  FuType.ALU,  ALUOp.ADD,                  ImmType.U, Y),
-jal        -> List(N, Y, SrcType.PC,   SrcType.IMM,  FuType.BRU,  BRUOp.JAL,                  ImmType.J, Y),
-jalr       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.BRU,  BRUOp.JALR,                 ImmType.I, Y),
+lui        -> List(N, Y, SrcType.ZERO, SrcType.IMM,  FuType.ALU,  ALUOp.ADD,                  ImmType.U, N),
+auipc      -> List(N, Y, SrcType.PC,   SrcType.IMM,  FuType.ALU,  ALUOp.ADD,                  ImmType.U, N),
+jal        -> List(N, Y, SrcType.PC,   SrcType.IMM,  FuType.BRU,  BRUOp.JAL,                  ImmType.J, N),
+jalr       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.BRU,  BRUOp.JALR,                 ImmType.I, N),
 beq        -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.BRU,  BRUOp.BEQ,                  ImmType.B, N),
 bne        -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.BRU,  BRUOp.BNE,                  ImmType.B, N),
 blt        -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.BRU,  BRUOp.BLT,                  ImmType.B, N),
@@ -128,7 +128,7 @@ andi       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.AND,    
 slli       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.LEFT,                 ImmType.I, N),
 srli       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.RIGHT,                ImmType.I, N),
 srai       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.ARITH,                ImmType.I, N),
-add        -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.ADD,                  ImmType.X, Y),
+add        -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.ADD,                  ImmType.X, N),
 sub        -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.SUB,                  ImmType.X, N),
 sll        -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.LEFT,                 ImmType.X, N),
 slt        -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.LT,                   ImmType.X, N),
