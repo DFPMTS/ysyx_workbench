@@ -8,7 +8,7 @@ class XtvalRec extends CoreBundle {
   val robPtr = RingBufferPtr(ROB_SIZE)
 }
 
-class XtvalRecoderIO extends CoreBundle {
+class XtvalRecorderIO extends CoreBundle {
   val IN_tval = Flipped(Valid(new XtvalRec))
   val IN_robTailPtr = Input(RingBufferPtr(ROB_SIZE))
   val OUT_tval = Valid(new XtvalRec)
@@ -16,8 +16,8 @@ class XtvalRecoderIO extends CoreBundle {
   val IN_flush = Flipped(Bool())
 }
 
-class XtvalRecoder extends CoreModule {
-  val io = IO(new XtvalRecoderIO)
+class XtvalRecorder extends CoreModule {
+  val io = IO(new XtvalRecorderIO)
 
   val xtvalValid = RegInit(false.B)
   val xtval = Reg(UInt(XLEN.W))
@@ -46,8 +46,9 @@ class XtvalRecoder extends CoreModule {
     }
   }
   
-
-  io.OUT_tval.valid := xtvalValid
+  // *             o               xtval
+  // * Consider: ecall -> ... -> page fault
+  io.OUT_tval.valid := xtvalValid && robPtr.isBefore(robCommitPtr)
   io.OUT_tval.bits.tval := xtval
   io.OUT_tval.bits.robPtr := robPtr
 }

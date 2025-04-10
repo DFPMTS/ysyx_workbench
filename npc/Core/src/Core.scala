@@ -62,7 +62,7 @@ class Core extends CoreModule {
   val loadArb = Module(new LoadArbiter)
 
 
-  val xtvalRecoder = Module(new XtvalRecoder)
+  val xtvalRecorder = Module(new XtvalRecorder)
   val flagHandler = Module(new FlagHandler)
   val flush = Wire(Bool())
   val redirect = Wire(new RedirectSignal)
@@ -205,7 +205,7 @@ class Core extends CoreModule {
   csr.io.IN_readRegUop  <> dispatcher(0).io.OUT_uop(2)
   csr.io.IN_mtime := internalMMIO.io.OUT_mtime
   csr.io.IN_MTIP := internalMMIO.io.OUT_MTIP
-  csr.io.IN_xtvalRec <> xtvalRecoder.io.OUT_tval
+  csr.io.IN_xtvalRec <> xtvalRecorder.io.OUT_tval
   csr.io.IN_CSRCtrl <> CSRCtrl
 
   val port0wbsel = Module(new WritebackSel(3))
@@ -253,9 +253,9 @@ class Core extends CoreModule {
   agu.io.IN_PTWResp <> ptw.io.OUT_PTWResp
   agu.io.IN_flush := flush
   
-  xtvalRecoder.io.IN_robTailPtr := rob.io.OUT_robTailPtr
-  xtvalRecoder.io.IN_flush := flush
-  xtvalRecoder.io.IN_tval := agu.io.OUT_xtvalRec
+  xtvalRecorder.io.IN_robTailPtr := rob.io.OUT_robTailPtr
+  xtvalRecorder.io.IN_flush := flush
+  xtvalRecorder.io.IN_tval := agu.io.OUT_xtvalRec
 
   loadArb.io.IN_AGUUop <> loadQueue.io.OUT_ldUop
   loadArb.io.IN_PTWUop <> ptw.io.OUT_PTWUop
