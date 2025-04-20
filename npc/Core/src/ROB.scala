@@ -14,6 +14,10 @@ class ROBIO extends CoreBundle {
   val OUT_flagUop = Valid(new FlagUop)
   val OUT_robEmpty = Bool()
 
+  val OUT_phtUpdate = Valid(new PHTUpdate)
+
+  val OUT_instCommited = Output(UInt(32.W))
+
   val IN_flush = Input(Bool())
 }
 
@@ -25,14 +29,22 @@ class ROBEntry extends CoreBundle {
   val pc   = UInt(XLEN.W)
   // * temporary
   val target = UInt(XLEN.W)
+  // !
+  val ldqPtr = RingBufferPtr(LDQ_SIZE)
+  val stqPtr = RingBufferPtr(STQ_SIZE)
+  val result = UInt(XLEN.W)
+  // !
 
   val isLoad = Bool()
   val isStore = Bool()
 }
 
-class ROB extends CoreModule {
+class ROB extends CoreModule with HasPerfCounters {
   val io = IO(new ROBIO)
   
+  val instCommited = RegInit(0.U(32.W))
+  io.OUT_instCommited := instCommited
+
   val rob = Reg(Vec(ROB_SIZE, new ROBEntry))
   val robStall = RegInit(false.B)
 
@@ -56,7 +68,11 @@ class ROB extends CoreModule {
     enqEntry.target := 0.U
     enqEntry.isLoad := renameUop.fuType === FuType.LSU && LSUOp.isLoad(renameUop.opcode)
     enqEntry.isStore := renameUop.fuType === FuType.LSU && LSUOp.isStore(renameUop.opcode)
-    
+    // !
+    enqEntry.ldqPtr := renameUop.ldqPtr
+    enqEntry.stqPtr := renameUop.stqPtr
+    enqEntry.result := 0.U
+    // !
     when (io.IN_renameUop(i).fire) {
       rob(io.IN_renameUop(i).bits.robPtr.index) := enqEntry
     }
@@ -65,6 +81,11 @@ class ROB extends CoreModule {
   // ** dequeue (Commit)
   val commitUop = Reg(Vec(COMMIT_WIDTH, new CommitUop))
   val commitValid = RegInit(VecInit(Seq.fill(COMMIT_WIDTH)(false.B)))
+
+  val phtUpdateNext = Wire(new PHTUpdate)
+  val phtUpdateValidNext = Wire(Bool())
+  val phtUpdate = Reg(new PHTUpdate)
+  val phtUpdateValid = RegInit(false.B)
 
   val flagUopNextValid = Wire(Bool())
   val flagUopNext = Wire(new FlagUop)
@@ -76,9 +97,10 @@ class ROB extends CoreModule {
 
   for (i <- 0 until COMMIT_WIDTH) {
     val deqPtr = robTailPtr + i.U
-    val distance = robHeadPtr.distanceTo(deqPtr)
+    val ptrYes = robHeadPtr.isLeq(deqPtr)
+    dontTouch(ptrYes)
     deqEntry(i) := rob(deqPtr.index)
-    deqValid(i) := robHeadPtr.distanceTo(deqPtr) < ROB_SIZE.U && deqEntry(i).executed
+    deqValid(i) := robHeadPtr.isLeq(deqPtr) && deqEntry(i).executed
   }
 
   commitValid := deqValid
@@ -90,24 +112,45 @@ class ROB extends CoreModule {
     commitUop(i).rd := deqEntry(i).rd
     commitUop(i).prd := deqEntry(i).prd
     commitUop(i).robPtr := robTailPtr + i.U
-    flagUopNextValid := deqValid(i) && deqEntry(i).flag =/= FlagOp.NONE
+    // !
+    commitUop(i).pc := deqEntry(i).pc
+    commitUop(i).target := deqEntry(i).target
+    commitUop(i).flag := deqEntry(i).flag
+    commitUop(i).ldqPtr := deqEntry(i).ldqPtr
+    commitUop(i).stqPtr := deqEntry(i).stqPtr
+    commitUop(i).result := deqEntry(i).result
+    // !
+
+    flagUopNextValid := deqValid(i) && deqEntry(i).flag =/= FlagOp.NONE && !FlagOp.isNoRedirect(deqEntry(i).flag)
     flagUopNext.target := deqEntry(i).target
     flagUopNext.flag := deqEntry(i).flag
     flagUopNext.rd := deqEntry(i).rd
     flagUopNext.pc := deqEntry(i).pc
     flagUopNext.robPtr := robTailPtr + i.U
-    when(flagUopNextValid && deqEntry(i).flag =/= FlagOp.MISPREDICT) {
+
+    val branchTaken = FlagOp.isBranchTaken(deqEntry(i).flag)
+    val branchNotTaken = FlagOp.isBranchNotTaken(deqEntry(i).flag)
+    phtUpdateValidNext := deqValid(i) && (branchTaken || branchNotTaken)
+    phtUpdateNext.pc := deqEntry(i).pc
+    phtUpdateNext.taken := branchTaken
+
+    when(flagUopNextValid && !FlagOp.isBruFlags(deqEntry(i).flag)) {
       commitUop(i).rd := ZERO
       commitUop(i).prd := ZERO
     }
   }
 
+  instCommited := instCommited + PopCount(commitValid)
+
   robStall := !robStall && flagUopNextValid
   flagUop := flagUopNext
+  phtUpdate := phtUpdateNext
 
   flagUopValid := flagUopNextValid
+  phtUpdateValid := phtUpdateValidNext
   when(io.IN_flush || robStall) {
     flagUopValid := false.B
+    phtUpdateValid := false.B
   }
 
   val loadCommited = (0 until COMMIT_WIDTH).map(i => deqValid(i) && deqEntry(i).isLoad && deqEntry(i).flag === FlagOp.NONE)
@@ -126,6 +169,9 @@ class ROB extends CoreModule {
   io.OUT_flagUop.valid := flagUopValid
   io.OUT_flagUop.bits := flagUop  
 
+  io.OUT_phtUpdate.valid := phtUpdateValid
+  io.OUT_phtUpdate.bits := phtUpdate
+
   // ** writeback
   for (i <- 0 until WRITEBACK_WIDTH) {
     val wbPtr = io.IN_writebackUop(i).bits.robPtr
@@ -134,6 +180,7 @@ class ROB extends CoreModule {
       wbEntry.executed := true.B
       wbEntry.target := io.IN_writebackUop(i).bits.target
       wbEntry.flag := io.IN_writebackUop(i).bits.flag
+      wbEntry.result := io.IN_writebackUop(i).bits.data
     }
   }
 
@@ -145,4 +192,13 @@ class ROB extends CoreModule {
     io.OUT_commitUop(i).valid := commitValid(i)
     io.OUT_commitUop(i).bits := commitUop(i)
   }
+
+  // monitorEvent(totalBranch, deqValid(0) && (deqEntry(0).flag === FlagOp.BRANCH_TAKEN || 
+  //              deqEntry(0).flag === FlagOp.BRANCH_NOT_TAKEN || deqEntry(0).flag === FlagOp.MISPREDICT_NOT_TAKEN || 
+  //              deqEntry(0).flag === FlagOp.MISPREDICT_TAKEN))
+  // monitorEvent(branchMisPred, deqValid(0) && (deqEntry(0).flag === FlagOp.MISPREDICT_TAKEN || 
+  //              deqEntry(0).flag === FlagOp.MISPREDICT_NOT_TAKEN))
+  monitorEvent(totalBranch, deqValid(0) && FlagOp.isBruFlags(deqEntry(0).flag))
+  monitorEvent(branchMisPred, deqValid(0) && (deqEntry(0).flag === FlagOp.MISPREDICT_JUMP || 
+              deqEntry(0).flag === FlagOp.MISPREDICT_TAKEN || deqEntry(0).flag === FlagOp.MISPREDICT_NOT_TAKEN))
 }

@@ -36,11 +36,11 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
   val headIndex = RegInit(0.U(IQ_IDX_W + 1))
 
   // * Can only handle one long-latency Fu
-  val wbReverved = RegInit(VecInit(Seq.fill(32)(false.B)))
-  for (i <- 0 until 32 - 1) {
-    wbReverved(i) := wbReverved(i + 1)
+  val MAX_LATENCY = 35 // ! Adjust MAX_LATENCY according to FU Latency
+  val wbReserved = RegInit(VecInit(Seq.fill(MAX_LATENCY + 1)(false.B)))
+  for (i <- 0 until MAX_LATENCY) {
+    wbReserved(i) := wbReserved(i + 1)
   }
-  wbReverved(31) := false.B
 
   // ** Writeback
   val writebackReady = Wire(Vec(IQ_SIZE, Vec(2, Bool())))
@@ -83,9 +83,9 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
                         (queue(i).src2Ready || writebackReady(i)(1))) &&
     // * Load ops should also check for stqPtr since it needs to make sure every store before it is committed
     (!hasFU(FuType.LSU).B || queue(i).fuType =/= FuType.LSU || !LSUOp.isLoad(queue(i).opcode) || (queue(i).ldqPtr.isBefore(ldqLimitPtr) && queue(i).stqPtr.isBefore(stqLimitPtr))) &&
-    (!hasFU(FuType.LSU).B || queue(i).fuType =/= FuType.LSU || !LSUOp.isStore(queue(i).opcode) || queue(i).stqPtr.isBefore(stqLimitPtr)) &&
+    (!hasFU(FuType.LSU).B || queue(i).fuType =/= FuType.LSU || !LSUOp.isStore(queue(i).opcode) || (queue(i).stqPtr.isBefore(stqLimitPtr))) &&
     (!hasFU(FuType.CSR).B || queue(i).fuType =/= FuType.CSR || queue(i).robPtr.index === io.IN_robTailPtr.index) && 
-    ((queue(i).fuType =/= FuType.ALU && queue(i).fuType =/= FuType.BRU) || !wbReverved(0)) && 
+    ((queue(i).fuType =/= FuType.ALU && queue(i).fuType =/= FuType.BRU) || !wbReserved(0)) && 
     (queue(i).fuType =/= FuType.DIV || !io.IN_idivBusy)
   })
   
@@ -111,10 +111,10 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
   when (doDeq) {
     uop := uopNext
     when(uopNext.fuType === FuType.MUL) {
-      wbReverved(IMUL_DELAY - 1) := true.B      
+      wbReserved(IMUL_DELAY - 1) := true.B      
     }
     when(uopNext.fuType === FuType.DIV) {
-      wbReverved(IDIV_DELAY - 1) := true.B      
+      wbReserved(IDIV_DELAY - 1) := true.B      
     }
     for (i <- 0 until IQ_SIZE - 1) {
       when (i.U >= deqIndex) {

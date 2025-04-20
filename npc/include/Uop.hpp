@@ -41,8 +41,13 @@ enum class ALUOp : CData {
 
 enum class BRUOp : CData {
   AUIPC = 0b0000,
-  JALR = 0b1000,
-  JAL = 0b1001,
+
+  CALL = 0b0001,
+  RET = 0b0010,
+
+  JALR = 0b0011,
+  JAL = 0b0100,
+
   BEQ = 0b1010,
   BNE = 0b1011,
   BLT = 0b1100,
@@ -97,24 +102,45 @@ enum class CImmType : CData {
   X = 0xFF
 };
 
+/*
+object FlagOp extends HasDecodeConfig {
+  val NONE                  = 0.U(FlagWidth.W)
+  val INST_ACCESS_FAULT     = 1.U(FlagWidth.W)
+  val ILLEGAL_INST          = 2.U(FlagWidth.W)
+
+  val LOAD_ADDR_MISALIGNED  = 4.U(FlagWidth.W)
+  val LOAD_ACCESS_FAULT     = 5.U(FlagWidth.W)
+  val STORE_ADDR_MISALIGNED = 6.U(FlagWidth.W)
+  val STORE_ACCESS_FAULT    = 7.U(FlagWidth.W)
+  // * custom begin
+  val DECODE_FLAG           = 8.U(FlagWidth.W) // * rd field stores DecodeFlagOp
+  val BRANCH_TAKEN          = 9.U(FlagWidth.W)
+  val BRANCH_NOT_TAKEN      = 10.U(FlagWidth.W)
+  val MISPREDICT_TAKEN      = 11.U(FlagWidth.W) // ! Temp
+  val MISPREDICT_NOT_TAKEN  = 12.U(FlagWidth.W) // ! Temp
+  // * custom end
+  val LOAD_PAGE_FAULT       = 13.U(FlagWidth.W)
+  // * temporary jump
+  val MISPREDICT_JUMP       = 14.U(FlagWidth.W) // ! Temp
+  val STORE_PAGE_FAULT      = 15.U(FlagWidth.W)
+*/
+
 enum class FlagOp : CData {
   NONE = 0,
   INST_ACCESS_FAULT = 1,
   ILLEGAL_INST = 2,
-  BREAKPOINT = 3,
+
   LOAD_ADDR_MISALIGNED = 4,
   LOAD_ACCESS_FAULT = 5,
   STORE_ADDR_MISALIGNED = 6,
   STORE_ACCESS_FAULT = 7,
   DECODE_FLAG = 8,
-  INTERRUPT = 9,
-  /*
-  10,
-  11,
-  */
-  INST_PAGE_FAULT = 12,
+  BRANCH_TAKEN = 9,
+  BRANCH_NOT_TAKEN = 10,
+  MISPREDICT_TAKEN = 11,
+  MISPREDICT_NOT_TAKEN = 12,
   LOAD_PAGE_FAULT = 13,
-  MISPREDICT = 14,
+  MISPREDICT_JUMP = 14,
   STORE_PAGE_FAULT = 15
 };
 
@@ -126,8 +152,8 @@ inline const char *getFlagOpName(FlagOp flag) {
     return "INST_ACCESS_FAULT";
   case FlagOp::ILLEGAL_INST:
     return "ILLEGAL_INST";
-  case FlagOp::BREAKPOINT:
-    return "BREAKPOINT";
+  // case FlagOp::BREAKPOINT:
+  //   return "BREAKPOINT";
   case FlagOp::LOAD_ADDR_MISALIGNED:
     return "LOAD_ADDR_MISALIGNED";
   case FlagOp::LOAD_ACCESS_FAULT:
@@ -138,14 +164,18 @@ inline const char *getFlagOpName(FlagOp flag) {
     return "STORE_ACCESS_FAULT";
   case FlagOp::DECODE_FLAG:
     return "DECODE_FLAG";
-  case FlagOp::INTERRUPT:
-    return "INTERRUPT";
-  case FlagOp::INST_PAGE_FAULT:
-    return "INST_PAGE_FAULT";
+  case FlagOp::BRANCH_TAKEN:
+    return "BRANCH_TAKEN";
+  case FlagOp::BRANCH_NOT_TAKEN:
+    return "BRANCH_NOT_TAKEN";
+  case FlagOp::MISPREDICT_TAKEN:
+    return "MISPREDICT_TAKEN";
+  case FlagOp::MISPREDICT_NOT_TAKEN:
+    return "MISPREDICT_NOT_TAKEN";
   case FlagOp::LOAD_PAGE_FAULT:
     return "LOAD_PAGE_FAULT";
-  case FlagOp::MISPREDICT:
-    return "MISPREDICT";
+  case FlagOp::MISPREDICT_JUMP:
+    return "MISPREDICT_JUMP";
   case FlagOp::STORE_PAGE_FAULT:
     return "STORE_PAGE_FAULT";
   default:
@@ -162,6 +192,8 @@ enum class DecodeFlagOp : CData {
   FENCE_I = 5,
   WFI = 6,
   SFENCE_VMA = 7,
+  INTERRUPT = 8,
+  INST_PAGE_FAULT = 9,
   /*
   8-14
   */
@@ -186,6 +218,10 @@ inline const char *getDecodeFlagOpName(DecodeFlagOp flag) {
     return "WFI";
   case DecodeFlagOp::SFENCE_VMA:
     return "SFENCE_VMA";
+  case DecodeFlagOp::INTERRUPT:
+    return "INTERRUPT";
+  case DecodeFlagOp::INST_PAGE_FAULT:
+    return "INST_PAGE_FAULT";
   case DecodeFlagOp::NONE:
     return "NONE";
   default:
@@ -217,6 +253,7 @@ struct InstInfo {
   CData opcode;
 
   IData pc;
+  IData predTarget;
   IData inst;
 
   CData rd;

@@ -65,7 +65,7 @@ class LoadQueue extends CoreModule {
 
   val ldqReady = VecInit(ldq.zipWithIndex.map{ 
     case (uop, index) => 
-      storeCommited(uop.stqPtr, io.IN_commitStqPtr) && (!Addr.isUncached(uop.addr) || io.IN_robTailPtr.index === uop.robPtr.index)
+      storeCommited(uop.stqPtr, io.IN_commitStqPtr) && (!Addr.isUncached(uop.addr) || (io.IN_robTailPtr.index === uop.robPtr.index && io.IN_robTailPtr.flag =/= uop.robPtr.flag))
   })
   // * choose
   val issueReady = ldqValid.asUInt & ~(ldqIssued.asUInt) & ldqReady.asUInt

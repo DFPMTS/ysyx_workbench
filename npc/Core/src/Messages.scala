@@ -49,6 +49,9 @@ trait HasPerfCounters {
   // ICache
   def icacheMiss = 8.U(Config.eventIdWidth)
 
+  def totalBranch = 9.U(Config.eventIdWidth)
+  def branchMisPred = 10.U(Config.eventIdWidth)
+
   def monitorEvent(eventId: UInt, enable: Bool) = {
     if (Config.debug) {
       val monitor = Module(new EventMonitor)
@@ -64,6 +67,7 @@ class PC_Message extends Bundle {
 
 class InstSignal extends Bundle {
   val pc           = UInt(32.W)
+  val predTarget   = UInt(32.W)
   val inst         = UInt(32.W)
   val access_fault = Bool()
   val pageFault    = Bool()

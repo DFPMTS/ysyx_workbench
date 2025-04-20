@@ -36,6 +36,12 @@ void printPerfCounters() {
             << std::endl;
   std::cout << "memStalled" << " " << getEventCount("memStalled") << std::endl;
 
+  std::cout << "totalBranch" << " " << getEventCount("totalBranch")
+            << std::endl;
+
+  std::cout << "branchMisPred" << " " << getEventCount("branchMisPred")
+            << std::endl;
+
   std::cout << "Total cycles: " << totalCycles << std::endl;
 
   std::cout << "-----------------------------------" << std::endl;
@@ -60,6 +66,7 @@ void mem_read(uint32_t addr, svBitVecVal *result);
 }
 
 int main(int argc, char *argv[]) {
+  Verilated::commandArgs(argc, argv);
   srand(time(0));
   fprintf(stderr, "MAIN begin : pid=%d\n", getpid());
   // Verilated::commandArgs(argc, argv);
@@ -87,8 +94,10 @@ int main(int argc, char *argv[]) {
   uint32_t temp[8];
   uint64_t lastForkCycle = 0;
   while (running.load()) {
-    // if (totalCycles > 600000) {
-    //   begin_wave = true;
+    // if (state.getInstRetired() > 860000) {
+    //   stop = Stop::DIFFTEST_FAILED;
+    //   running.store(false);
+    //   // begin_wave = true;
     // }
     if (!lightsss.is_child()) {
       if (totalCycles > lastForkCycle + FORK_CYCLE || !forked) {
@@ -98,6 +107,7 @@ int main(int argc, char *argv[]) {
         case FORK_CHILD:
           top->atClone();
           begin_wave = true;
+          // begin_log = true;
           break;
 
         default:
@@ -125,7 +135,7 @@ int main(int argc, char *argv[]) {
     fflush(stdout);
     fprintf(stderr, "[PARENT] pid(%d) endCycles %lu\n", getpid(),
             lightsss.get_end_cycles());
-    if (stop != Stop::EBREAK) {
+    if (stop != Stop::EBREAK && stop != Stop::INTERRUPT) {
       lightsss.wakeup_child(totalCycles);
       fprintf(stderr, "[PARENT] wakeup_child end\n");
     }
@@ -146,6 +156,7 @@ int main(int argc, char *argv[]) {
   state.printArchRenameTable();
   get_context(&dut);
   isa_reg_display(&dut);
+  state.printPerfStat();
   ++totalCycles;
   // a0
   int retval = state.getReg(10);
@@ -168,7 +179,7 @@ int main(int argc, char *argv[]) {
 #ifdef NVBOARD
   nvboard_quit();
 #endif
-  printPerfCounters();
+  // printPerfCounters();
   sim_speed.printSimulationSpeed(totalCycles);
   auto good = (stop == Stop::EBREAK) && (retval == 0);
   // * Clean up

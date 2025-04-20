@@ -9,8 +9,9 @@ object parseArgs {
     } else {
       Config.debug = false
     }
+    Config.debug = false
     if (args.contains("npc")) {
-      Config.resetPC = "h80000000".U
+      Config.resetPC = "h0800_0000".U
     } else {
       Config.resetPC = "h30000000".U
     }
@@ -25,12 +26,18 @@ object Elaborate_npc extends App {
       // make yosys happy
       // see https://github.com/llvm/circt/blob/main/docs/VerilogGeneration.md
       "disallowLocalVariables",
-      // "disallowPackedArrays",
-      "locationInfoStyle=wrapInAtSquareBracket"
-    ).reduce(_ + "," + _)
+      "disallowPackedArrays",
+      "locationInfoStyle=wrapInAtSquareBracket",
+      "disallowLocalVariables", "explicitBitcast", "disallowMuxInlining", "disallowExpressionInliningInPorts", "verifLabels",
+    ).reduce(_ + "," + _),
+    "-disable-all-randomization", 
+    "-strip-debug-info",
+    "-strip-fir-debug-info",
+    "-O=release",
+    "--ignore-read-enable-mem",
   )
   println("firtool version", chisel3.BuildInfo.firtoolVersion, chisel3.BuildInfo.version, chisel3.BuildInfo.scalaVersion )
-  circt.stage.ChiselStage.emitSystemVerilogFile(new npc_top, Array("-td", "./vsrc", "--split-verilog"), firtoolOptions)
+  circt.stage.ChiselStage.emitSystemVerilogFile(new Core, Array("-td", "./vsrc", "--split-verilog", "--throw-on-first-error"), firtoolOptions)
 }
 
 object Elaborate_soc extends App {

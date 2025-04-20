@@ -555,16 +555,16 @@ class CSR extends CoreModule {
   io.OUT_trapCSR.interruptCause := interruptCause
   io.OUT_trapCSR.interruptDeleg := interruptDeleg
 
-  val error = Module(new Error)
-  error.io.ebreak := trapValid && trapCause === FlagOp.BREAKPOINT
-  error.io.access_fault := false.B
-  error.io.invalid_inst := false.B
+  // val error = Module(new Error)
+  // error.io.ebreak := trapValid && trapCause === Exception.BREAKPOINT
+  // error.io.access_fault := false.B
+  // error.io.invalid_inst := false.B
 
   uopValid := inValid
   uop.dest := Dest.ROB
   uop.data := rdata
   uop.target := inUop.pc + 4.U
-  uop.flag := Mux(illegal, FlagOp.ILLEGAL_INST, FlagOp.MISPREDICT)
+  uop.flag := Mux(illegal, FlagOp.ILLEGAL_INST, FlagOp.MISPREDICT_JUMP)
   uop.prd  := inUop.prd
   uop.robPtr := inUop.robPtr
   

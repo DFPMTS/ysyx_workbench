@@ -52,29 +52,29 @@ class FlagHandler extends CoreModule {
   CSRCtrlNext.delegate := delegate
 
   when (io.IN_flagUop.valid) {
-    when (flag === FlagOp.MISPREDICT) {
+    when (FlagOp.isRedirect(flag)) {
       redirect.valid := true.B
       redirect.pc := io.IN_flagUop.bits.target
       flush := true.B
     }
-    when(flag === FlagOp.INTERRUPT && io.IN_trapCSR.interrupt) {
-      redirect.valid := true.B
-      redirect.pc := xtvec
-
-      flush := true.B
-
-      CSRCtrlNext.trap := true.B
-      CSRCtrlNext.intr := true.B
-      CSRCtrlNext.cause := io.IN_trapCSR.interruptCause
-      CSRCtrlNext.pc := io.IN_flagUop.bits.pc
-    }
     when(flag === FlagOp.DECODE_FLAG) {
+      when(decodeFlag === DecodeFlagOp.INTERRUPT && io.IN_trapCSR.interrupt) {
+        redirect.valid := true.B
+        redirect.pc := xtvec
+  
+        flush := true.B
+  
+        CSRCtrlNext.trap := true.B
+        CSRCtrlNext.intr := true.B
+        CSRCtrlNext.cause := io.IN_trapCSR.interruptCause
+        CSRCtrlNext.pc := io.IN_flagUop.bits.pc
+      }
       when(decodeFlag === DecodeFlagOp.EBREAK) {
         redirect.valid := true.B
         redirect.pc := xtvec
         flush := true.B
         CSRCtrlNext.trap := true.B
-        CSRCtrlNext.cause := FlagOp.BREAKPOINT
+        CSRCtrlNext.cause := Exception.BREAKPOINT
         CSRCtrlNext.pc := io.IN_flagUop.bits.pc
       }
       when(decodeFlag === DecodeFlagOp.ECALL) {
@@ -109,11 +109,19 @@ class FlagHandler extends CoreModule {
   
         TLBFlush := true.B
       }
+      when(decodeFlag === DecodeFlagOp.INST_PAGE_FAULT) {
+        redirect.valid := true.B
+        redirect.pc := xtvec
+        flush := true.B
 
+        CSRCtrlNext.trap := true.B
+        CSRCtrlNext.cause := Exception.INST_PAGE_FAULT
+        CSRCtrlNext.pc := io.IN_flagUop.bits.pc
+      }
     }
-    when((flag >= FlagOp.INST_ACCESS_FAULT && flag <= FlagOp.STORE_ACCESS_FAULT) ||
-         flag === FlagOp.INST_PAGE_FAULT || flag === FlagOp.LOAD_PAGE_FAULT ||
-         flag === FlagOp.STORE_PAGE_FAULT) {
+    when(flag === FlagOp.ILLEGAL_INST ||
+         (flag >= FlagOp.LOAD_ADDR_MISALIGNED && flag <= FlagOp.STORE_ACCESS_FAULT) ||
+         flag === FlagOp.LOAD_PAGE_FAULT || flag === FlagOp.STORE_PAGE_FAULT) {
       redirect.valid := true.B
       redirect.pc := xtvec
       flush := true.B

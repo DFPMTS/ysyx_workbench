@@ -14,34 +14,64 @@ class MULIO extends CoreBundle {
 class MUL extends CoreModule {
   val io = IO(new MULIO)
   
-  val uop = Reg(Vec(IMUL_DELAY + 1, new WritebackUop))
-  val uopValid = RegInit(VecInit(Seq.fill(IMUL_DELAY + 1)(false.B)))
+  if(USE_DUMMY_MUL_DIV) {
+    val uop = Reg(Vec(IMUL_DELAY + 1, new WritebackUop))
+    val uopValid = RegInit(VecInit(Seq.fill(IMUL_DELAY + 1)(false.B)))
 
-  val dummyMUL = Module(new DummyMUL)
-  dummyMUL.io.opcode := io.IN_readRegUop.bits.opcode
-  dummyMUL.io.src1 := io.IN_readRegUop.bits.src1
-  dummyMUL.io.src2 := io.IN_readRegUop.bits.src2
+    val dummyMUL = Module(new DummyMUL)
+    dummyMUL.io.opcode := io.IN_readRegUop.bits.opcode
+    dummyMUL.io.src1 := io.IN_readRegUop.bits.src1
+    dummyMUL.io.src2 := io.IN_readRegUop.bits.src2
 
-  uop(0).dest := Dest.ROB
-  uop(0).prd := io.IN_readRegUop.bits.prd
-  uop(0).data := dummyMUL.io.out
-  uop(0).robPtr := io.IN_readRegUop.bits.robPtr
-  uop(0).flag := 0.U
-  uop(0).target := 0.U
-  uopValid(0) := io.IN_readRegUop.valid
+    uop(0).dest := Dest.ROB
+    uop(0).prd := io.IN_readRegUop.bits.prd
+    uop(0).data := dummyMUL.io.out
+    uop(0).robPtr := io.IN_readRegUop.bits.robPtr
+    uop(0).flag := 0.U
+    uop(0).target := 0.U
+    uopValid(0) := io.IN_readRegUop.valid
 
-  for(i <- 1 until IMUL_DELAY + 1) {
-    uop(i) := uop(i-1)
-    uopValid(i) := uopValid(i-1)
+    for(i <- 1 until IMUL_DELAY + 1) {
+      uop(i) := uop(i-1)
+      uopValid(i) := uopValid(i-1)
+    }
+
+    when (io.IN_flush) {
+      uopValid := VecInit(Seq.fill(IMUL_DELAY + 1)(false.B))
+    }
+
+    io.IN_readRegUop.ready := true.B
+    io.OUT_writebackUop.bits := uop(IMUL_DELAY)
+    io.OUT_writebackUop.valid := uopValid(IMUL_DELAY)
+  } else {
+    val multiplier = Module(new Multiplier)
+    multiplier.io.opcode := io.IN_readRegUop.bits.opcode
+    multiplier.io.src1 := io.IN_readRegUop.bits.src1
+    multiplier.io.src2 := io.IN_readRegUop.bits.src2
+    val uop = Reg(Vec(IMUL_DELAY + 1, new WritebackUop))
+    val uopValid = RegInit(VecInit(Seq.fill(IMUL_DELAY + 1)(false.B)))
+
+    uop(0).dest := Dest.ROB
+    uop(0).prd := io.IN_readRegUop.bits.prd
+    uop(0).robPtr := io.IN_readRegUop.bits.robPtr
+    uop(0).flag := 0.U
+    uop(0).target := 0.U
+    uopValid(0) := io.IN_readRegUop.valid
+
+    for(i <- 1 until IMUL_DELAY + 1) {
+      uop(i) := uop(i-1)
+      uopValid(i) := uopValid(i-1)
+    }
+
+    uop(IMUL_DELAY).data := multiplier.io.out
+
+    when (io.IN_flush) {
+      uopValid := VecInit(Seq.fill(IMUL_DELAY + 1)(false.B))
+    }
+    io.IN_readRegUop.ready := true.B
+    io.OUT_writebackUop.valid := uopValid(IMUL_DELAY)
+    io.OUT_writebackUop.bits := uop(IMUL_DELAY)
   }
-
-  when (io.IN_flush) {
-    uopValid := VecInit(Seq.fill(IMUL_DELAY + 1)(false.B))
-  }
-
-  io.IN_readRegUop.ready := true.B
-  io.OUT_writebackUop.bits := uop(IMUL_DELAY)
-  io.OUT_writebackUop.valid := uopValid(IMUL_DELAY)
 }
 
 class DummyMUL extends HasBlackBoxInline{
@@ -65,7 +95,7 @@ class DummyMUL extends HasBlackBoxInline{
     """.stripMargin)
 }
 
-class Multiplier(XLEN: Int) extends CoreModule {
+class Multiplier extends CoreModule {
   val io = IO(new Bundle {
     val opcode = Input(UInt(8.W))
     val src1 = Input(UInt(XLEN.W))
@@ -76,11 +106,12 @@ class Multiplier(XLEN: Int) extends CoreModule {
   val aSigned = io.opcode === MULOp.MUL || io.opcode === MULOp.MULH || io.opcode === MULOp.MULHSU
   val bSigned = io.opcode === MULOp.MUL || io.opcode === MULOp.MULH 
   val isH = io.opcode === MULOp.MULH || io.opcode === MULOp.MULHSU || io.opcode === MULOp.MULHU
+  val isHReg2 = ShiftRegister(isH, 2)
 
   val a = io.src1 // * multiplicand
   val b = Cat(Mux(bSigned, Fill(2, io.src2(XLEN-1)), 0.U(2.W)), io.src2) // * multiplier
   
-  // * vector of partial products, 
+  // * Stage 0: vector of partial products, 
   val partialProd = WireInit(VecInit(Seq.fill(XLEN/2+1)(VecInit(Seq.fill(2*XLEN+5)(false.B)))))
   (0 until XLEN/2+1).map { i =>
     val boothEnc = Module(new BoothEncoder)
@@ -136,12 +167,21 @@ class Multiplier(XLEN: Int) extends CoreModule {
     }
   }
   val sum = WireInit(0.U((2*XLEN).W))
-  val partialProdU = partialProd.map(_.asUInt)
+  val partialProdU = VecInit(partialProd.map(_.asUInt))
   for (i <- 0 until XLEN/2+1) {    
     dontTouch(partialProdU(i))
   }
-  sum := partialProdU.reduce(_ +& _)
-  io.out := Mux(isH, sum(2*XLEN-1, XLEN), sum(XLEN-1, 0))
+  val partialProdUReg = RegNext(partialProdU)
+
+  // * Stage 2: Wallace tree
+  val wallaceTree = Module(new WallaceTree17x69)
+  wallaceTree.io.in := partialProdUReg
+  val outAReg = RegNext(wallaceTree.io.outA)
+  val outBReg = RegNext(wallaceTree.io.outB)
+
+  // * Stage 3: final sum
+  sum := outAReg + outBReg
+  io.out := Mux(isHReg2, sum(2*XLEN-1, XLEN), sum(XLEN-1, 0))
 }
 
 class BoothCode extends CoreBundle {
@@ -170,7 +210,39 @@ class BoothEncoder extends CoreModule {
     BitPat("b110") -> BitPat("b1   0   1   0"), // * -1
     BitPat("b111") -> BitPat("b1   0   0   1"), // * -0
   )
-  val table = TruthTable(lut, BitPat("b000"))
+  val table = TruthTable(lut, BitPat("b0000"))
   io.code := decoder(io.mulBits, table).asTypeOf(new BoothCode)
 }
 
+class WallaceTree17x69 extends CoreModule {
+  val Len = 69
+  val io = IO(new Bundle {
+    val in = Flipped(Vec(17, UInt(Len.W)))
+    val outA = UInt(Len.W)
+    val outB = UInt(Len.W)
+  })
+  def CSA(a: UInt, b: UInt, c: UInt): Seq[UInt] = {
+    val sum = Wire(UInt(Len.W))
+    val carry = Wire(UInt(Len.W))
+    val aXorB = a ^ b
+    sum := aXorB ^ c
+    carry := Cat((a & b) | (aXorB & c), 0.U(1.W))(Len - 1, 0)
+    Seq(sum, carry)
+  }
+  // * Wallace Tree of 17 numbers
+  // * Level 1 17 -> 12
+  val level1 = Seq.tabulate(5) { i => CSA(io.in(3 * i), io.in(3 * i + 1), io.in(3 * i + 2)) }.flatten :+ io.in(15) :+ io.in(16)
+  // * Level2 12 -> 8
+  val level2 = Seq.tabulate(4) { i => CSA(level1(3 * i), level1(3 * i + 1), level1(3 * i + 2)) }.flatten
+  // * Level3 8 -> 6
+  val level3 = Seq.tabulate(2) { i => CSA(level2(3 * i), level2(3 * i + 1), level2(3 * i + 2)) }.flatten :+ level2(6) :+ level2(7)
+  // * Level4 6 -> 4
+  val level4 = Seq.tabulate(2) { i => CSA(level3(3 * i), level3(3 * i + 1), level3(3 * i + 2)) }.flatten
+  // * Level5 4 -> 3
+  val level5 = Seq.tabulate(1) { i => CSA(level4(3 * i), level4(3 * i + 1), level4(3 * i + 2)) }.flatten :+ level4(3)
+  // * Level6 3 -> 2
+  val level6 = Seq.tabulate(1) { i => CSA(level5(3 * i), level5(3 * i + 1), level5(3 * i + 2)) }.flatten
+
+  io.outA := level6(0)
+  io.outB := level6(1)
+}

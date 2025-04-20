@@ -6,8 +6,29 @@ import chisel3.experimental.dataview._
 class Core extends CoreModule {
   val io = IO(new Bundle {
     val master    = new AXI4ysyxSoC(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
-    val slave     = Flipped(new AXI4ysyxSoC(AXI_DATA_WIDTH, AXI_ADDR_WIDTH))
+    // val vPC = Output(UInt(XLEN.W))
+    // val phyPC = Output(UInt(XLEN.W))
+    // val fixRedirect = Output(new RedirectSignal)
+    // val fetchRedirect = Output(new RedirectSignal)
+    // val backendRedirect = Output(new RedirectSignal)
+    // val flagOp = Output(Valid(new FlagUop))
+    // val vPCNext = Output(UInt(XLEN.W))
+    // val vPCNextValid = Output(Bool())
+    // val prediction = Output(new Prediction)
+    // val fetchCanContinue = Output(Bool())
+    // val fetchGroup = Output(new FetchGroup)
+    // val phyPCValid = Output(Bool())
+    // val IFUcacheMiss = Output(Bool())
+    // val slave     = Flipped(new AXI4ysyxSoC(AXI_DATA_WIDTH, AXI_ADDR_WIDTH))
     val interrupt = Input(Bool())
+    val commitUop = Valid(new CommitUop)
+    val instCommited = Output(UInt(64.W))
+    val robTailPtr = Output(RingBufferPtr(ROB_SIZE))
+    val robHeadPtr = Output(RingBufferPtr(ROB_SIZE))
+    val ldqTailPtr = Output(RingBufferPtr(LDQ_SIZE))
+    val stqTailPtr = Output(RingBufferPtr(STQ_SIZE))
+    val stqBasePtr = RingBufferPtr(STQ_SIZE)
+    val mshr = Vec(4, Output(new MSHR))
   })
 
   // * Internal MMIO 
@@ -42,14 +63,14 @@ class Core extends CoreModule {
   val readReg = Module(new ReadReg)
   val pReg = Module(new PReg)
   // * Port 0
-  val alu0 = Module(new ALU)
+  val alu0 = Module(new ALU(hasBru = false))
   val mul  = Module(new MUL)
   val csr  = Module(new CSR)
   // * Port 1
-  val alu1 = Module(new ALU)
+  val alu1 = Module(new ALU(hasBru = false))
   val div  = Module(new DIV)
   // * Port 2
-  val alu2 = Module(new ALU)
+  val alu2 = Module(new ALU(hasBru = true))
   // * Port 3
   val agu  = Module(new AGU)
   val loadQueue = Module(new LoadQueue)
@@ -68,6 +89,25 @@ class Core extends CoreModule {
   val redirect = Wire(new RedirectSignal)
   dontTouch(redirect)
   val TLBFlush = Wire(Bool())
+
+
+  // !
+  // io.vPC := ifu.io.OUT_vPC
+  // io.phyPC := ifu.io.OUT_phyPC
+  // io.fetchRedirect := ifu.io.OUT_fetchRedirect
+  // io.backendRedirect := redirect
+  // io.fixRedirect := ifu.io.OUT_fixRedirect
+
+  // io.vPCNext := ifu.io.OUT_vPCNext
+  // io.vPCNextValid := ifu.io.OUT_vPCNextValid
+  // io.prediction := ifu.io.OUT_prediction
+  // io.fetchCanContinue := ifu.io.OUT_fetchCanContinue
+  // io.flagOp := rob.io.OUT_flagUop
+  // io.fetchGroup := ifu.io.OUT_fetchGroup
+  // io.IFUcacheMiss := ifu.io.OUT_cacheMiss
+  // io.phyPCValid := ifu.io.OUT_phyPCValid
+  // !
+
 
   // * rename
   val renameUop = Wire(Vec(ISSUE_WIDTH, new RenameUop))
@@ -93,6 +133,18 @@ class Core extends CoreModule {
   val commitUop = Wire(Vec(COMMIT_WIDTH, Valid(new CommitUop)))
   dontTouch(commitUop)  
 
+  // !
+  io.commitUop := commitUop(0)
+  
+  io.instCommited := rob.io.OUT_instCommited
+  io.robHeadPtr := rename.io.OUT_robHeadPtr
+  io.robTailPtr := rob.io.OUT_robTailPtr
+  io.ldqTailPtr := rob.io.OUT_ldqTailPtr
+  io.stqTailPtr := rob.io.OUT_stqTailPtr
+  io.stqBasePtr := storeQueue.io.OUT_stqBasePtr
+  io.mshr := cacheController.io.OUT_MSHR.take(4)
+  //  !
+
   // * flag
   val flagUop = Wire(Valid(new FlagUop))
   dontTouch(flagUop)
@@ -103,6 +155,8 @@ class Core extends CoreModule {
 
   // * IF
   ifu.io.redirect := redirect
+  ifu.io.IN_btbUpdate := alu2.io.OUT_btbUpdate.get
+  ifu.io.IN_phtUpdate := rob.io.OUT_phtUpdate
   ifu.io.flushICache := false.B
   ifu.io.OUT_TLBReq <> itlb.io.IN_TLBReq
   ifu.io.IN_TLBResp <> itlb.io.OUT_TLBResp
@@ -177,7 +231,9 @@ class Core extends CoreModule {
     iq(i).io.IN_ldqBasePtr := rob.io.OUT_ldqTailPtr
     iq(i).io.IN_stqBasePtr := storeQueue.io.OUT_stqBasePtr
     iq(i).io.IN_flush := flush
-    iq(i).io.IN_idivBusy := div.io.OUT_idivBusy
+    iq(i).io.IN_idivBusy := (iq(1).io.OUT_issueUop.valid && iq(1).io.OUT_issueUop.bits.fuType === FuType.DIV) ||
+                            (readRegUop(1).valid         && readRegUop(1).bits.fuType === FuType.DIV) ||
+                            div.io.OUT_idivBusy
   }
 
   // * Read Register
@@ -322,17 +378,17 @@ class Core extends CoreModule {
   io.master <> cacheController.io.OUT_axi.viewAs[AXI4ysyxSoC]
 
   // AXI4 slave
-  io.slave.awready := false.B
-  io.slave.arready := false.B
-  io.slave.wready  := false.B
+  // io.slave.awready := false.B
+  // io.slave.arready := false.B
+  // io.slave.wready  := false.B
 
-  io.slave.bvalid := false.B
-  io.slave.bresp  := 0.U
-  io.slave.bid    := 0.U
+  // io.slave.bvalid := false.B
+  // io.slave.bresp  := 0.U
+  // io.slave.bid    := 0.U
 
-  io.slave.rdata  := 0.U
-  io.slave.rvalid := false.B
-  io.slave.rresp  := 0.U
-  io.slave.rid    := 0.U
-  io.slave.rlast  := true.B
+  // io.slave.rdata  := 0.U
+  // io.slave.rvalid := false.B
+  // io.slave.rresp  := 0.U
+  // io.slave.rid    := 0.U
+  // io.slave.rlast  := true.B
 }

@@ -60,7 +60,7 @@ class IDU extends CoreModule with HasPerfCounters {
       uopNext.opcode := CSROp.CSRR
     }
 
-    uopNext.predTarget := pc + 4.U
+    uopNext.predTarget := instSignal.predTarget
     uopNext.pc        := pc
 
     uopNext.imm       := imm
@@ -75,12 +75,12 @@ class IDU extends CoreModule with HasPerfCounters {
 
     when(instSignal.interrupt) {
       uopNext.fuType := FuType.FLAG
-      uopNext.opcode := FlagOp.INTERRUPT
-      uopNext.rd     := ZERO
+      uopNext.opcode := FlagOp.DECODE_FLAG
+      uopNext.rd     := DecodeFlagOp.INTERRUPT
     }.elsewhen(instSignal.pageFault) {
       uopNext.fuType := FuType.FLAG
-      uopNext.opcode := FlagOp.INST_PAGE_FAULT
-      uopNext.rd     := ZERO
+      uopNext.opcode := FlagOp.DECODE_FLAG
+      uopNext.rd     := DecodeFlagOp.INST_PAGE_FAULT
     }.elsewhen(decodeSignal.fuType === FuType.FLAG) {
       uopNext.fuType := FuType.FLAG
       when(decodeSignal.opcode === DecodeFlagOp.NONE) {

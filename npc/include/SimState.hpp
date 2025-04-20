@@ -37,6 +37,12 @@ public:
   uint32_t difftestCountdown = 0;
   bool waitDifftest = false;
 
+  uint64_t totalBranches = 0;
+  uint64_t totalBranchMispred = 0;
+
+  uint64_t totalJumps = 0;
+  uint64_t totalJumpMispred = 0;
+
   void bindUops() {
     // * renameUop
 #define UOP renameUop
@@ -112,6 +118,7 @@ public:
     // }
     if (begin_wave || begin_log) {
       printf("cycle: %ld\n", cycle);
+      fflush(stdout);
     }
     if (cycle > lastCommit + 500) {
       Log("CPU hangs");
@@ -129,30 +136,36 @@ public:
 
         // * skip the difftest since inst has commited but CSR is not changed
         // * for now / redirect signal is not fired
-        if (flag == FlagOp::INTERRUPT) {
+        if (flag == FlagOp::DECODE_FLAG &&
+            decodeFlag == DecodeFlagOp::INTERRUPT) {
           // * override the difftest ref
+          // fprintf(stderr, "INTERRUPT on PC: %x:\n", *flagUop[i].pc);
           access_device = true;
         }
 
-        if (flag != FlagOp::MISPREDICT) {
-          if (flag == FlagOp::DECODE_FLAG) {
-            if (decodeFlag == DecodeFlagOp::FENCE ||
-                decodeFlag == DecodeFlagOp::FENCE_I ||
-                decodeFlag == DecodeFlagOp::SFENCE_VMA) {
-              continue;
-            }
-          }
-          // itrace_generate(buf, inst.pc, inst.inst);
-          // fprintf(stderr, "\033[32m");
-          // fprintf(stderr, "<%3d> %s\n", robIndex, buf);
-          // fprintf(stderr, "      pc   = %x\n", *flagUop[i].pc);
-          // fprintf(stderr, "      flag = %s\n", getFlagOpName(flag));
-          // if (flag == FlagOp::DECODE_FLAG) {
-          //   fprintf(stderr, "      decodeFlag = %s\n",
-          //           getDecodeFlagOpName(decodeFlag));
-          // }
-          // fprintf(stderr, "\033[0m");
+        if (flag == FlagOp::DECODE_FLAG && decodeFlag == DecodeFlagOp::EBREAK) {
+          running.store(false);
         }
+
+        // if (flag != FlagOp::MISPREDICT) {
+        //   if (flag == FlagOp::DECODE_FLAG) {
+        //     if (decodeFlag == DecodeFlagOp::FENCE ||
+        //         decodeFlag == DecodeFlagOp::FENCE_I ||
+        //         decodeFlag == DecodeFlagOp::SFENCE_VMA) {
+        //       continue;
+        //     }
+        //   }
+        //   // itrace_generate(buf, inst.pc, inst.inst);
+        //   // fprintf(stderr, "\033[32m");
+        //   // fprintf(stderr, "<%3d> %s\n", robIndex, buf);
+        //   // fprintf(stderr, "      pc   = %x\n", *flagUop[i].pc);
+        //   // fprintf(stderr, "      flag = %s\n", getFlagOpName(flag));
+        //   // if (flag == FlagOp::DECODE_FLAG) {
+        //   //   fprintf(stderr, "      decodeFlag = %s\n",
+        //   //           getDecodeFlagOpName(decodeFlag));
+        //   // }
+        //   // fprintf(stderr, "\033[0m");
+        // }
       }
     }
     // * fix PC with redirect
@@ -204,24 +217,45 @@ public:
         auto &inst = insts[robIndex];
         auto &uop = commitUop[i];
 
-        waitDifftest = inst.flag != FlagOp::NONE;
-
+        if (inst.fuType == FuType::BRU) {
+          if ((uint32_t)inst.opcode <= (uint32_t)BRUOp::JAL) {
+            totalJumps++;
+            if (inst.flag == FlagOp::MISPREDICT_JUMP) {
+              totalJumpMispred++;
+            }
+          } else {
+            totalBranches++;
+            if (inst.flag == FlagOp::MISPREDICT_TAKEN ||
+                inst.flag == FlagOp::MISPREDICT_NOT_TAKEN) {
+              totalBranchMispred++;
+            }
+          }
+        }
+        waitDifftest = (inst.flag != FlagOp::NONE) &&
+                       (inst.flag != FlagOp::BRANCH_TAKEN) &&
+                       (inst.flag != FlagOp::BRANCH_NOT_TAKEN);
         if (inst.fuType == FuType::LSU) {
           auto addr = inst.paddr;
           if (addr >= 0x11000000 + 0xbff8 && addr < 0x11000000 + 0xc000 ||
               addr >= 0x11000000 + 0x4000 && addr < 0x11000000 + 0x4008 ||
               addr >= 0x11000000 + 0x0000 && addr < 0x11000000 + 0x0004 ||
-              addr >= 0x10000000 && addr < 0x10000000 + 7) {
+              addr >= 0x10000000 && addr < 0x10000000 + 32) {
+            // fprintf(stderr, "LSU MMIO: %x\n", addr);
             access_device = true;
           }
         }
         if (inst.fuType == FuType::CSR) {
           auto csrAddr = inst.imm & ((1 << 12) - 1);
           if (csrAddr == 0xC01 || csrAddr == 0xC81) {
+            // fprintf(stderr, "CSR MMIO: %x\n", csrAddr);
             access_device = true;
           }
         }
         if (begin_wave || begin_log) {
+          // printf("commit[%d]: ", robIndex);
+          // printf("access_device = %s\n", access_device ? "True" : "False");
+          // printf("waitDifftest = %s\n", waitDifftest ? "True" : "False");
+          // printf("difftestCountdown = %d\n", difftestCountdown);
           printInst(&inst, robIndex);
         }
         if (*uop.rd) {
@@ -235,12 +269,19 @@ public:
         if (commitedIndex >= 32) {
           commitedIndex = 0;
         }
-        pc = inst.pc + 4;
+
 #ifdef DIFFTEST
         if (!waitDifftest) {
+          if (inst.fuType == FuType::BRU) {
+            pc = inst.predTarget;
+          } else {
+            pc = inst.pc + 4;
+          }
+          if (begin_wave || begin_log) {
+            fprintf(stderr, "[%d] Do difftest\n", robIndex);
+          }
           difftest();
         } else {
-          // printf("Wait difftest!\n");
           difftestCountdown = 2;
         }
 #endif
@@ -303,6 +344,7 @@ public:
         inst.opcode = *uop.opcode;
         inst.imm = *uop.imm;
         inst.pc = *uop.pc;
+        inst.predTarget = *uop.predTarget;
         if (inst.fuType == FuType::FLAG) {
           inst.flag = (FlagOp)*uop.opcode;
         }
@@ -337,10 +379,13 @@ public:
     if (inst->fuType == FuType::LSU || inst->fuType == FuType::AMO) {
       printf("      paddr = 0x%x\n", inst->paddr);
     }
+    // * Executed
+    printf("      executed = %s\n", inst->executed ? "True" : "False");
     printf("      result = %d/%u/0x%x\n", inst->result, inst->result,
            inst->result);
     printf("      flag = %s\n", getFlagOpName(inst->flag));
     printf("      target = %x\n", inst->target);
+    fflush(stdout);
   }
 
   void printInsts() {
@@ -372,6 +417,24 @@ public:
     for (int i = 0; i < 32; ++i) {
       printf("archTable[%d] = %d\n", i, archTable[i]);
     }
+  }
+
+  void printPerfStat() {
+    // * Branch / Jump Mispred rate
+    printf("======================Perf Stat======================\n");
+    printf("Total Inst Retired: %lu\n", instRetired);
+    printf("Total Cycles: %lu\n", lastCommit);
+    printf("IPC: %.2f\n", (double)instRetired / lastCommit);
+    printf("-----------------------Branch------------------------\n");
+    printf("Total Branch: %lu\n", totalBranches);
+    printf("Total Branch Mispred: %lu\n", totalBranchMispred);
+    printf("Branch Mispred Rate: %.2f%%\n",
+           (double)totalBranchMispred / totalBranches * 100);
+    printf("-----------------------Jump--------------------------\n");
+    printf("Total Jump: %lu\n", totalJumps);
+    printf("Total Jump Mispred: %lu\n", totalJumpMispred);
+    printf("Jump Mispred Rate: %.2f%%\n",
+           (double)totalJumpMispred / totalJumps * 100);
   }
 
   uint32_t getPC() { return pc; }

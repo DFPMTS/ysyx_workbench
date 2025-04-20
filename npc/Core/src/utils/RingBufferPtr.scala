@@ -63,6 +63,12 @@ class RingBufferPtr(size: Int) extends CoreBundle {
     val indexBefore = this.index < that.index
     (flagDiff ^ indexBefore).asBool
   }
+
+  def isLeq(that: RingBufferPtr): Bool = {
+    val flagDiff = this.flag ^ that.flag
+    val indexLeq = this.index <= that.index
+    (flagDiff ^ indexLeq).asBool
+  }
 }
 
 object RingBufferPtr {

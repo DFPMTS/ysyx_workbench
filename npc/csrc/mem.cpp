@@ -1,6 +1,7 @@
 #include "mem.hpp"
 #include "cpu.hpp"
 #include "debug.hpp"
+#include "difftest.hpp"
 #include "status.hpp"
 #include <cassert>
 #include <cstdint>
@@ -19,30 +20,8 @@
 #define UART_BASE 0x10000000
 
 static uint32_t image[128] = {
-    0x00200113, // addi x2 x0 2
-    0x00300193, // addi x3 x0 3
-    0x00400213, // addi x4 x0 4
-    0x00700393, // addi x7 x0 7
-    0x00500413, // addi x8 x0 5
-    0x002183B3, // add x7 x3 x2
-    0x00720233, // add x4 x4 x7
-    0x00338133, // add x2 x7 x3
-    0xFFF10193, // addi x3 x2 -1
-    0xFFF40413, // addi x8 x8 -1
-    0xFE0416E3, // bne x8 x0 -20
-    0x800002B7, // lui x5 524288
-    0x00028293, // addi x5 x5 0
-    0x0002A303, // lw x6 0(x5)
-    0x0042A383, // lw x7 4(x5)
-    0x0082AE03, // lw x28 8(x5)
-    0x00C2AE83, // lw x29 12(x5)
-    0x300012F3, // csrrw x5 768 x0
-    0x00100073, // ebreak
-                // 0x00000297, // auipc t0,0
-                // 0x00028823, // sb  zero,16(t0)
-                // 0x0102c503, // lbu a0,16(t0)
-                // 0x00100073, // ebreak (used as nemu_trap)
-                // 0xdeadbeef, // some data
+    0x100002B7, 0x00028293, 0x00000513, 0x00828303,
+    0x006565B3, 0x00B28223, 0x01050513, 0xFF1FF06F,
 };
 
 bool access_device = false;
@@ -158,6 +137,10 @@ void mem_read(uint32_t addr, svBitVecVal *result) {
   // #endif
   auto raw_addr = addr;
   addr &= ADDR_MASK;
+  // if (addr == 0x08032720) {
+  //   stop = Stop::DIFFTEST_FAILED;
+  //   running.store(false);
+  // }
   bool valid = false;
   mem_word_t retval = 0;
   if (in_pmem(addr)) {
@@ -175,7 +158,7 @@ void mem_read(uint32_t addr, svBitVecVal *result) {
     }
   }
   if (in_clock(addr)) {
-    access_device = true;
+    // access_device = true;
     // #ifdef MTRACE
     //     log_write("|clock| ");
     // #endif
@@ -183,16 +166,18 @@ void mem_read(uint32_t addr, svBitVecVal *result) {
     retval = clock_read(addr - RTC_ADDR);
   }
   if (in_uart(raw_addr)) {
-    access_device = true;
+    // access_device = true;
     valid = true;
     retval = uart_io_handler(raw_addr - UART_BASE, 1, 0, false);
     for (int i = 0; i < 8; ++i) {
-      result[i] = rand();
+      result[i] = 0;
     }
     if (raw_addr - addr < 4) {
       result[0] = retval << (8 * (raw_addr - addr));
-    } else {
+    } else if (raw_addr - addr < 8) {
       result[1] = retval << (8 * (raw_addr - addr - 4));
+    } else {
+      result[2] = retval << (8 * (raw_addr - addr - 8));
     }
   }
   // #ifdef MTRACE
@@ -206,6 +191,9 @@ void mem_read(uint32_t addr, svBitVecVal *result) {
   if (valid) {
 
   } else {
+    printf("Invalid read to 0x%08x\n", raw_addr);
+    running.store(false);
+    stop = Stop::DIFFTEST_FAILED;
     for (int i = 0; i < 8; ++i) {
       result[i] = 0x57575757;
     }
@@ -214,6 +202,19 @@ void mem_read(uint32_t addr, svBitVecVal *result) {
   //   running.store(false);
   //   Log("Invalid read to 0x%08x\n", raw_addr);
   // }
+}
+
+void check_memory(paddr_t addr, size_t n) {
+  static uint32_t buf[16];
+  ref_difftest_memcpy(addr, buf, 4 * n, DIFFTEST_TO_DUT);
+  for (int i = 0; i < n; ++i) {
+    if (buf[i] != *(uint32_t *)(guest_to_host(addr) + i * 4)) {
+      Log("Memory mismatch at %08x: ref = %08x, dut = %08x\n", addr + i * 4,
+          buf[i], *(uint32_t *)(guest_to_host(addr) + i * 4));
+      stop = Stop::DIFFTEST_FAILED;
+      running.store(false);
+    }
+  }
 }
 
 void mem_write(uint32_t addr, const svBitVecVal *wdata, uint32_t wmask) {
@@ -241,6 +242,11 @@ void mem_write(uint32_t addr, const svBitVecVal *wdata, uint32_t wmask) {
         *((uint8_t *)guest_to_host(addr) + i) = ((uint8_t *)wdata)[i];
       }
     }
+
+    // if (wmask == 0xFFFFFFFF) {
+    //   check_memory(addr, 8);
+    // }
+
     return;
   }
   //   if (in_serial(addr) && wmask == 1) {
@@ -252,13 +258,14 @@ void mem_write(uint32_t addr, const svBitVecVal *wdata, uint32_t wmask) {
   //     return;
   //   }
   if (in_uart(raw_addr)) {
-    access_device = true;
+    // access_device = true;
     uart_io_handler(raw_addr - UART_BASE, 1,
                     ((uint8_t *)wdata)[raw_addr - addr], true);
     return;
   }
   Log("Invalid write to 0x%08x\n", raw_addr);
   running.store(false);
+  stop = Stop::DIFFTEST_FAILED;
 }
 
 // mem_word_t inst_fetch(paddr_t pc) { return mem_read(pc); }

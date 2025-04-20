@@ -104,7 +104,7 @@ class StoreQueue extends CoreModule {
   }
 
   when(stqBasePtr.flag === io.IN_storeBypassReq.stqPtr.flag) {
-    for (i <- 0 until LDQ_SIZE) {
+    for (i <- 0 until STQ_SIZE) {
       when(addrMatch(io.IN_storeBypassReq.addr, stq(i).addr) && stqValid(i)
          && i.U >= stqBasePtr.index && i.U < io.IN_storeBypassReq.stqPtr.index) {
         for (j <- 0 until 4) {
@@ -116,7 +116,7 @@ class StoreQueue extends CoreModule {
       }
     }
   }.elsewhen(stqBasePtr.flag =/= io.IN_storeBypassReq.stqPtr.flag) {
-    for (i <- 0 until LDQ_SIZE) {
+    for (i <- 0 until STQ_SIZE) {
       when(addrMatch(io.IN_storeBypassReq.addr, stq(i).addr) && i.U >= stqBasePtr.index && stqValid(i)) {
         for (j <- 0 until 4) {
           when(wmask(i)(j)) {
@@ -126,7 +126,7 @@ class StoreQueue extends CoreModule {
         }
       }
     }
-    for (i <- 0 until LDQ_SIZE) {
+    for (i <- 0 until STQ_SIZE) {
       when(addrMatch(io.IN_storeBypassReq.addr, stq(i).addr) && i.U < io.IN_storeBypassReq.stqPtr.index && stqValid(i)) {
         for (j <- 0 until 4) {
           when(wmask(i)(j)) {

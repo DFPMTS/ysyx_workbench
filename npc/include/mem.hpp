@@ -14,7 +14,7 @@
 using mem_word_t = uint32_t;
 using vaddr_t = uint32_t;
 using paddr_t = uint32_t;
-#define RESET_VECTOR 0x80000000
+#define RESET_VECTOR 0x8000000
 
 extern uint8_t *mem;
 extern uint8_t sram[SRAM_SIZE];

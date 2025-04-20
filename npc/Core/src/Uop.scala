@@ -9,6 +9,44 @@ object SrcType extends HasDecodeConfig {
   val PC   = 3.U(2.W)
 }
 
+object BrType extends HasDecodeConfig {
+  val CALL = 0.U(2.W)
+  val RET  = 1.U(2.W)
+  val JUMP = 2.U(2.W)
+  val BRANCH = 3.U(2.W)
+  
+  def apply() = UInt(2.W)
+}
+
+object PredecBrType extends HasDecodeConfig {
+  val CALL   = 0.U(3.W)
+  val ICALL  = 1.U(3.W)
+
+  val RET    = 3.U(3.W)
+  val JUMP   = 4.U(3.W)
+  val IJUMP  = 5.U(3.W)
+  val BRANCH = 6.U(3.W)
+
+  def isIndirect (code: UInt) = {
+    code(0)
+  }
+
+  def isDirectJump (code: UInt) = {
+    isJump(code) && !isIndirect(code)
+  }
+
+  def isJump (code: UInt) = {
+    code === JUMP || code === IJUMP
+  }
+
+  def isBranch (code: UInt) = {
+    code === BRANCH
+  }
+
+
+  def apply() = UInt(3.W)
+}
+
 class PTE extends CoreBundle {
   val ppn1 = UInt(10.W)
   val ppn0 = UInt(10.W)
@@ -35,19 +73,66 @@ object FlagOp extends HasDecodeConfig {
   val NONE                  = 0.U(FlagWidth.W)
   val INST_ACCESS_FAULT     = 1.U(FlagWidth.W)
   val ILLEGAL_INST          = 2.U(FlagWidth.W)
-  val BREAKPOINT            = 3.U(FlagWidth.W)
+  // val BREAKPOINT            = 3.U(FlagWidth.W)
+  
   val LOAD_ADDR_MISALIGNED  = 4.U(FlagWidth.W)
   val LOAD_ACCESS_FAULT     = 5.U(FlagWidth.W)
   val STORE_ADDR_MISALIGNED = 6.U(FlagWidth.W)
   val STORE_ACCESS_FAULT    = 7.U(FlagWidth.W)
   // * custom begin
   val DECODE_FLAG           = 8.U(FlagWidth.W) // * rd field stores DecodeFlagOp
-  val INTERRUPT             = 9.U(FlagWidth.W)
+  // val INTERRUPT             = 9.U(FlagWidth.W)
+  val BRANCH_TAKEN          = 9.U(FlagWidth.W)
+  val BRANCH_NOT_TAKEN      = 10.U(FlagWidth.W)
+  val MISPREDICT_TAKEN      = 11.U(FlagWidth.W) // ! Temp
+  // val INST_PAGE_FAULT       = 12.U(FlagWidth.W)
+  val MISPREDICT_NOT_TAKEN  = 12.U(FlagWidth.W) // ! Temp
   // * custom end
-  val INST_PAGE_FAULT       = 12.U(FlagWidth.W)
   val LOAD_PAGE_FAULT       = 13.U(FlagWidth.W)
   // * temporary jump
-  val MISPREDICT            = 14.U(FlagWidth.W)
+  val MISPREDICT_JUMP       = 14.U(FlagWidth.W) // ! Temp
+  val STORE_PAGE_FAULT      = 15.U(FlagWidth.W)
+
+  val isBranchTaken = (flag: UInt) => {
+    flag === BRANCH_TAKEN || flag === MISPREDICT_TAKEN
+  }
+
+  val isBranchNotTaken = (flag: UInt) => {
+    flag === BRANCH_NOT_TAKEN || flag === MISPREDICT_NOT_TAKEN
+  }
+
+  val isRedirect = (flag: UInt) => {
+    flag === MISPREDICT_TAKEN || flag === MISPREDICT_NOT_TAKEN ||
+    flag === MISPREDICT_JUMP 
+  }
+
+  val isNoRedirect = (flag: UInt) => {
+    flag === BRANCH_TAKEN || flag === BRANCH_NOT_TAKEN
+  }
+
+  val isBruFlags = (flag: UInt) => {
+    flag === BRANCH_TAKEN || flag === BRANCH_NOT_TAKEN ||
+    flag === MISPREDICT_TAKEN || flag === MISPREDICT_NOT_TAKEN ||
+    flag === MISPREDICT_JUMP
+  }
+}
+
+object Exception extends HasDecodeConfig {
+  val INST_ADDR_MISALIGNED  = 0.U(FlagWidth.W)
+  val INST_ACCESS_FAULT     = 1.U(FlagWidth.W)
+  val ILLEGAL_INST          = 2.U(FlagWidth.W)
+  val BREAKPOINT            = 3.U(FlagWidth.W)
+  val LOAD_ADDR_MISALIGNED  = 4.U(FlagWidth.W)
+  val LOAD_ACCESS_FAULT     = 5.U(FlagWidth.W)
+  val STORE_ADDR_MISALIGNED = 6.U(FlagWidth.W)
+  val STORE_ACCESS_FAULT    = 7.U(FlagWidth.W)
+  val ECALL_FROM_U          = 8.U(FlagWidth.W)
+  val ECALL_FROM_S          = 9.U(FlagWidth.W)
+  val RESERVED_0            = 10.U(FlagWidth.W)
+  val ECALL_FROM_M          = 11.U(FlagWidth.W)
+  val INST_PAGE_FAULT       = 12.U(FlagWidth.W)
+  val LOAD_PAGE_FAULT       = 13.U(FlagWidth.W)
+  val RESERVED_1            = 14.U(FlagWidth.W)
   val STORE_PAGE_FAULT      = 15.U(FlagWidth.W)
 }
 
@@ -60,6 +145,8 @@ object DecodeFlagOp extends HasDecodeConfig {
   val FENCE_I    = 5.U(FlagWidth.W)
   val WFI        = 6.U(FlagWidth.W)
   val SFENCE_VMA = 7.U(FlagWidth.W)
+  val INTERRUPT  = 8.U(FlagWidth.W)
+  val INST_PAGE_FAULT = 9.U(FlagWidth.W)
 
 
   val NONE    = 15.U(FlagWidth.W)
@@ -82,8 +169,7 @@ object FuType extends HasDecodeConfig {
 }
 
 object ALUOp extends HasDecodeConfig {
-  def ADD = "b0000".U(OpcodeWidth.W)
-  def SUB = "b0001".U(OpcodeWidth.W)
+  def ADD = "b0000".U(OpcodeWidth.W)  
 
   def LEFT  = "b0010".U(OpcodeWidth.W)
   def RIGHT = "b0011".U(OpcodeWidth.W)
@@ -92,9 +178,8 @@ object ALUOp extends HasDecodeConfig {
   def XOR   = "b0110".U(OpcodeWidth.W)
   def ARITH = "b0111".U(OpcodeWidth.W)
 
-  // "b1000"
+  def SUB = "b1000".U(OpcodeWidth.W)
   // "b1001"
-
   def EQ = "b1010".U(OpcodeWidth.W)
   def NE = "b1011".U(OpcodeWidth.W)
 
@@ -103,20 +188,51 @@ object ALUOp extends HasDecodeConfig {
 
   def GE  = "b1110".U(OpcodeWidth.W)
   def GEU = "b1111".U(OpcodeWidth.W)
+
+  def isSub (opcode: UInt) = {
+    opcode(3).asBool
+  }
 }
 
 object BRUOp extends HasDecodeConfig {
   def AUIPC  = "b0000".U(OpcodeWidth.W)
 
-  def JALR   = "b1000".U(OpcodeWidth.W)
-  def JAL    = "b1001".U(OpcodeWidth.W)
+  def CALL   = "b0001".U(OpcodeWidth.W)
+  def RET    = "b0010".U(OpcodeWidth.W)
 
+  def JALR   = "b0011".U(OpcodeWidth.W)
+  def JAL    = "b0100".U(OpcodeWidth.W)
+
+  // * Below use Sub
   def BEQ = "b1010".U(OpcodeWidth.W)
   def BNE = "b1011".U(OpcodeWidth.W)
   def BLT  = "b1100".U(OpcodeWidth.W)
   def BLTU = "b1101".U(OpcodeWidth.W)
   def BGE  = "b1110".U(OpcodeWidth.W)
   def BGEU = "b1111".U(OpcodeWidth.W)
+
+  def isJump(opcode: UInt) = {
+    !opcode(3) && (opcode =/= AUIPC)
+  }
+
+  def isBranch (opcode: UInt) = {
+    opcode(3)
+  }
+
+  def toBrType(opcode: UInt) = {
+    MuxLookup(opcode, BrType.BRANCH)(Seq(
+      CALL -> BrType.CALL,
+      RET  -> BrType.RET,
+      JALR -> BrType.JUMP,
+      JAL  -> BrType.JUMP,
+      BEQ  -> BrType.BRANCH,
+      BNE  -> BrType.BRANCH,
+      BLT  -> BrType.BRANCH,
+      BLTU -> BrType.BRANCH,
+      BGE  -> BrType.BRANCH,
+      BGEU -> BrType.BRANCH
+    ))
+  }
 }
 
 object LSUOp extends HasDecodeConfig {
@@ -314,6 +430,12 @@ class CommitUop extends CoreBundle {
   val rd = UInt(5.W)
   val prd = UInt(PREG_IDX_W)
   val robPtr = RingBufferPtr(ROB_SIZE)
+  val pc = UInt(XLEN.W)
+  val flag = UInt(FLAG_W)
+  val target = UInt(XLEN.W)
+  val ldqPtr = RingBufferPtr(LDQ_SIZE)
+  val stqPtr = RingBufferPtr(STQ_SIZE)
+  val result = UInt(XLEN.W)
 }
 
 object CacheOpcode extends HasDecodeConfig {
@@ -376,9 +498,12 @@ class CacheCtrlUop extends CoreBundle {
 
 object Addr {
   def isUncached(addr: UInt) = {
-    addr < "h8000_0000".U
+    addr >= "h1000_0000".U || addr < "h0800_0000".U // ! Temporary Fix For Speculative Load
   }
   def isInternalMMIO(addr: UInt) = {
     addr >= "h1100_0000".U && addr < "h1200_0000".U
+  }
+  def isMainMem(addr: UInt) = {
+    addr >= "h0800_0000".U && addr < "h1000_0000".U
   }
 }

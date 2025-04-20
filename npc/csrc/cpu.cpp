@@ -161,7 +161,7 @@ void init_cpu() {
 #ifdef WAVE
   fst = new VerilatedFstC;
   Verilated::traceEverOn(true);
-  top->trace(fst, 5);
+  top->trace(fst, 99);
   fst->open("wave.fst");
 #endif
 

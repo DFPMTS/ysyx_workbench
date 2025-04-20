@@ -83,12 +83,21 @@ $(SRC_AUTO_BIND): $(NXDC_FILES)
 nxdc: $(SRC_AUTO_BIND)
 
 
+vivado:
+	xmake build chisel
+	mv ./vsrc/Core.sv ./vsrc/Core.v
+
 sim: 	
 	xmake build chisel
 	xmake build Vtop
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	xmake run Vtop $(MAINARGS)
+	xmake run Vtop +verilator+rand+reset+2 $(MAINARGS)
 	
+test_sim:
+	xmake build chisel
+	xmake build Vtop
+	xmake run Vtop +verilator+rand+reset+2 $(MAINARGS) --log=npc-log.txt
+
 config:
 	xmake f --menu
 

@@ -129,17 +129,17 @@ class NewICache extends CoreModule {
   val io = IO(new ICacheIO)
 
   val tagArray = Module(new SRAMTemplate(ICACHE_SETS, ICACHE_WAYS, ICACHE_TAG + 1, ICACHE_TAG + 1))  
-  val dataArray = Module(new SRAMTemplate(ICACHE_SETS, ICACHE_WAYS, CACHE_LINE_B * 8, 8))
+  val dataArray = Module(new XilinxBRAM(ICACHE_SETS, ICACHE_WAYS, CACHE_LINE_B * 8, 8))
 
   // * Tag
-  tagArray.io.r(io.IN_tagRead.bits.addr, io.IN_tagRead.valid)
-  tagArray.io.rw(io.IN_tagWrite.bits.addr, true.B, io.IN_tagWrite.bits.way, true.B, io.IN_tagWrite.bits.data.asUInt, io.IN_tagWrite.valid)
+  tagArray.io.r(io.IN_tagRead.bits.addr, CACHE_LINE_B, io.IN_tagRead.valid)
+  tagArray.io.rw(io.IN_tagWrite.bits.addr, CACHE_LINE_B, true.B, io.IN_tagWrite.bits.way, true.B, io.IN_tagWrite.bits.data.asUInt, io.IN_tagWrite.valid)
 
   io.OUT_tagResp := tagArray.io.r.rdata.asTypeOf(new ITagResp)
 
   // * Data
-  dataArray.io.r(io.IN_dataRead.bits.addr, io.IN_dataRead.valid)
-  dataArray.io.rw(io.IN_ctrlDataWrite.bits.addr, true.B, io.IN_ctrlDataWrite.bits.way, io.IN_ctrlDataWrite.bits.wmask, io.IN_ctrlDataWrite.bits.data.asUInt, io.IN_ctrlDataWrite.valid)
+  dataArray.io.r(io.IN_dataRead.bits.addr, CACHE_LINE_B, io.IN_dataRead.valid)
+  dataArray.io.rw(io.IN_ctrlDataWrite.bits.addr, CACHE_LINE_B, true.B, io.IN_ctrlDataWrite.bits.way, io.IN_ctrlDataWrite.bits.wmask, io.IN_ctrlDataWrite.bits.data.asUInt, io.IN_ctrlDataWrite.valid)
 
   io.OUT_dataResp := dataArray.io.r.rdata.asTypeOf(new IDataResp)
 

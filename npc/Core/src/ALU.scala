@@ -29,14 +29,15 @@ trait HasALUFuncs {
   def ALU_GEU = "b1111".U(4.W)
 }
 
-class ALUIO extends CoreBundle {
+class ALUIO(hasBru: Boolean) extends CoreBundle {
   val IN_readRegUop = Flipped(Decoupled(new ReadRegUop))
   val OUT_writebackUop = Valid(new WritebackUop)
+  val OUT_btbUpdate = if (hasBru) Some(Valid(new BTBUpdate)) else None
   val IN_flush = Input(Bool())
 }
 
-class ALU extends Module with HasALUFuncs {
-  val io = IO(new ALUIO)
+class ALU(hasBru: Boolean) extends Module with HasALUFuncs {
+  val io = IO(new ALUIO(hasBru))
 
   val op1        = io.IN_readRegUop.bits.src1
   val op2        = io.IN_readRegUop.bits.src2
@@ -49,7 +50,7 @@ class ALU extends Module with HasALUFuncs {
   val jumpTarget = Wire(UInt(32.W))
 
   // [adder] add / sub
-  val isSub    = ~(aluFunc === ALUOp.ADD || aluFunc === BRUOp.JAL || aluFunc === BRUOp.JALR) // for cmp
+  val isSub    = ALUOp.isSub(aluFunc) // for cmp
   val op2Adder = Mux(isSub, ~op2, op2)
   val addRes   = op1 + op2Adder + isSub
 
@@ -101,26 +102,48 @@ class ALU extends Module with HasALUFuncs {
 
   // ** BRU
   // ** Branch's result is calculated in ALU (Branch Opcode is same as corresponding ALU Opcode)
-  // ** BRUOp.JAL and BRUOp.JALR's target are also calculated in ALU  
+  // ** CALL/RET JAL JALR's target are also calculated in ALU  
   // ** AUIPC's result is calculated in ALU  
   val isBRU = fuType === FuType.BRU
   val isAUIPC = aluFunc === BRUOp.AUIPC
-  val isJump = aluFunc === BRUOp.JAL || aluFunc === BRUOp.JALR
-  val isBranch = aluFunc === BRUOp.BEQ || aluFunc === BRUOp.BNE || aluFunc === BRUOp.BLT || aluFunc === BRUOp.BGE || aluFunc === BRUOp.BLTU || aluFunc === BRUOp.BGEU
+  val isJump = BRUOp.isJump(aluFunc)
+  val isBranch = BRUOp.isBranch(aluFunc)
 
   val mispredict = (jumpTarget =/= io.IN_readRegUop.bits.predTarget) && !isAUIPC
   val branchJump = pc + imm
   val nextInstPC = pc + 4.U  
   val branchTarget = Mux(cmpOut, branchJump, nextInstPC)
-  jumpTarget := Mux(isJump, out, branchTarget)
+  jumpTarget := Mux(isJump, addRes, branchTarget)
 
   val bruUop = Wire(new WritebackUop)
   bruUop.dest := Dest.ROB
   bruUop.target := jumpTarget
-  bruUop.data := Mux(isJump, nextInstPC, out)
+  bruUop.data := Mux(isJump, nextInstPC, addRes)
   bruUop.prd := io.IN_readRegUop.bits.prd
   bruUop.robPtr := io.IN_readRegUop.bits.robPtr
-  bruUop.flag := Mux(mispredict, FlagOp.MISPREDICT, FlagOp.NONE)
+  bruUop.flag := Mux(mispredict, 
+                    Mux(isBranch, Mux(cmpOut, FlagOp.MISPREDICT_TAKEN, FlagOp.MISPREDICT_NOT_TAKEN), 
+                       /* Jump */ FlagOp.MISPREDICT_JUMP),
+                    Mux(isBranch, Mux(cmpOut, FlagOp.BRANCH_TAKEN, FlagOp. BRANCH_NOT_TAKEN),     
+                                  FlagOp.NONE))
+
+  // ** BTB Update
+  if (hasBru) {
+    val OUT_btbUpdate = io.OUT_btbUpdate.get
+
+    val btbUpdate = Reg(new BTBUpdate)
+    val btbUpdateValid = RegInit(false.B)
+    btbUpdateValid := io.IN_readRegUop.valid && mispredict && (isJump || (isBranch && cmpOut))
+    when(io.IN_flush) {
+      btbUpdateValid := false.B
+    }
+    btbUpdate.pc := io.IN_readRegUop.bits.pc
+    btbUpdate.target := jumpTarget
+    btbUpdate.brType := BRUOp.toBrType(aluFunc)
+
+    OUT_btbUpdate.valid := btbUpdateValid
+    OUT_btbUpdate.bits := btbUpdate
+  }
 
   val uop = Reg(new WritebackUop)
   val uopValid = RegInit(false.B)
@@ -132,7 +155,7 @@ class ALU extends Module with HasALUFuncs {
     uopValid := false.B
   }
 
-  uop := Mux(isBRU, bruUop, aluUop)
+  uop := (if (hasBru) Mux(isBRU, bruUop, aluUop) else aluUop)
 
   // ** Output
   io.OUT_writebackUop.valid := uopValid

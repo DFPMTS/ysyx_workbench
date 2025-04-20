@@ -24,32 +24,35 @@ trait HasCoreParameters {
   def WRITEBACK_WIDTH = 5
   def COMMIT_WIDTH = 1
 
+  def USE_DUMMY_MUL_DIV = false
+  // def USE_DUMMY_MUL_DIV = true
 
   // * Int Mul Delay
   // * Delay = IMUL latency - ALU latency
   def IMUL_DELAY = 2
 
   // * Int Div Delay
-  def IDIV_DELAY = 3
+  // def IDIV_DELAY = if (USE_DUMMY_MUL_DIV) 3 else (XLEN + 1)
+  def IDIV_DELAY = (XLEN + 1)
 
   // * Physical Register
-  def NUM_PREG = 48
+  def NUM_PREG = 64
   def PREG_IDX_W = log2Up(NUM_PREG).W
 
   // * ROB 
-  def ROB_SIZE = 16
+  def ROB_SIZE = 32
   def ROB_IDX_W = log2Up(ROB_SIZE).W
 
   // * Issue Queue
-  def IQ_SIZE = 4
+  def IQ_SIZE = 8
   def IQ_IDX_W = log2Up(IQ_SIZE).W
 
   // * Load Queue
-  def LDQ_SIZE = 4
+  def LDQ_SIZE = 8
   def LDQ_IDX_W = log2Up(LDQ_SIZE).W
 
   // * Store Queue
-  def STQ_SIZE = 4
+  def STQ_SIZE = 8
   def STQ_IDX_W = log2Up(STQ_SIZE).W
 
   // * Flag
@@ -57,6 +60,15 @@ trait HasCoreParameters {
 
   // * Page Number Length
   def PAGE_NR_LEN = 20
+
+  // * BTB Size (of a single Bank)
+  def BTB_INDEX_LEN = 9
+  def BTB_SIZE = 1 << BTB_INDEX_LEN
+  def BTB_TAG = XLEN - BTB_INDEX_LEN - log2Up(FETCH_WIDTH * 4) // ! C-extension
+
+  // * PHT Size (of a single Bank)
+  def PHT_INDEX_LEN = 9
+  def PHT_SIZE = 1 << PHT_INDEX_LEN
 
   // * Number of MSHR
   def NUM_MSHR = 4

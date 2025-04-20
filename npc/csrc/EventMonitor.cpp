@@ -64,6 +64,10 @@ int getEventId(const std::string &eventName) {
     return 7;
   } else if (eventName == "icacheMiss") {
     return 8;
+  } else if (eventName == "totalBranch") {
+    return 9;
+  } else if (eventName == "branchMisPred") {
+    return 10;
   } else {
     return -1;
   }

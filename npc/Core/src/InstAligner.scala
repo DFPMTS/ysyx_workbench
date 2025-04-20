@@ -22,20 +22,25 @@ class InstAligner extends CoreModule {
   io.IN_fetchGroup.ready := outReady
 
   val fetchOffset = if (FETCH_WIDTH == 1) 0.U else inFetchGroup.pc(log2Ceil(FETCH_WIDTH * 4) - 1, 2)
-  val instValidMap = (Fill(FETCH_WIDTH, 1.U(1.W)) << fetchOffset)(FETCH_WIDTH - 1, 0) & Fill(FETCH_WIDTH, io.IN_fetchGroup.valid)
+  val instValidMap = VecInit((0 until FETCH_WIDTH).map { i =>
+    i.U >= fetchOffset && (!inFetchGroup.brTaken || i.U <= inFetchGroup.brOffset)
+  }).asUInt
 
   when(io.IN_flush) {
     valid := VecInit(Seq.fill(FETCH_WIDTH)(false.B))
-  }.elsewhen(outReady) {
+  }.elsewhen(io.IN_fetchGroup.fire) {
     for (i <- 0 until FETCH_WIDTH) {
       valid(i) := instValidMap(fetchOffset + i.U)
       insts(i).inst := inFetchGroup.insts(fetchOffset + i.U)
       val instPC = if (FETCH_WIDTH == 1) inFetchGroup.pc else Cat(inFetchGroup.pc(XLEN - 1, log2Ceil(FETCH_WIDTH * 4)), (fetchOffset + i.U), 0.U(2.W))
       insts(i).pc := instPC
+      insts(i).predTarget := Mux(inFetchGroup.brTaken && inFetchGroup.brOffset === fetchOffset + i.U, inFetchGroup.brTarget, instPC + 4.U)
       insts(i).pageFault := inFetchGroup.pageFault
       insts(i).interrupt := inFetchGroup.interrupt
       insts(i).access_fault := inFetchGroup.access_fault
     }
+  }.elsewhen(io.IN_ready) {
+    valid := VecInit(Seq.fill(FETCH_WIDTH)(false.B))
   }
   
   io.OUT_insts.zipWithIndex.foreach { case (out, i) =>
