@@ -236,10 +236,10 @@ public:
                        (inst.flag != FlagOp::BRANCH_NOT_TAKEN);
         if (inst.fuType == FuType::LSU) {
           auto addr = inst.paddr;
-          if (addr >= 0x11000000 + 0xbff8 && addr < 0x11000000 + 0xc000 ||
-              addr >= 0x11000000 + 0x4000 && addr < 0x11000000 + 0x4008 ||
-              addr >= 0x11000000 + 0x0000 && addr < 0x11000000 + 0x0004 ||
-              addr >= 0x10000000 && addr < 0x10000000 + 32) {
+          if (addr >= CLINT_BASE + 0xbff8 && addr < CLINT_BASE + 0xc000 ||
+              addr >= CLINT_BASE + 0x4000 && addr < CLINT_BASE + 0x4008 ||
+              addr >= CLINT_BASE + 0x0000 && addr < CLINT_BASE + 0x0004 ||
+              addr >= UART_BASE && addr < UART_BASE + 32) {
             // fprintf(stderr, "LSU MMIO: %x\n", addr);
             access_device = true;
           }

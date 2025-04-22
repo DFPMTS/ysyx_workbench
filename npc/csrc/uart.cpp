@@ -78,8 +78,8 @@ static void send_key_uart(char keycode) {
 
 uint8_t uart_io_handler(uint32_t offset, int len, uint8_t wdata,
                         bool is_write) {
-  log_write("uart offset=%d, len=%d, wdata=%d, is_write=%d\n", offset, len,
-            wdata, is_write);
+  // log_write("uart offset=%d, len=%d, wdata=%d, is_write=%d\n", offset, len,
+  //           wdata, is_write);
   assert(len == 1);
   if (is_write) {
     uart_base[offset] = wdata;
@@ -87,7 +87,7 @@ uint8_t uart_io_handler(uint32_t offset, int len, uint8_t wdata,
   static int counter = 0;
   switch (offset) {
   /* We bind the serial port with the host stderr in NEMU. */
-  case 4:
+  case UART_DL1:
     // also UART_TX/RX
     if (is_write) {
       counter++;
@@ -98,17 +98,6 @@ uint8_t uart_io_handler(uint32_t offset, int len, uint8_t wdata,
     } else {
       uart_base[UART_RX] = uart_read();
     }
-    break;
-  case 8:
-    uart_base[8] = 0;
-    // if (counter == 0) {
-    //   uart_base[8] = 4;
-    // } else if (counter < 16) {
-    //   uart_base[8] = 0;
-    // } else {
-    //   uart_base[8] = 8;
-    // }
-
     break;
   case UART_DL2:
     uart_base[offset] = 0;
@@ -127,7 +116,7 @@ uint8_t uart_io_handler(uint32_t offset, int len, uint8_t wdata,
     uart_base[offset] = 0; /*printf("do not support offset = %d\n", offset);*/
   }
   }
-  log_write("uart_base[%d] = %x\n", offset, uart_base[offset]);
+  // log_write("uart_base[%d] = %x\n", offset, uart_base[offset]);
   return uart_base[offset];
 }
 
@@ -157,5 +146,5 @@ void init_uart() {
 }
 
 bool in_uart(uint32_t addr) {
-  return addr >= UART_BASE && addr < UART_BASE + UART_SIZE + 100; // !
+  return addr >= UART_BASE && addr < UART_BASE + 32; // !
 }

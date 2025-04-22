@@ -10,14 +10,10 @@
 #include <iostream>
 #include <svdpi.h>
 
-#define OFFSET 0x80000000
-#define SIZE 0x80000000
-
 #define DEVICE_BASE 0xa0000000
 
 #define RTC_ADDR (DEVICE_BASE + 0x0000048)
 #define SERIAL_PORT (DEVICE_BASE + 0x00003f8)
-#define UART_BASE 0x10000000
 
 static uint32_t image[128] = {
     0x100002B7, 0x00028293, 0x00000513, 0x00828303,

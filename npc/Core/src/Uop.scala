@@ -498,12 +498,12 @@ class CacheCtrlUop extends CoreBundle {
 
 object Addr {
   def isUncached(addr: UInt) = {
-    addr >= "h1000_0000".U || addr < "h0800_0000".U // ! Temporary Fix For Speculative Load
+    addr < "h1000_0000".U || addr >= "h2000_0000".U // ! Temporary Fix For Speculative Load
   }
   def isInternalMMIO(addr: UInt) = {
-    addr >= "h1100_0000".U && addr < "h1200_0000".U
+    addr >= "h0b00_0000".U && addr < "h0c00_0000".U
   }
   def isMainMem(addr: UInt) = {
-    addr >= "h0800_0000".U && addr < "h1000_0000".U
+    addr >= "h1000_0000".U && addr < "h2000_0000".U
   }
 }

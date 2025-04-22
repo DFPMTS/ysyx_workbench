@@ -55,7 +55,4 @@ void isa_reg_display(difftest_context_t *ctx);
 void init_cpu();
 void cpu_step();
 
-#define UART_BASE 0x10000000
-#define UART_SIZE 9
-
 #endif

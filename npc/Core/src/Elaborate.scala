@@ -11,7 +11,7 @@ object parseArgs {
     }
     Config.debug = false
     if (args.contains("npc")) {
-      Config.resetPC = "h0800_0000".U
+      Config.resetPC = "h1000_0000".U
     } else {
       Config.resetPC = "h30000000".U
     }

@@ -32,7 +32,7 @@ class InternalMMIO extends CoreModule {
   val msip = RegInit(0.U(1.W))
   mtime := mtime + 1.U
 
-  val CLINT_BASE = 0x11000000L.U(32.W)
+  val CLINT_BASE = 0x0b000000L.U(32.W)
   val MTIME_OFFSET = 0xbff8.U
   val MTIMECMP_OFFSET = 0x4000.U
   val MSIP_OFFSET = 0x0.U
@@ -52,7 +52,7 @@ class InternalMMIO extends CoreModule {
 
   when(io.IN_mmioReq.ren) {
     // Read
-    when(io.IN_mmioReq.addr(31, 24) === 0x11.U) {
+    when(io.IN_mmioReq.addr(31, 24) === CLINT_BASE(31, 24)) {
       val raddr = io.IN_mmioReq.addr
       when(addrMatch(raddr, CLINT_BASE, MTIME_OFFSET)) {
         mmioReadData := mtimel
@@ -68,7 +68,7 @@ class InternalMMIO extends CoreModule {
     }
   }.elsewhen(io.IN_mmioReq.wen) {
     // Write
-    when(io.IN_mmioReq.addr(31, 24) === 0x11.U) {
+    when(io.IN_mmioReq.addr(31, 24) === CLINT_BASE(31, 24)) {
       val waddr = io.IN_mmioReq.addr
       val wdata = io.IN_mmioReq.wdata
       when(addrMatch(waddr, CLINT_BASE, MTIME_OFFSET)) {
