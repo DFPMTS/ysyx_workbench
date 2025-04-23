@@ -72,15 +72,15 @@ class FreeList extends CoreModule {
           freeList(commitIndex) := commitPrevPReg
           freeValid(i) := true.B
         }
-        when(io.IN_commitRd(i) =/= 0.U) {
-          allocateConfirm(i) := true.B
-        }
       } .otherwise {        
         when (commitPReg =/= 0.U) {
           freeList(commitIndex) := commitPReg
           freeValid(i) := true.B
         }        
-      }      
+      }
+      when(io.IN_commitRd(i) =/= 0.U) {
+        allocateConfirm(i) := true.B
+      }    
     }
   }
 

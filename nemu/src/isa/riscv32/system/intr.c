@@ -28,7 +28,7 @@ word_t isa_raise_intr(word_t NO, vaddr_t epc) {
   assert(NO);  
   // if(!trap_is_intr(NO)){
   //   if(NO == 2) {
-  //     Log("priv: %d NO: 0x%x epc: 0x%x mtvec: 0x%x",cpu.priv, NO, epc, cpu.mtvec);
+      log_write("priv: %d NO: 0x%x epc: 0x%x mtvec: 0x%x\n",cpu.priv, NO, epc, cpu.mtvec);
   //   }
   // }
   //// always trap to M for now

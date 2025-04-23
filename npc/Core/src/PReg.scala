@@ -15,8 +15,19 @@ class PReg extends CoreModule {
 
   for (i <- 0 until MACHINE_WIDTH) {
     for (j <- 0 until 2) {
-      when (io.IN_pRegIndex(i)(j) =/= ZERO) {        
-        io.OUT_pRegVal(i)(j) := pReg(io.IN_pRegIndex(i)(j))
+      when (io.IN_pRegIndex(i)(j) =/= ZERO) {
+        // * bypass from current cycle's writeback
+        val wbMatchVec = io.IN_writebackUop.map { writebackUop =>
+          writebackUop.valid && writebackUop.bits.prd === io.IN_pRegIndex(i)(j)
+        }
+        val wbCanForward = wbMatchVec.reduce(_ || _)
+        val wbData = Mux1H(wbMatchVec, io.IN_writebackUop.map(_.bits.data))
+        when (wbCanForward) {
+          io.OUT_pRegVal(i)(j) := wbData
+        }.otherwise {
+          // * read PReg from pReg
+          io.OUT_pRegVal(i)(j) := pReg(io.IN_pRegIndex(i)(j))
+        }
       }.otherwise {
         io.OUT_pRegVal(i)(j) := ZERO
       }

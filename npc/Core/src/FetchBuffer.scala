@@ -13,7 +13,6 @@ class FetchBufferIO extends CoreBundle {
 class FetchBuffer extends CoreModule {
   val io = IO(new FetchBufferIO)
 
-  val FETCH_BUFFER_SIZE = 4
   val buffer = Reg(Vec(FETCH_BUFFER_SIZE, new FetchGroup))
   val outReg = Reg(new FetchGroup)
   val outValid = RegInit(false.B)

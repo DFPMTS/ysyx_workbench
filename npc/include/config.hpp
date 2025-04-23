@@ -31,6 +31,7 @@ constexpr size_t FORK_CYCLE = 100000;
 constexpr size_t ISSUE_WIDTH = 4;
 constexpr size_t MACHINE_WIDTH = 4;
 constexpr size_t WRITEBACK_WIDTH = 5;
+constexpr size_t COMMIT_WIDTH = 4;
 
 constexpr size_t CLINT_BASE = 0x0b000000;
 constexpr size_t UART_BASE = 0x0a000000;

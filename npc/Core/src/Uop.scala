@@ -166,6 +166,10 @@ object FuType extends HasDecodeConfig {
   val AMO    = 5.U(FuTypeWidth.W)
   val CSR    = 6.U(FuTypeWidth.W)
   val FLAG   = 7.U(FuTypeWidth.W)
+
+  def isOneCycle (fuType: UInt) = {
+    fuType === ALU || fuType === BRU
+  }
 }
 
 object ALUOp extends HasDecodeConfig {
@@ -436,6 +440,14 @@ class CommitUop extends CoreBundle {
   val ldqPtr = RingBufferPtr(LDQ_SIZE)
   val stqPtr = RingBufferPtr(STQ_SIZE)
   val result = UInt(XLEN.W)
+}
+
+class RedirectUop extends CoreBundle {
+  val target = UInt(XLEN.W)
+  val robPtr = RingBufferPtr(ROB_SIZE)
+  val ldqPtr = RingBufferPtr(LDQ_SIZE)
+  val stqPtr = RingBufferPtr(STQ_SIZE)
+  val flush = Bool()
 }
 
 object CacheOpcode extends HasDecodeConfig {

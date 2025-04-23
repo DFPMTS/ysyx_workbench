@@ -5,6 +5,7 @@ import SrcType.IMM
 
 class ReadRegIO extends CoreBundle {
   val IN_issueUop = Flipped(Vec(MACHINE_WIDTH, Decoupled(new RenameUop)))
+  val IN_zeroCycleForward = Flipped(Vec(NUM_ALU, Valid(new WritebackUop)))
   val OUT_readRegIndex = Vec(MACHINE_WIDTH, Vec(2, UInt(PREG_IDX_W)))
   val IN_readRegVal = Flipped(Vec(MACHINE_WIDTH, Vec(2, UInt(XLEN.W))))
   val OUT_readRegUop = Vec(MACHINE_WIDTH, Decoupled(new ReadRegUop))
@@ -34,8 +35,20 @@ class ReadReg extends CoreModule {
 
       io.OUT_readRegIndex(i)(0) := issueUop.prs1
       io.OUT_readRegIndex(i)(1) := issueUop.prs2
-      uopNext(i).src1 := Mux(issueUop.src1Type === SrcType.PC, issueUop.pc, io.IN_readRegVal(i)(0))
-      uopNext(i).src2 := Mux(issueUop.src2Type === SrcType.IMM, issueUop.imm, io.IN_readRegVal(i)(1))
+      // * Try to get data from Zero cycle forward
+      val src1MatchVec = io.IN_zeroCycleForward.map { forwardUop =>
+        forwardUop.valid && forwardUop.bits.prd === issueUop.prs1
+      }
+      val src2MatchVec = io.IN_zeroCycleForward.map { forwardUop =>
+        forwardUop.valid && forwardUop.bits.prd === issueUop.prs2
+      }
+      val src1CanForward = src1MatchVec.reduce(_ || _) && issueUop.rs1 =/= ZERO
+      val src2CanForward = src2MatchVec.reduce(_ || _) && issueUop.rs2 =/= ZERO
+      val src1ForwardData = Mux1H(src1MatchVec, io.IN_zeroCycleForward.map(_.bits.data))
+      val src2ForwardData = Mux1H(src2MatchVec, io.IN_zeroCycleForward.map(_.bits.data))
+
+      uopNext(i).src1 := Mux(issueUop.src1Type === SrcType.PC, issueUop.pc, Mux(src1CanForward, src1ForwardData, io.IN_readRegVal(i)(0)))
+      uopNext(i).src2 := Mux(issueUop.src2Type === SrcType.IMM, issueUop.imm, Mux(src2CanForward, src2ForwardData, io.IN_readRegVal(i)(1)))
 
       uopNext(i).robPtr := issueUop.robPtr
       uopNext(i).ldqPtr := issueUop.ldqPtr

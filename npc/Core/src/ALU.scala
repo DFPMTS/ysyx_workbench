@@ -32,6 +32,7 @@ trait HasALUFuncs {
 class ALUIO(hasBru: Boolean) extends CoreBundle {
   val IN_readRegUop = Flipped(Decoupled(new ReadRegUop))
   val OUT_writebackUop = Valid(new WritebackUop)
+  val OUT_zeroCycleForward = Valid(new WritebackUop)
   val OUT_btbUpdate = if (hasBru) Some(Valid(new BTBUpdate)) else None
   val IN_flush = Input(Bool())
 }
@@ -146,18 +147,24 @@ class ALU(hasBru: Boolean) extends Module with HasALUFuncs {
   }
 
   val uop = Reg(new WritebackUop)
+  val uopNext = Wire(new WritebackUop)
   val uopValid = RegInit(false.B)
+  val uopValidNext = WireInit(false.B)
 
   io.IN_readRegUop.ready := true.B
+  uopValidNext := io.IN_readRegUop.valid
+  uopNext := (if (hasBru) Mux(isBRU, bruUop, aluUop) else aluUop)
 
-  uopValid := io.IN_readRegUop.valid
+  uopValid := uopValidNext
   when(io.IN_flush) {
     uopValid := false.B
   }
-
-  uop := (if (hasBru) Mux(isBRU, bruUop, aluUop) else aluUop)
+  uop := uopNext
 
   // ** Output
+  io.OUT_zeroCycleForward.valid := uopValidNext
+  io.OUT_zeroCycleForward.bits := uopNext
+
   io.OUT_writebackUop.valid := uopValid
   io.OUT_writebackUop.bits := uop
 }

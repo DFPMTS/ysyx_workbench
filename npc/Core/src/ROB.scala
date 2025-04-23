@@ -5,6 +5,7 @@ import utils._
 class ROBIO extends CoreBundle {
   val IN_renameUop = Flipped(Vec(ISSUE_WIDTH, Valid(new RenameUop)))
   val IN_writebackUop = Flipped(Vec(WRITEBACK_WIDTH, Valid(new WritebackUop)))
+  // val OUT_isROBWalk = Bool()
   val OUT_commitUop = Vec(COMMIT_WIDTH, Valid(new CommitUop))  
   val OUT_robTailPtr = RingBufferPtr(ROB_SIZE)
   val OUT_ldqTailPtr = RingBufferPtr(LDQ_SIZE)
@@ -84,16 +85,27 @@ class ROB extends CoreModule with HasPerfCounters {
 
   val phtUpdateNext = Wire(new PHTUpdate)
   val phtUpdateValidNext = Wire(Bool())
+  phtUpdateNext := DontCare
+  phtUpdateValidNext := false.B
   val phtUpdate = Reg(new PHTUpdate)
   val phtUpdateValid = RegInit(false.B)
+  phtUpdate := DontCare
+  phtUpdateValid := false.B
 
-  val flagUopNextValid = Wire(Bool())
+  val flagUopNextValid = Wire(Bool())  
   val flagUopNext = Wire(new FlagUop)
+  flagUopNext := DontCare
+  flagUopNextValid := false.B
+
   val flagUopValid = RegInit(false.B)
   val flagUop     = Reg(new FlagUop)
 
+  // * DeqEntry/Valid: Whether the entry is ready to commit
   val deqEntry = Wire(Vec(COMMIT_WIDTH, new ROBEntry))
   val deqValid = Wire(Vec(COMMIT_WIDTH, Bool()))
+  val deqCanCommit = Wire(Vec(COMMIT_WIDTH, Bool()))
+  // * Whether the entry has a flag need to handle
+  val flagValid = Wire(Vec(COMMIT_WIDTH, Bool()))
 
   for (i <- 0 until COMMIT_WIDTH) {
     val deqPtr = robTailPtr + i.U
@@ -101,9 +113,18 @@ class ROB extends CoreModule with HasPerfCounters {
     dontTouch(ptrYes)
     deqEntry(i) := rob(deqPtr.index)
     deqValid(i) := robHeadPtr.isLeq(deqPtr) && deqEntry(i).executed
+    flagValid(i) := deqEntry(i).flag =/= FlagOp.NONE
+    when (io.IN_flush) {
+      deqValid(i) := false.B
+    }
   }
 
-  commitValid := deqValid
+  deqCanCommit(0) := deqValid(0)
+  for (i <- 1 until COMMIT_WIDTH) {
+    deqCanCommit(i) := deqValid.take(i + 1).reduce(_ && _) && !flagValid.take(i).reduce(_ || _) 
+  }
+
+  commitValid := deqCanCommit
   when(io.IN_flush || robStall) {
     commitValid := VecInit(Seq.fill(COMMIT_WIDTH)(false.B))
   }
@@ -120,23 +141,24 @@ class ROB extends CoreModule with HasPerfCounters {
     commitUop(i).stqPtr := deqEntry(i).stqPtr
     commitUop(i).result := deqEntry(i).result
     // !
+    when(deqCanCommit(i) && flagValid(i)) {  
+      flagUopNextValid := deqValid(i) && deqEntry(i).flag =/= FlagOp.NONE && !FlagOp.isNoRedirect(deqEntry(i).flag)
+      flagUopNext.target := deqEntry(i).target
+      flagUopNext.flag := deqEntry(i).flag
+      flagUopNext.rd := deqEntry(i).rd
+      flagUopNext.pc := deqEntry(i).pc
+      flagUopNext.robPtr := robTailPtr + i.U
 
-    flagUopNextValid := deqValid(i) && deqEntry(i).flag =/= FlagOp.NONE && !FlagOp.isNoRedirect(deqEntry(i).flag)
-    flagUopNext.target := deqEntry(i).target
-    flagUopNext.flag := deqEntry(i).flag
-    flagUopNext.rd := deqEntry(i).rd
-    flagUopNext.pc := deqEntry(i).pc
-    flagUopNext.robPtr := robTailPtr + i.U
+      val branchTaken = FlagOp.isBranchTaken(deqEntry(i).flag)
+      val branchNotTaken = FlagOp.isBranchNotTaken(deqEntry(i).flag)
+      phtUpdateValidNext := deqValid(i) && (branchTaken || branchNotTaken)
+      phtUpdateNext.pc := deqEntry(i).pc
+      phtUpdateNext.taken := branchTaken
 
-    val branchTaken = FlagOp.isBranchTaken(deqEntry(i).flag)
-    val branchNotTaken = FlagOp.isBranchNotTaken(deqEntry(i).flag)
-    phtUpdateValidNext := deqValid(i) && (branchTaken || branchNotTaken)
-    phtUpdateNext.pc := deqEntry(i).pc
-    phtUpdateNext.taken := branchTaken
-
-    when(flagUopNextValid && !FlagOp.isBruFlags(deqEntry(i).flag)) {
-      commitUop(i).rd := ZERO
-      commitUop(i).prd := ZERO
+      when(flagUopNextValid && !FlagOp.isBruFlags(deqEntry(i).flag)) {
+        commitUop(i).rd := ZERO
+        commitUop(i).prd := ZERO
+      }
     }
   }
 
@@ -153,15 +175,15 @@ class ROB extends CoreModule with HasPerfCounters {
     phtUpdateValid := false.B
   }
 
-  val loadCommited = (0 until COMMIT_WIDTH).map(i => deqValid(i) && deqEntry(i).isLoad && deqEntry(i).flag === FlagOp.NONE)
-  val storeCommited = (0 until COMMIT_WIDTH).map(i => deqValid(i) && deqEntry(i).isStore && deqEntry(i).flag === FlagOp.NONE)
+  val loadCommited = (0 until COMMIT_WIDTH).map(i => deqCanCommit(i) && deqEntry(i).isLoad && deqEntry(i).flag === FlagOp.NONE)
+  val storeCommited = (0 until COMMIT_WIDTH).map(i => deqCanCommit(i) && deqEntry(i).isStore && deqEntry(i).flag === FlagOp.NONE)
 
   when(io.IN_flush) {
     robHeadPtr := RingBufferPtr(size = ROB_SIZE, flag = 0.U, index = 0.U)
     robTailPtr := RingBufferPtr(size = ROB_SIZE, flag = 1.U, index = 0.U)
   }.elsewhen(!robStall) {
     robHeadPtr := robHeadPtr + PopCount(io.IN_renameUop.map(_.fire))
-    robTailPtr := robTailPtr + PopCount(deqValid)
+    robTailPtr := robTailPtr + PopCount(deqCanCommit)
     ldqCommitPtr := ldqCommitPtr + PopCount(loadCommited)
     stqCommitPtr := stqCommitPtr + PopCount(storeCommited)
   }

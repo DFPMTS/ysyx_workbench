@@ -17,7 +17,7 @@ public:
   RenameUop renameUop[ISSUE_WIDTH];
   WritebackUop writebackUop[WRITEBACK_WIDTH];
   ReadRegUop readRegUop[MACHINE_WIDTH];
-  CommitUop commitUop[1];
+  CommitUop commitUop[COMMIT_WIDTH];
   FlagUop flagUop[1];
   CSRCtrl csrCtrl[1];
   AGUUop aguUop[1];
@@ -42,6 +42,8 @@ public:
 
   uint64_t totalJumps = 0;
   uint64_t totalJumpMispred = 0;
+
+  uint64_t mispredPenalty = 0;
 
   void bindUops() {
     // * renameUop
@@ -80,8 +82,8 @@ public:
 #define V_UOP_VALID V_COMMIT_VALID
 #define UOP_FIELDS COMMIT_FIELDS
 
-    REPEAT_1(BIND_FIELDS)
-    REPEAT_1(BIND_VALID)
+    REPEAT_4(BIND_FIELDS)
+    REPEAT_4(BIND_VALID)
 
     // * flagUop
 #define UOP flagUop
@@ -209,7 +211,7 @@ public:
     }
 
     // * commit
-    for (int i = 0; i < 1; ++i) {
+    for (int i = 0; i < COMMIT_WIDTH; ++i) {
       if (*commitUop[i].valid && *commitUop[i].ready) {
         ++instRetired;
         lastCommit = cycle;
@@ -222,6 +224,7 @@ public:
             totalJumps++;
             if (inst.flag == FlagOp::MISPREDICT_JUMP) {
               totalJumpMispred++;
+              mispredPenalty += cycle - inst.resultValidCycle;
             }
           } else {
             totalBranches++;
@@ -304,6 +307,7 @@ public:
             pReg[*uop.prd] = *writebackUop[i].data;
           }
           inst.result = *writebackUop[i].data;
+          inst.resultValidCycle = cycle;
           inst.executed = true;
           inst.flag = (FlagOp)*writebackUop[i].flag;
           inst.target = *writebackUop[i].target;
@@ -435,6 +439,9 @@ public:
     printf("Total Jump Mispred: %lu\n", totalJumpMispred);
     printf("Jump Mispred Rate: %.2f%%\n",
            (double)totalJumpMispred / totalJumps * 100);
+    printf("Mispred Penalty: %lu\n", mispredPenalty);
+    printf("Mispred Penalty Rate: %.2f%%\n",
+           (double)mispredPenalty / lastCommit * 100);
   }
 
   uint32_t getPC() { return pc; }

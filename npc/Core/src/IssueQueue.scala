@@ -6,6 +6,7 @@ import org.fusesource.jansi.internal.Kernel32.FOCUS_EVENT_RECORD
 class IssueQueueIO extends CoreBundle {
   val IN_renameUop = Flipped(Decoupled(new RenameUop))
   val IN_writebackUop = Flipped(Vec(WRITEBACK_WIDTH, Valid(new WritebackUop)))
+  val IN_issueUops = Flipped(Vec(NUM_ALU, Valid(new RenameUop)))
   val OUT_issueUop = Decoupled(new RenameUop)
   val IN_robTailPtr = Input(RingBufferPtr(ROB_SIZE))
   val IN_stqBasePtr = Flipped(RingBufferPtr(STQ_SIZE))
@@ -42,7 +43,7 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
     wbReserved(i) := wbReserved(i + 1)
   }
 
-  // ** Writeback
+  // ** Writeback / Wakeup
   val writebackReady = Wire(Vec(IQ_SIZE, Vec(2, Bool())))
   for (j <- 0 until IQ_SIZE) {
     writebackReady(j)(0) := false.B
@@ -60,7 +61,22 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
           writebackReady(j)(1) := true.B
         }
       }
-    }    
+    }
+    for (i <- 0 until NUM_ALU) {
+      // ** For one-cycle Operation, the issued Uop can wake up dependencies now
+      val issueValid = io.IN_issueUops(i).valid
+      val issueUop = io.IN_issueUops(i).bits
+      when (issueValid && FuType.isOneCycle(issueUop.fuType)) {
+        when (queue(j).prs1 === issueUop.prd) {
+          queue(j).src1Ready := true.B
+          writebackReady(j)(0) := true.B
+        }
+        when (queue(j).prs2 === issueUop.prd) {
+          queue(j).src2Ready := true.B
+          writebackReady(j)(1) := true.B
+        }
+      }
+    }
   }  
 
   val ldqLimitPtr = Wire(RingBufferPtr(LDQ_SIZE))

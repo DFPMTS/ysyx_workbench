@@ -20,12 +20,15 @@ trait HasCoreParameters {
 
   // * Issue Width
   def ISSUE_WIDTH = 4
+  def FETCH_BUFFER_SIZE = 8
   def MACHINE_WIDTH = 4
   def WRITEBACK_WIDTH = 5
-  def COMMIT_WIDTH = 1
+  def COMMIT_WIDTH = 4
 
   def USE_DUMMY_MUL_DIV = false
   // def USE_DUMMY_MUL_DIV = true
+
+  def NUM_ALU = 3
 
   // * Int Mul Delay
   // * Delay = IMUL latency - ALU latency
@@ -44,15 +47,15 @@ trait HasCoreParameters {
   def ROB_IDX_W = log2Up(ROB_SIZE).W
 
   // * Issue Queue
-  def IQ_SIZE = 8
+  def IQ_SIZE = 16
   def IQ_IDX_W = log2Up(IQ_SIZE).W
 
   // * Load Queue
-  def LDQ_SIZE = 8
+  def LDQ_SIZE = 16
   def LDQ_IDX_W = log2Up(LDQ_SIZE).W
 
   // * Store Queue
-  def STQ_SIZE = 8
+  def STQ_SIZE = 16
   def STQ_IDX_W = log2Up(STQ_SIZE).W
 
   // * Flag
@@ -71,7 +74,7 @@ trait HasCoreParameters {
   def PHT_SIZE = 1 << PHT_INDEX_LEN
 
   // * Number of MSHR
-  def NUM_MSHR = 4
+  def NUM_MSHR = 8
 
   // * Cache Id Length
   def CACHE_ID_LEN = 1

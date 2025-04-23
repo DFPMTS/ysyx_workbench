@@ -282,7 +282,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   replaceCounter := Mux(replaceCounter === DCACHE_WAYS.U - 1.U, 0.U, replaceCounter + 1.U)
 
   // * Submodules
-  val loadResultBuffer = Module(new LoadResultBuffer(4))
+  val loadResultBuffer = Module(new LoadResultBuffer(8))
   val uncachedLSU = Module(new UncachedLSU)
   val amoALU = Module(new AMOALU)
 

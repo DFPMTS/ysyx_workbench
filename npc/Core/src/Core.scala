@@ -116,10 +116,20 @@ class Core extends CoreModule {
   dontTouch(renameUop)  
   dontTouch(renameRobValid)
   dontTouch(renameIQValid)
+
+  // * issue
+  val issueUop = Wire(Vec(ISSUE_WIDTH, Decoupled(new RenameUop)))
+  val aluIssueUop = issueUop.take(NUM_ALU)
   
   // * read register
   val readRegUop = Wire(Vec(MACHINE_WIDTH, Decoupled(new ReadRegUop)))
   dontTouch(readRegUop)
+
+  // * Zero-Cycle Forward
+  val zeroCycleForward = Wire(Vec(NUM_ALU, Valid(new WritebackUop)))
+  zeroCycleForward(0) := alu0.io.OUT_zeroCycleForward
+  zeroCycleForward(1) := alu1.io.OUT_zeroCycleForward
+  zeroCycleForward(2) := alu2.io.OUT_zeroCycleForward
 
   // * writeback
   val writebackUop = Wire(Vec(WRITEBACK_WIDTH, Valid(new WritebackUop)))
@@ -226,6 +236,10 @@ class Core extends CoreModule {
   // * Issue Queue
   for (i <- 0 until MACHINE_WIDTH) {
     iq(i).io.IN_renameUop <> scheduler.io.OUT_renameUop(i)
+    for(j <- 0 until NUM_ALU) {
+      iq(i).io.IN_issueUops(j).valid := aluIssueUop(j).valid
+      iq(i).io.IN_issueUops(j).bits := aluIssueUop(j).bits
+    }
     iq(i).io.IN_writebackUop := writebackUop
     iq(i).io.IN_robTailPtr := rob.io.OUT_robTailPtr
     iq(i).io.IN_ldqBasePtr := rob.io.OUT_ldqTailPtr
@@ -234,15 +248,17 @@ class Core extends CoreModule {
     iq(i).io.IN_idivBusy := (iq(1).io.OUT_issueUop.valid && iq(1).io.OUT_issueUop.bits.fuType === FuType.DIV) ||
                             (readRegUop(1).valid         && readRegUop(1).bits.fuType === FuType.DIV) ||
                             div.io.OUT_idivBusy
+    issueUop(i) <> iq(i).io.OUT_issueUop
   }
 
   // * Read Register
-  readReg.io.IN_issueUop <> iq.map(_.io.OUT_issueUop)
+  readReg.io.IN_issueUop <> issueUop
   readReg.io.IN_readRegVal := pReg.io.OUT_pRegVal
   for (i <- 0 until MACHINE_WIDTH) {    
     readRegUop(i) <> readReg.io.OUT_readRegUop(i)
     readRegUop(i).ready := false.B
   }
+  readReg.io.IN_zeroCycleForward := zeroCycleForward
   readReg.io.IN_flush := flush
 
   // * PReg

@@ -20,6 +20,7 @@
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <isa.h>
 
 /* http://en.wikibooks.org/wiki/Serial_Programming/8250_UART_Programming */
 // NOTE: this is compatible to 16550
@@ -78,6 +79,7 @@ void send_key_uart(char keycode) {
 
 static void uart_io_handler(uint32_t offset, int len, bool is_write) {
   assert(len == 1);
+  log_write("PC: %08x uart_io_handler: offset = %d, len = %d, is_write = %d, uart[offset] = %x/%c\n", cpu.pc, offset, len, is_write, uart_base[offset],uart_base[offset]);
   switch (offset) {
     /* We bind the serial port with the host stderr in NEMU. */
     case UART_DL1: 
@@ -89,19 +91,19 @@ static void uart_io_handler(uint32_t offset, int len, bool is_write) {
         uart_base[UART_RX] = uart_read();
       }        
       break;
-    case UART_DL2: 
-      uart_base[offset] = 0;
-      break;
-    case UART_LC:
-      // nothing to do here 
-      break;
+    // case UART_DL2: 
+    //   uart_base[offset] = 0;
+    //   break;
+    // case UART_LC:
+    //   // nothing to do here 
+    //   break;
     case UART_LS:
       uart_base[UART_LS] = UART_LS_TFE_FLAG | UART_LS_TE_FLAG | uart_key_ready();
       // printf("uart_key_ready: %d\n", uart_key_ready());
       break;
-    case UART_SCR:
-      // scratch register, do nothing
-      break;
+    // case UART_SCR:
+    //   // scratch register, do nothing
+    //   break;
     default: {uart_base[offset] = 0;/*printf("do not support offset = %d\n", offset);*/}
   }
 }
@@ -133,8 +135,8 @@ static void __attribute((unused)) CaptureKeyboardInput()
 
 void init_uart() {
 
-  uart_base = new_space(9);
-  memset(uart_base, 0, 9);
-  add_mmio_map("uart", CONFIG_UART_ADDR, uart_base, 9, uart_io_handler);
+  uart_base = new_space(32);
+  memset(uart_base, 0, 32);
+  add_mmio_map("uart", CONFIG_UART_ADDR, uart_base, 32, uart_io_handler);
   // CaptureKeyboardInput();
 }

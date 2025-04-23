@@ -274,6 +274,7 @@ struct InstInfo {
   IData imm;
 
   IData result;
+  uint64_t resultValidCycle;
   FlagOp flag;
 
   IData paddr;
