@@ -37,12 +37,12 @@ class BTBIO extends CoreBundle {
 class BTB extends CoreModule {
   val io = IO(new BTBIO)
   
-  val btb = Seq.fill(FETCH_WIDTH)(Module(new SRAMTemplate(BTB_SIZE / FETCH_WIDTH, 1, (new BTBEntry).getWidth, (new BTBEntry).getWidth)))
+  val btb = Seq.fill(FETCH_WIDTH)(Module(new SRAMTemplate(BTB_SIZE, 1, (new BTBEntry).getWidth, (new BTBEntry).getWidth)))
 
-  val resetIndex = RegInit(0.U(log2Up(BTB_SIZE / FETCH_WIDTH).W))
+  val resetIndex = RegInit(0.U(log2Up(BTB_SIZE).W))
   val resetDone = RegInit(false.B)
 
-  when(resetIndex === (BTB_SIZE / FETCH_WIDTH - 1).U) {
+  when(resetIndex === (BTB_SIZE - 1).U) {
     resetDone := true.B
   }.otherwise {
     resetIndex := resetIndex + 1.U

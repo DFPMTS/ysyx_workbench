@@ -114,8 +114,11 @@ class FixBranch extends CoreModule {
     }
   }
 
+  val btbUpdateReg = Reg(Valid(new BTBUpdate))
+  btbUpdateReg.valid := false.B
+  
   io.OUT_redirect := 0.U.asTypeOf(io.OUT_redirect)
-  io.OUT_btbUpdate := 0.U.asTypeOf(io.OUT_btbUpdate)
+  io.OUT_btbUpdate := btbUpdateReg
 
   val fixCandidates = (fixValid.asUInt & instValid.asUInt)
   val hasFix = fixCandidates.orR
@@ -124,10 +127,12 @@ class FixBranch extends CoreModule {
   when(hasFix && io.IN_fetchGroup.valid) {
     fixBrOffsetValid := true.B
     fixBrOffset := fixIndex
+    
     io.OUT_redirect.valid := true.B
     io.OUT_redirect.pc := redirectTarget(fixIndex)
-    io.OUT_btbUpdate.valid := RegNext(btbUpdateValid(fixIndex))
-    io.OUT_btbUpdate.bits := RegNext(btbUpdate(fixIndex))
+
+    btbUpdateReg.valid := btbUpdateValid(fixIndex)
+    btbUpdateReg.bits  := btbUpdate(fixIndex)
   }
 
   io.OUT_fixBrOffset := fixBrOffset

@@ -392,8 +392,8 @@ public:
           inst.flag = (FlagOp)*writebackUop[i].flag;
           inst.target = *writebackUop[i].target;
 
-          printf("------------writeback[%d]: kanataId=%lu\n", robIndex,
-                 inst.konataId);
+          // printf("------------writeback[%d]: kanataId=%lu\n", robIndex,
+          //        inst.konataId);
           konataLogWriteback(&inst);
         }
       }
@@ -458,8 +458,8 @@ public:
           robHeadPtr.inc();
           inst.konataId = decodeInstIds[i];
           inst.robPtr_index = *uop.robPtr_index;
-          printf("------------rob[%d]: kanataId=%lu\n", inst.robPtr_index,
-                 inst.konataId);
+          // printf("------------rob[%d]: kanataId=%lu\n", inst.robPtr_index,
+          //        inst.konataId);
           inst.inst = *uop.inst;
           inst.fuType = *uop.fuType;
           inst.opcode = *uop.opcode;

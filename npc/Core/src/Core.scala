@@ -172,6 +172,7 @@ class Core extends CoreModule {
   ifu.io.redirect := redirect
   ifu.io.IN_btbUpdate := alu2.io.OUT_btbUpdate.get
   ifu.io.IN_phtUpdate := rob.io.OUT_phtUpdate
+  ifu.io.IN_rasCommitUpdate := rob.io.OUT_rasUpdate
   ifu.io.flushICache := false.B
   ifu.io.OUT_TLBReq <> itlb.io.IN_TLBReq
   ifu.io.IN_TLBResp <> itlb.io.OUT_TLBResp

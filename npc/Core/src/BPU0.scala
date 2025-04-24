@@ -21,7 +21,12 @@ class BPU0IO extends CoreBundle {
   val IN_fixBTBUpdate = Flipped(Valid(new BTBUpdate))
   val IN_phtUpdate = Flipped(Valid(new PHTUpdate))
 
+  val IN_rasBpUpdate = Flipped(Valid(new RASUpdate))
+  val IN_rasCommitUpdate = Flipped(Valid(new RASUpdate))
+
   val OUT_prediction = new Prediction
+
+  val IN_flush = Flipped(Bool())
 }
 
 class BPU0 extends CoreModule {
@@ -29,6 +34,7 @@ class BPU0 extends CoreModule {
   
   val btb = Module(new BTB)
   val pht = Module(new PHT)
+  val ras = Module(new RAS)
 
   btb.io.IN_pc := io.IN_pcNext
   btb.io.IN_btbUpdate := io.IN_btbUpdate
@@ -36,6 +42,10 @@ class BPU0 extends CoreModule {
 
   pht.io.IN_pc := io.IN_pcNext
   pht.io.IN_phtUpdate := io.IN_phtUpdate
+
+  ras.io.IN_bpUpdate := io.IN_rasBpUpdate
+  ras.io.IN_commitUpdate := io.IN_rasCommitUpdate
+  ras.io.IN_flush := io.IN_flush
 
   val fetchOffset = if (FETCH_WIDTH == 1) 0.U else io.IN_pc(log2Ceil(FETCH_WIDTH * 4) - 1, 2)
   val instValidMap = (Fill(FETCH_WIDTH, 1.U(1.W)) << fetchOffset)(FETCH_WIDTH - 1, 0)
@@ -56,7 +66,7 @@ class BPU0 extends CoreModule {
 
   val brTaken = Wire(Vec(FETCH_WIDTH, Bool()))
   for (i <- 0 until FETCH_WIDTH) {
-    brTaken(i) := btbValid(i) && ((btbBrType(i) === BrType.BRANCH && phtTaken(i)) || btbBrType(i) === BrType.JUMP)
+    brTaken(i) := btbValid(i) && (!(btbBrType(i) === BrType.BRANCH) || phtTaken(i))
   }
 
   // * Collect Predicted Branches
@@ -72,5 +82,5 @@ class BPU0 extends CoreModule {
   io.OUT_prediction.brTaken := branchMap.asUInt.orR
   io.OUT_prediction.btbValid := btbValid(brOffset)
   io.OUT_prediction.btbType := btbBrType(brOffset)
-  io.OUT_prediction.btbTarget := btbTarget(brOffset)  
+  io.OUT_prediction.btbTarget := Mux(btbBrType(brOffset) === BrType.RET, ras.io.OUT_top + 4.U, btbTarget(brOffset))
 }

@@ -1,6 +1,7 @@
 import chisel3._
 import chisel3.util._
 import utils._
+import FuType.BRU
 
 class ROBIO extends CoreBundle {
   val IN_renameUop = Flipped(Vec(ISSUE_WIDTH, Valid(new RenameUop)))
@@ -16,6 +17,7 @@ class ROBIO extends CoreBundle {
   val OUT_robEmpty = Bool()
 
   val OUT_phtUpdate = Valid(new PHTUpdate)
+  val OUT_rasUpdate = Valid(new RASUpdate)
 
   val OUT_instCommited = Output(UInt(32.W))
 
@@ -38,6 +40,9 @@ class ROBEntry extends CoreBundle {
 
   val isLoad = Bool()
   val isStore = Bool()
+
+  val isCall = Bool()
+  val isRet = Bool()
 }
 
 class ROB extends CoreModule with HasPerfCounters {
@@ -69,6 +74,8 @@ class ROB extends CoreModule with HasPerfCounters {
     enqEntry.target := 0.U
     enqEntry.isLoad := renameUop.fuType === FuType.LSU && LSUOp.isLoad(renameUop.opcode)
     enqEntry.isStore := renameUop.fuType === FuType.LSU && LSUOp.isStore(renameUop.opcode)
+    enqEntry.isCall := renameUop.fuType === FuType.BRU && renameUop.opcode === BRUOp.CALL
+    enqEntry.isRet := renameUop.fuType === FuType.BRU && renameUop.opcode === BRUOp.RET
     // !
     enqEntry.ldqPtr := renameUop.ldqPtr
     enqEntry.stqPtr := renameUop.stqPtr
@@ -92,6 +99,13 @@ class ROB extends CoreModule with HasPerfCounters {
   phtUpdate := DontCare
   phtUpdateValid := false.B
 
+  val rasUpdate = Reg(new RASUpdate)
+  val rasUpdateValid = RegInit(false.B)
+  val rasUpdateNext = Wire(new RASUpdate)
+  val rasUpdateValidNext = Wire(Bool())
+  rasUpdateNext := DontCare
+  rasUpdateValidNext := false.B
+
   val flagUopNextValid = Wire(Bool())  
   val flagUopNext = Wire(new FlagUop)
   flagUopNext := DontCare
@@ -113,7 +127,7 @@ class ROB extends CoreModule with HasPerfCounters {
     dontTouch(ptrYes)
     deqEntry(i) := rob(deqPtr.index)
     deqValid(i) := robHeadPtr.isLeq(deqPtr) && deqEntry(i).executed
-    flagValid(i) := deqEntry(i).flag =/= FlagOp.NONE
+    flagValid(i) := deqEntry(i).flag =/= FlagOp.NONE || deqEntry(i).isCall || deqEntry(i).isRet
     when (io.IN_flush) {
       deqValid(i) := false.B
     }
@@ -155,6 +169,10 @@ class ROB extends CoreModule with HasPerfCounters {
       phtUpdateNext.pc := deqEntry(i).pc
       phtUpdateNext.taken := branchTaken
 
+      rasUpdateValidNext := deqValid(i) && (deqEntry(i).isCall || deqEntry(i).isRet)
+      rasUpdateNext.push := deqEntry(i).isCall
+      rasUpdateNext.target := deqEntry(i).pc
+
       when(flagUopNextValid && !FlagOp.isBruFlags(deqEntry(i).flag)) {
         commitUop(i).rd := ZERO
         commitUop(i).prd := ZERO
@@ -167,12 +185,15 @@ class ROB extends CoreModule with HasPerfCounters {
   robStall := !robStall && flagUopNextValid
   flagUop := flagUopNext
   phtUpdate := phtUpdateNext
+  rasUpdate := rasUpdateNext
 
   flagUopValid := flagUopNextValid
   phtUpdateValid := phtUpdateValidNext
+  rasUpdateValid := rasUpdateValidNext
   when(io.IN_flush || robStall) {
     flagUopValid := false.B
     phtUpdateValid := false.B
+    rasUpdateValid := false.B
   }
 
   val loadCommited = (0 until COMMIT_WIDTH).map(i => deqCanCommit(i) && deqEntry(i).isLoad && deqEntry(i).flag === FlagOp.NONE)
@@ -193,6 +214,9 @@ class ROB extends CoreModule with HasPerfCounters {
 
   io.OUT_phtUpdate.valid := phtUpdateValid
   io.OUT_phtUpdate.bits := phtUpdate
+
+  io.OUT_rasUpdate.valid := rasUpdateValid
+  io.OUT_rasUpdate.bits := rasUpdate
 
   // ** writeback
   for (i <- 0 until WRITEBACK_WIDTH) {

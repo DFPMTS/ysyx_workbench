@@ -93,6 +93,7 @@ int main(int argc, char *argv[]) {
   });
   uint32_t temp[8];
   uint64_t lastForkCycle = 0;
+  // T = 10000;
   while (running.load()) {
     // if (state.getInstRetired() > 860000) {
     //   stop = Stop::DIFFTEST_FAILED;

@@ -90,6 +90,31 @@ class IDU extends CoreModule with HasPerfCounters {
         uopNext.opcode := FlagOp.DECODE_FLAG
         uopNext.rd     := decodeSignal.opcode      
       }
+    }.elsewhen(decodeSignal.fuType === FuType.BRU) {
+      val rawBRUOp = decodeSignal.opcode
+      val bruOp = WireDefault(rawBRUOp)
+      def isLinkReg(regNum: UInt): Bool = {
+        regNum === 1.U || regNum === 5.U
+      }
+      when(rawBRUOp === BRUOp.JAL && isLinkReg(rd)) {
+        bruOp := BRUOp.CALL
+      }
+      when(rawBRUOp === BRUOp.JALR) {
+        val rdLink = isLinkReg(rd)
+        val rs1Link = isLinkReg(rs1)
+        val rdEqRs1 = rd === rs1
+        when(rdLink && rs1Link) {
+          bruOp := BRUOp.CALL
+          // ! Not correct!
+          // * See Table 3. Return-address Stack Prediction hints 
+          // * encoded in the register operands of a JALR instruction
+        } .elsewhen(rdLink && !rs1Link) {
+          bruOp := BRUOp.CALL
+        } .elsewhen(!rdLink && rs1Link) {
+          bruOp := BRUOp.RET
+        }
+      }
+      uopNext.opcode := bruOp
     }
 
     uopsNext(i) := uopNext

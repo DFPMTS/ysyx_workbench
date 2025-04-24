@@ -22,6 +22,7 @@ class IFUIO extends CoreBundle {
   // * BPU update
   val IN_btbUpdate = Flipped(Valid(new BTBUpdate))
   val IN_phtUpdate = Flipped(Valid(new PHTUpdate))
+  val IN_rasCommitUpdate = Flipped(Valid(new RASUpdate))
 
   // * Output, inst + pc
   val out = Vec(FETCH_WIDTH, Valid(new InstSignal))
@@ -73,6 +74,8 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   bpu0.io.IN_btbUpdate := io.IN_btbUpdate
   bpu0.io.IN_phtUpdate := io.IN_phtUpdate
   bpu0.io.IN_fixBTBUpdate := fixBranch.io.OUT_btbUpdate
+  bpu0.io.IN_rasCommitUpdate := io.IN_rasCommitUpdate
+  bpu0.io.IN_flush := io.redirect.valid
 
   val fetchBuffer = Module(new FetchBuffer)
   val instAligner = Module(new InstAligner)
@@ -178,6 +181,13 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   bpu0.io.IN_pc := vPC
   vPCNext := Mux(redirect.valid, redirect.pc, 
                 Mux(bpu0.io.OUT_prediction.brTaken, bpu0.io.OUT_prediction.btbTarget, snVPC))
+  val rasBpUpdate = Wire(Valid(new RASUpdate))
+  rasBpUpdate.valid := phyPCValidNext && bpu0.io.OUT_prediction.brTaken && (bpu0.io.OUT_prediction.btbType === BrType.CALL ||
+  bpu0.io.OUT_prediction.btbType === BrType.RET)
+  rasBpUpdate.bits.push := bpu0.io.OUT_prediction.btbType === BrType.CALL
+  rasBpUpdate.bits.target := (if (FETCH_WIDTH == 1) Cat(vPC(XLEN - 1, 2), 0.U(2.W))
+    else Cat(vPC(XLEN - 1, log2Ceil(FETCH_WIDTH * 4)), bpu0.io.OUT_prediction.brOffset, 0.U(2.W)))
+  bpu0.io.IN_rasBpUpdate := rasBpUpdate
 
   // ** vpc -> (pcNext, pcValidNext) => (pc, arValid/validBuffer)
   val doTranslate = io.IN_VMCSR.mode === 1.U && io.IN_VMCSR.priv < Priv.M

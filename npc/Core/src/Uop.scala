@@ -36,7 +36,7 @@ object PredecBrType extends HasDecodeConfig {
   }
 
   def isJump (code: UInt) = {
-    code === JUMP || code === IJUMP
+    code === JUMP || code === IJUMP || code === CALL || code === ICALL
   }
 
   def isBranch (code: UInt) = {

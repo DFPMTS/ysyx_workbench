@@ -67,6 +67,33 @@ class BranchPredecode extends CoreModule {
   }
 
   val rawBrInfo = decoder(io.IN_inst, table).asTypeOf(new predecodeBundle)
+  val rawBrType = rawBrInfo.predecBrType
+  val brType = WireInit(rawBrType)
+
+  val rd = io.IN_inst(11, 7)
+  val rs1 = io.IN_inst(19, 15)
+
+  def isLinkReg(regNum: UInt): Bool = {
+    regNum === 1.U || regNum === 5.U
+  }
+  when(rawBrType === PredecBrType.JUMP && isLinkReg(rd)) {
+    brType := PredecBrType.CALL
+  }
+  when(rawBrType === PredecBrType.IJUMP) {
+    val rdLink = isLinkReg(rd)
+    val rs1Link = isLinkReg(rs1)
+    val rdEqRs1 = rd === rs1
+    when(rdLink && rs1Link) {
+      brType := PredecBrType.ICALL
+      // ! Not correct!
+      // * See Table 3. Return-address Stack Prediction hints 
+      // * encoded in the register operands of a JALR instruction
+    } .elsewhen(rdLink && !rs1Link) {
+      brType := PredecBrType.ICALL
+    } .elsewhen(!rdLink && rs1Link) {
+      brType := PredecBrType.RET
+    }
+  }
 
   val inst = io.IN_inst
   val immJ = Wire(SInt(XLEN.W))
@@ -81,7 +108,7 @@ class BranchPredecode extends CoreModule {
   val jumpTarget = io.IN_pc + immJ.asUInt
 
   io.OUT_brInfo.hasBr := rawBrInfo.hasBr
-  io.OUT_brInfo.predecBrType := rawBrInfo.predecBrType
+  io.OUT_brInfo.predecBrType := brType
   io.OUT_brInfo.target := Mux(rawBrInfo.predecBrType === PredecBrType.BRANCH, 
     branchTarget,
     jumpTarget
