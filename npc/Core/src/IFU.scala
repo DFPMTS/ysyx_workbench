@@ -78,7 +78,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   val instAligner = Module(new InstAligner)
 
   val replaceCounter = RegInit(0.U(2.W))
-  replaceCounter := Mux(replaceCounter === DCACHE_WAYS.U - 1.U, 0.U, replaceCounter + 1.U)
+  replaceCounter := Mux(replaceCounter === ICACHE_WAYS.U - 1.U, 0.U, replaceCounter + 1.U)
 
   val vPC      = RegInit(UInt(XLEN.W), Config.resetPC)
   // * Static Next vPC
@@ -132,7 +132,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   val sFlushIdle :: sFlushActive :: Nil = Enum(2)
   val flushState = RegInit(sFlushActive)
   val flushIndex = RegInit(0.U(log2Up(ICACHE_SETS).W))
-  val flushWay   = RegInit(0.U(log2Up(DCACHE_WAYS).W))
+  val flushWay   = RegInit(0.U(log2Up(ICACHE_WAYS).W))
   switch(sFlushActive) {
     is(sFlushIdle) {
       when(io.flushICache) {

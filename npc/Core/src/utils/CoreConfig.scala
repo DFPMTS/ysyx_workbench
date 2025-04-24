@@ -86,7 +86,7 @@ trait HasCoreParameters {
   def DCACHE_WAYS = 4
 
   // * DCache Sets
-  def DCACHE_SETS = 16
+  def DCACHE_SETS = 128
 
   // * DCache Tag Width
   def DCACHE_TAG = XLEN - log2Up(DCACHE_SETS) - log2Up(CACHE_LINE_B)
@@ -98,7 +98,7 @@ trait HasCoreParameters {
   def ICACHE_WAYS = 4
 
   // * ICache Sets
-  def ICACHE_SETS = 16
+  def ICACHE_SETS = 128
 
   // * ICache Tag Width
   def ICACHE_TAG = XLEN - log2Up(ICACHE_SETS) - log2Up(CACHE_LINE_B)

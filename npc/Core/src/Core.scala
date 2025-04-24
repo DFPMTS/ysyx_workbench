@@ -108,14 +108,19 @@ class Core extends CoreModule {
   // io.phyPCValid := ifu.io.OUT_phyPCValid
   // !
 
+  // * decode
+  val decodeUop = Wire(Vec(ISSUE_WIDTH, Decoupled(new DecodeUop)))
+  dontTouch(decodeUop)
 
   // * rename
   val renameUop = Wire(Vec(ISSUE_WIDTH, new RenameUop))
   val renameRobValid = Wire(Vec(ISSUE_WIDTH, Bool()))
   val renameIQValid = Wire(Vec(ISSUE_WIDTH, Bool()))
+  val renameIQReady = Wire(Vec(ISSUE_WIDTH, Bool()))
   dontTouch(renameUop)  
   dontTouch(renameRobValid)
   dontTouch(renameIQValid)
+  dontTouch(renameIQReady)
 
   // * issue
   val issueUop = Wire(Vec(ISSUE_WIDTH, Decoupled(new RenameUop)))
@@ -191,12 +196,13 @@ class Core extends CoreModule {
   idu.io.IN_inst <> ifu.io.out
   idu.io.OUT_ready <> ifu.io.IN_ready
   idu.io.IN_flush := flush
+  idu.io.OUT_decodeUop <> decodeUop
 
   // * Rename
-  rename.io.IN_decodeUop <> idu.io.OUT_decodeUop
+  rename.io.IN_decodeUop <> decodeUop
   rename.io.IN_commitUop <> commitUop
   rename.io.IN_writebackUop <> writebackUop
-  rename.io.IN_issueQueueReady := scheduler.io.OUT_issueQueueReady
+  rename.io.IN_issueQueueReady := renameIQReady
   rename.io.IN_robEmpty := rob.io.OUT_robEmpty
   rename.io.IN_flush := flush
   rename.io.IN_robTailPtr := rob.io.OUT_robTailPtr
@@ -232,6 +238,7 @@ class Core extends CoreModule {
   // * Scheduler
   scheduler.io.IN_issueQueueValid := renameIQValid
   scheduler.io.IN_renameUop := renameUop
+  renameIQReady := scheduler.io.OUT_issueQueueReady
 
   // * Issue Queue
   for (i <- 0 until MACHINE_WIDTH) {

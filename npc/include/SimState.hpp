@@ -14,7 +14,9 @@
 
 class SimState {
 public:
-  RenameUop renameUop[ISSUE_WIDTH];
+  DecodeUop decodeUop[ISSUE_WIDTH];
+  RenameUop renameROBUop[ISSUE_WIDTH];
+  Uop renameIQUop[ISSUE_WIDTH];
   WritebackUop writebackUop[WRITEBACK_WIDTH];
   ReadRegUop readRegUop[MACHINE_WIDTH];
   CommitUop commitUop[COMMIT_WIDTH];
@@ -23,9 +25,16 @@ public:
   AGUUop aguUop[1];
   CSR csr;
 
-  InstInfo insts[128];
+  uint64_t konataInstId = 0;
+  uint64_t decodeInstIds[ISSUE_WIDTH];
+  bool decodeInstValid[ISSUE_WIDTH];
+
+  Ptr robHeadPtr = Ptr(ROB_SIZE, 0, 0);
+  Ptr robTailPtr = Ptr(ROB_SIZE, 1, 0);
+
+  InstInfo insts[ROB_SIZE];
   uint32_t archTable[32] = {};
-  uint32_t pReg[64] = {};
+  uint32_t pReg[NUM_PREG] = {};
   uint32_t pc = 0;
 
   uint64_t lastCommit;
@@ -45,16 +54,86 @@ public:
 
   uint64_t mispredPenalty = 0;
 
+  FILE *konataFile = nullptr;
+
+  void konataLogStage(uint64_t instId, const char *stage) {
+    fprintf(konataFile, "S\t%lu\t0\t%s\n", instId, stage);
+  }
+
+  void konataLogDecode(uint64_t instId, word_t pc, uint32_t inst) {
+    char buf[512];
+    itrace_generate(buf, pc, inst);
+    auto buf_len = strlen(buf);
+    for (int i = 0; i < buf_len; ++i) {
+      if (buf[i] == '\t') {
+        buf[i] = ' ';
+      }
+    }
+    fprintf(konataFile, "I\t%lu\t0\t0\n", instId);
+    fprintf(konataFile, "L\t%lu\t0\t%s\n", instId, buf);
+    konataLogStage(instId, "RN");
+  }
+
+  void konataLogRename(InstInfo *inst) {
+    if (inst->fuType == FuType::FLAG) {
+      konataLogStage(inst->konataId, "CM");
+    } else {
+      konataLogStage(inst->konataId, "IS");
+    }
+  }
+
+  void konataLogIssue(InstInfo *inst) { konataLogStage(inst->konataId, "RF"); }
+
+  void konataLogReadReg(InstInfo *inst) {
+    konataLogStage(inst->konataId, "EX");
+  }
+
+  void konataLogWriteback(InstInfo *inst) {
+    konataLogStage(inst->konataId, "CM");
+  }
+
+  void konataLogCommit(InstInfo *inst) {
+    fprintf(konataFile, "R\t%lu\t%d\t0\n", inst->konataId, inst->robPtr_index);
+  }
+
+  void konataLogFlush(InstInfo *inst) {
+    fprintf(konataFile, "R\t%lu\t%d\t1\n", inst->konataId, inst->robPtr_index);
+  }
+
+  void konataLogFlush(uint64_t instId) {
+    fprintf(konataFile, "R\t%lu\t0\t1\n", instId);
+  }
+
+  void konataLogCycle(uint64_t cycle) {
+    fprintf(konataFile, "C\t1\t//%lu\n", cycle);
+  }
+
   void bindUops() {
-    // * renameUop
-#define UOP renameUop
+    // * decodeUop
+#define UOP decodeUop
+#define V_UOP V_DECODE_UOP
+#define V_UOP_VALID V_DECODE_VALID
+#define V_UOP_READY V_DECODE_READY
+#define UOP_FIELDS DECODE_FIELDS
+    REPEAT_4(BIND_FIELDS)
+    REPEAT_4(BIND_VALID)
+    REPEAT_4(BIND_READY)
+
+    // * renameUop -> ROB
+#define UOP renameROBUop
 #define V_UOP V_RENAME_UOP
-#define V_UOP_VALID V_RENAME_VALID
-// #define V_UOP_READY V_RENAME_READY
+#define V_UOP_VALID V_RENAME_ROB_VALID
 #define UOP_FIELDS RENAME_FIELDS
     REPEAT_4(BIND_FIELDS)
     REPEAT_4(BIND_VALID)
-    // REPEAT_1(BIND_READY)
+
+    // * renameUop -> IQ
+#define UOP renameIQUop
+// #define V_UOP V_RENAME_UOP
+#define V_UOP_VALID V_RENAME_IQ_VALID
+#define V_UOP_READY V_RENAME_IQ_READY
+    REPEAT_4(BIND_VALID)
+    REPEAT_4(BIND_READY)
 
     // * readRegUop
 #define UOP readRegUop
@@ -111,6 +190,10 @@ public:
 #define CSRS csr
     CSR_FIELDS(BIND_CSRS_FIELD);
     printf("bind uops done\n");
+
+    konataFile = fopen("konata.log", "w");
+    fprintf(konataFile, "Kanata 0004\n");
+    fprintf(konataFile, "C=0\n");
   }
 
   void log(uint64_t cycle) {
@@ -122,7 +205,8 @@ public:
       printf("cycle: %ld\n", cycle);
       fflush(stdout);
     }
-    if (cycle > lastCommit + 500) {
+    konataLogCycle(cycle);
+    if (cycle > lastCommit + 1000) {
       Log("CPU hangs");
       stop = Stop::CPU_HANG;
       running.store(false);
@@ -170,13 +254,6 @@ public:
         // }
       }
     }
-    // * fix PC with redirect
-    if (V_REDIRECT_VALID) {
-      if (begin_wave || begin_log) {
-        printf("PC redirect to %x\n", V_REDIRECT_PC);
-      }
-      pc = V_REDIRECT_PC;
-    }
 
     // * CSR Ctrl
     {
@@ -214,6 +291,7 @@ public:
     for (int i = 0; i < COMMIT_WIDTH; ++i) {
       if (*commitUop[i].valid && *commitUop[i].ready) {
         ++instRetired;
+        robTailPtr.inc();
         lastCommit = cycle;
         auto robIndex = *commitUop[i].robPtr_index;
         auto &inst = insts[robIndex];
@@ -273,6 +351,8 @@ public:
           commitedIndex = 0;
         }
 
+        konataLogCommit(&inst);
+
 #ifdef DIFFTEST
         if (!waitDifftest) {
           if (inst.fuType == FuType::BRU) {
@@ -311,6 +391,10 @@ public:
           inst.executed = true;
           inst.flag = (FlagOp)*writebackUop[i].flag;
           inst.target = *writebackUop[i].target;
+
+          printf("------------writeback[%d]: kanataId=%lu\n", robIndex,
+                 inst.konataId);
+          konataLogWriteback(&inst);
         }
       }
     }
@@ -335,35 +419,88 @@ public:
         auto &inst = insts[robIndex];
         inst.src1 = *readRegUop[i].src1;
         inst.src2 = *readRegUop[i].src2;
+
+        konataLogReadReg(&inst);
       }
     }
 
-    // * rename
-    for (int i = 0; i < ISSUE_WIDTH; ++i) {
-      if (*renameUop[i].valid && *renameUop[i].ready) {
-        auto &inst = insts[*renameUop[i].robPtr_index];
-        auto &uop = renameUop[i];
-        inst.inst = *uop.inst;
-        inst.fuType = *uop.fuType;
-        inst.opcode = *uop.opcode;
-        inst.imm = *uop.imm;
-        inst.pc = *uop.pc;
-        inst.predTarget = *uop.predTarget;
-        if (inst.fuType == FuType::FLAG) {
-          inst.flag = (FlagOp)*uop.opcode;
+    // * fix PC with redirect
+    if (V_REDIRECT_VALID) {
+      if (begin_wave || begin_log) {
+        printf("PC redirect to %x\n", V_REDIRECT_PC);
+      }
+      for (int i = 0; i < ROB_SIZE; ++i) {
+        if ((robHeadPtr.m_flag == robTailPtr.m_flag) &&
+                (i >= robTailPtr.m_index || i < robHeadPtr.m_index) ||
+            (robHeadPtr.m_flag != robTailPtr.m_flag) &&
+                (i >= robTailPtr.m_index && i < robHeadPtr.m_index)) {
+          insts[i].valid = false;
+          konataLogFlush(&insts[i]);
         }
+      }
+      robHeadPtr.reset(0);
+      robTailPtr.reset(1);
+      for (int i = 0; i < ISSUE_WIDTH; ++i) {
+        if (decodeInstValid[i]) {
+          konataLogFlush(decodeInstIds[i]);
+        }
+      }
+      pc = V_REDIRECT_PC;
+      for (int i = 0; i < ROB_SIZE; ++i) {
+        insts[i].valid = false;
+      }
+    } else {
+      // * rename -> ROB
+      for (int i = 0; i < ISSUE_WIDTH; ++i) {
+        if (*renameROBUop[i].valid && *renameROBUop[i].ready) {
+          auto &inst = insts[*renameROBUop[i].robPtr_index];
+          auto &uop = renameROBUop[i];
+          robHeadPtr.inc();
+          inst.konataId = decodeInstIds[i];
+          inst.robPtr_index = *uop.robPtr_index;
+          printf("------------rob[%d]: kanataId=%lu\n", inst.robPtr_index,
+                 inst.konataId);
+          inst.inst = *uop.inst;
+          inst.fuType = *uop.fuType;
+          inst.opcode = *uop.opcode;
+          inst.imm = *uop.imm;
+          inst.pc = *uop.pc;
+          inst.predTarget = *uop.predTarget;
+          if (inst.fuType == FuType::FLAG) {
+            inst.flag = (FlagOp)*uop.opcode;
+          }
 
-        inst.rd = *uop.rd;
-        inst.rs1 = *uop.rs1;
-        inst.rs2 = *uop.rs2;
-        inst.prd = *uop.prd;
-        inst.prs1 = *uop.prs1;
-        inst.prs2 = *uop.prs2;
-        inst.ldqPtr_index = *uop.ldqPtr_index;
-        inst.ldqPtr_flag = *uop.ldqPtr_flag;
-        inst.stqPtr_index = *uop.stqPtr_index;
-        inst.stqPtr_flag = *uop.stqPtr_flag;
-        inst.valid = true;
+          inst.rd = *uop.rd;
+          inst.rs1 = *uop.rs1;
+          inst.rs2 = *uop.rs2;
+          inst.prd = *uop.prd;
+          inst.prs1 = *uop.prs1;
+          inst.prs2 = *uop.prs2;
+          inst.ldqPtr_index = *uop.ldqPtr_index;
+          inst.ldqPtr_flag = *uop.ldqPtr_flag;
+          inst.stqPtr_index = *uop.stqPtr_index;
+          inst.stqPtr_flag = *uop.stqPtr_flag;
+          inst.valid = true;
+        }
+      }
+      // * rename -> IQ
+      for (int i = 0; i < ISSUE_WIDTH; ++i) {
+        if (renameIQUop[i].isFire()) {
+          auto &inst = insts[*renameROBUop[i].robPtr_index];
+          auto &uop = renameROBUop[i];
+          konataLogRename(&inst);
+        }
+      }
+      // * decode
+      for (int i = 0; i < ISSUE_WIDTH; ++i) {
+        if (decodeUop[i].isFire()) {
+          auto &uop = decodeUop[i];
+          decodeInstIds[i] = konataInstId++;
+          decodeInstValid[i] = true;
+          konataLogDecode(decodeInstIds[i], *uop.pc, *uop.inst);
+        } else {
+          decodeInstValid[i] = false;
+        }
       }
     }
   }

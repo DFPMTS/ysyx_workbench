@@ -269,6 +269,8 @@ struct InstInfo {
   CData stqPtr_flag;
   CData stqPtr_index;
 
+  CData robPtr_index;
+
   IData src1;
   IData src2;
   IData imm;
@@ -281,12 +283,37 @@ struct InstInfo {
 
   IData target;
   CData executed;
+
+  uint64_t konataId;
 };
 
 struct Uop {
   CData *valid;
   CData *ready = &True;
   bool isValid() { return *valid; }
+  bool isFire() { return *valid && *ready; }
+};
+
+struct DecodeUop : Uop {
+  CData *rd;
+  CData *rs1;
+  CData *rs2;
+
+  CData *src1Type;
+  CData *src2Type;
+
+  CData *imm;
+  IData *pc;
+
+  FuType *fuType;
+  CData *opcode;
+
+  IData *predTarget;
+  CData *compressed;
+
+  CData *lockBackend;
+
+  IData *inst;
 };
 
 struct RenameUop : Uop {
@@ -383,17 +410,55 @@ struct AGUUop : Uop {
   CData *stqPtr_index;
 };
 
+struct Ptr {
+
+  uint8_t m_size;
+
+  Ptr(uint8_t size, uint8_t flag, uint8_t index)
+      : m_size(size), m_flag(flag), m_index(index) {}
+
+  uint8_t m_flag;
+  uint8_t m_index;
+
+  void inc() {
+    m_index++;
+    if (m_index >= m_size) {
+      m_index = 0;
+      m_flag = !m_flag;
+    }
+  }
+
+  void reset(uint8_t flag) {
+    m_flag = flag;
+    m_index = 0;
+  }
+};
+
 // * redirect
 #define V_REDIRECT_VALID top->rootp->npc_top__DOT__npc__DOT__redirect_valid
 #define V_REDIRECT_PC top->rootp->npc_top__DOT__npc__DOT__redirect_pc
+
+// * decode
+#define V_DECODE_UOP(i, field)                                                 \
+  top->rootp->npc_top__DOT__npc__DOT__decodeUop_##i##_bits_##field
+
+#define V_DECODE_VALID(i)                                                      \
+  top->rootp->npc_top__DOT__npc__DOT__decodeUop_##i##_valid
+#define V_DECODE_READY(i)                                                      \
+  top->rootp->npc_top__DOT__npc__DOT__decodeUop_##i##_ready
 
 // * rename
 #define V_RENAME_UOP(i, field)                                                 \
   top->rootp->npc_top__DOT__npc__DOT__renameUop_##i##_##field
 
-#define V_RENAME_VALID(i) top->rootp->npc_top__DOT__npc__DOT__renameRobValid_##i
+#define V_RENAME_ROB_VALID(i)                                                  \
+  top->rootp->npc_top__DOT__npc__DOT__renameRobValid_##i
 
-#define V_RENAME_READY(i) top->rootp->npc_top__DOT__npc__DOT__renameRobReady
+#define V_RENAME_IQ_VALID(i)                                                   \
+  top->rootp->npc_top__DOT__npc__DOT__renameIQValid_##i
+
+#define V_RENAME_IQ_READY(i)                                                   \
+  top->rootp->npc_top__DOT__npc__DOT__renameIQReady_##i
 
 // * writeback
 #define V_WRITEBACK_UOP(i, field)                                              \
@@ -431,6 +496,20 @@ struct AGUUop : Uop {
 #define V_AGU_UOP(i, field)                                                    \
   top->rootp->npc_top__DOT__npc__DOT__aguUop_bits_##field
 #define V_AGU_VALID(i) top->rootp->npc_top__DOT__npc__DOT__aguUop_valid
+
+#define DECODE_FIELDS(X, i)                                                    \
+  X(i, rd)                                                                     \
+  X(i, rs1)                                                                    \
+  X(i, rs2)                                                                    \
+  X(i, src1Type)                                                               \
+  X(i, src2Type)                                                               \
+  X(i, imm)                                                                    \
+  X(i, pc)                                                                     \
+  X(i, fuType)                                                                 \
+  X(i, opcode)                                                                 \
+  X(i, predTarget)                                                             \
+  X(i, compressed)                                                             \
+  X(i, inst)
 
 #define RENAME_FIELDS(X, i)                                                    \
   X(i, rd)                                                                     \

@@ -7,8 +7,8 @@ import scala.util.Random
 class SRAM extends CoreModule {
   val io = IO(Flipped(new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)))
 
-  val read_lat  = random.LFSR(4, true.B, Some(3))
-  val write_lat = random.LFSR(4, true.B, Some(5))
+  val read_lat  = random.LFSR(5, true.B, Some(3))
+  val write_lat = random.LFSR(5, true.B, Some(5))
   val counter   = RegInit(0.U(5.W))
 
   val addr_buffer = Reg(UInt(AXI_ADDR_WIDTH.W))
@@ -109,11 +109,7 @@ class SRAM extends CoreModule {
   val mem_read     = Module(new MemRead)
   val perform_read = state =/= s_Read && next_state === s_Read
   when(perform_read) {
-    when(addr_buffer >= 0x10000000.U) {
-      counter := 1.U
-    }.otherwise {
-      counter := read_lat + 6.U
-    }
+    counter := read_lat
   }
   mem_read.io.clk  := clock
   mem_read.io.addr := addr
@@ -123,11 +119,7 @@ class SRAM extends CoreModule {
   val mem_write     = Module(new MemWrite)
   val perform_write = state =/= s_Write && next_state === s_Write
   when(perform_write) {
-    when(addr_buffer >= 0x10000000.U) {
-      counter := 1.U
-    }.otherwise {
-      counter := write_lat + 6.U
-    }
+    counter := write_lat
   }
   mem_write.io.clk   := clock
   mem_write.io.addr  := addr

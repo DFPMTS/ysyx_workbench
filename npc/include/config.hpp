@@ -33,6 +33,9 @@ constexpr size_t MACHINE_WIDTH = 4;
 constexpr size_t WRITEBACK_WIDTH = 5;
 constexpr size_t COMMIT_WIDTH = 4;
 
+constexpr size_t NUM_PREG = 64;
+constexpr size_t ROB_SIZE = 32;
+
 constexpr size_t CLINT_BASE = 0x0b000000;
 constexpr size_t UART_BASE = 0x0a000000;
 

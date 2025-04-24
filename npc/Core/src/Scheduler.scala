@@ -34,7 +34,7 @@ class Scheduler extends CoreModule {
       (uop.fuType === FuType.ALU || uop.fuType === FuType.DIV) && 
       (!(uop.fuType === FuType.ALU) || uop.robPtr.index(0) === 1.U)
     }else if (portIndex == 2) {
-      uop.fuType === FuType.BRU
+      uop.fuType === FuType.ALU || uop.fuType === FuType.BRU
     }else {
       uop.fuType === FuType.LSU || uop.fuType === FuType.AMO
     }
