@@ -134,7 +134,7 @@ class ALU(hasBru: Boolean) extends Module with HasALUFuncs {
 
     val btbUpdate = Reg(new BTBUpdate)
     val btbUpdateValid = RegInit(false.B)
-    btbUpdateValid := io.IN_readRegUop.valid && mispredict && (isJump || (isBranch && cmpOut))
+    btbUpdateValid := io.IN_readRegUop.valid && isBRU && mispredict && (isJump || (isBranch && cmpOut))
     when(io.IN_flush) {
       btbUpdateValid := false.B
     }

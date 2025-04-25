@@ -9,6 +9,7 @@ class FetchGroup extends CoreBundle {
   val brOffset = UInt(log2Up(FETCH_WIDTH).W)
   val brTarget = UInt(XLEN.W)
   val insts = Vec(FETCH_WIDTH, UInt(32.W))
+  val lastBranchMap = Vec(FETCH_WIDTH, Bool())
   val pageFault = Bool()
   val interrupt = Bool()
   val access_fault = Bool()
@@ -180,7 +181,9 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   bpu0.io.IN_pcNext := vPCNext
   bpu0.io.IN_pc := vPC
   vPCNext := Mux(redirect.valid, redirect.pc, 
-                Mux(bpu0.io.OUT_prediction.brTaken, bpu0.io.OUT_prediction.btbTarget, snVPC))
+                Mux(!phyPCValidNext,vPC, Mux(bpu0.io.OUT_prediction.brTaken, bpu0.io.OUT_prediction.btbTarget, snVPC)))
+
+  // * Speculative RAS update
   val rasBpUpdate = Wire(Valid(new RASUpdate))
   rasBpUpdate.valid := phyPCValidNext && bpu0.io.OUT_prediction.brTaken && (bpu0.io.OUT_prediction.btbType === BrType.CALL ||
   bpu0.io.OUT_prediction.btbType === BrType.RET)
@@ -188,6 +191,11 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   rasBpUpdate.bits.target := (if (FETCH_WIDTH == 1) Cat(vPC(XLEN - 1, 2), 0.U(2.W))
     else Cat(vPC(XLEN - 1, log2Ceil(FETCH_WIDTH * 4)), bpu0.io.OUT_prediction.brOffset, 0.U(2.W)))
   bpu0.io.IN_rasBpUpdate := rasBpUpdate
+
+  val bpGHRUpdate = Wire(Valid(new GHRUpdate))
+  bpGHRUpdate.valid := phyPCValidNext && bpu0.io.OUT_prediction.hasBranch
+  bpGHRUpdate.bits.taken := bpu0.io.OUT_prediction.brTaken && (bpu0.io.OUT_prediction.btbType === BrType.BRANCH)
+  bpu0.io.IN_bpGHRUpdate := bpGHRUpdate
 
   // ** vpc -> (pcNext, pcValidNext) => (pc, arValid/validBuffer)
   val doTranslate = io.IN_VMCSR.mode === 1.U && io.IN_VMCSR.priv < Priv.M
@@ -266,11 +274,13 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   fetchGroup.brOffset := prediction.brOffset
   fetchGroup.brTarget := prediction.btbTarget
   fetchGroup.insts := fetchGroups(fetchGroupIndex)
+  fetchGroup.lastBranchMap := 0.U.asTypeOf(fetchGroup.lastBranchMap)
   fetchGroup.interrupt := interrupt
   fetchGroup.pageFault := pageFault
   fetchGroup.access_fault := accessFault
 
   val fixedFetchGroup = WireInit(fetchGroup)
+  fixedFetchGroup.lastBranchMap := fixBranch.io.OUT_lastBranchMap
   dontTouch(fixedFetchGroup)
   when(fixBranch.io.OUT_fixBrOffsetValid) {
     fixedFetchGroup.brOffset := fixBranch.io.OUT_fixBrOffset

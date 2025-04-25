@@ -349,6 +349,8 @@ class DecodeUop extends CoreBundle{
 
   val lockBackend = Bool()
 
+  val lastBranch  = Bool()
+
   // * debug
   val inst = UInt(32.W)
 }
@@ -380,6 +382,8 @@ class RenameUop extends CoreBundle {
 
   val predTarget = UInt(XLEN.W)
   val compressed = Bool()
+
+  val lastBranch  = Bool()
 
   // * debug
   val rs1 = UInt(5.W)

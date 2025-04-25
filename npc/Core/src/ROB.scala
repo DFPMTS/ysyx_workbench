@@ -43,6 +43,7 @@ class ROBEntry extends CoreBundle {
 
   val isCall = Bool()
   val isRet = Bool()
+  val isLastBranch = Bool()
 }
 
 class ROB extends CoreModule with HasPerfCounters {
@@ -76,6 +77,7 @@ class ROB extends CoreModule with HasPerfCounters {
     enqEntry.isStore := renameUop.fuType === FuType.LSU && LSUOp.isStore(renameUop.opcode)
     enqEntry.isCall := renameUop.fuType === FuType.BRU && renameUop.opcode === BRUOp.CALL
     enqEntry.isRet := renameUop.fuType === FuType.BRU && renameUop.opcode === BRUOp.RET
+    enqEntry.isLastBranch := renameUop.lastBranch
     // !
     enqEntry.ldqPtr := renameUop.ldqPtr
     enqEntry.stqPtr := renameUop.stqPtr
@@ -168,6 +170,7 @@ class ROB extends CoreModule with HasPerfCounters {
       phtUpdateValidNext := deqValid(i) && (branchTaken || branchNotTaken)
       phtUpdateNext.pc := deqEntry(i).pc
       phtUpdateNext.taken := branchTaken
+      phtUpdateNext.isLastBranch := deqEntry(i).isLastBranch
 
       rasUpdateValidNext := deqValid(i) && (deqEntry(i).isCall || deqEntry(i).isRet)
       rasUpdateNext.push := deqEntry(i).isCall

@@ -71,6 +71,8 @@ class IDU extends CoreModule with HasPerfCounters {
 
     uopNext.compressed := false.B
 
+    uopNext.lastBranch := instSignal.lastBranch
+
     uopNext.inst      := inst
 
     when(instSignal.interrupt) {

@@ -142,6 +142,8 @@ class Rename extends CoreModule {
 
     uopNext(i).lockBackend := decodeUop.lockBackend
 
+    uopNext(i).lastBranch := decodeUop.lastBranch
+
     uopNext(i).robPtr := robHeadPtr + i.U
     uopNext(i).ldqPtr := ldqPtr(i)
     uopNext(i).stqPtr := stqPtr(i)

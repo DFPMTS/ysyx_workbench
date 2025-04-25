@@ -4,6 +4,8 @@ import utils._
 
 class Prediction extends CoreBundle {
   val phtTaken = Vec(FETCH_WIDTH, Bool())
+  // * For GHR
+  val hasBranch = Bool()
   // * Branch Taken?
   val brTaken = Bool()
   val brOffset = UInt(log2Up(FETCH_WIDTH).W)
@@ -19,7 +21,9 @@ class BPU0IO extends CoreBundle {
   
   val IN_btbUpdate = Flipped(Valid(new BTBUpdate))
   val IN_fixBTBUpdate = Flipped(Valid(new BTBUpdate))
+
   val IN_phtUpdate = Flipped(Valid(new PHTUpdate))
+  val IN_bpGHRUpdate = Flipped(Valid(new GHRUpdate))
 
   val IN_rasBpUpdate = Flipped(Valid(new RASUpdate))
   val IN_rasCommitUpdate = Flipped(Valid(new RASUpdate))
@@ -42,6 +46,8 @@ class BPU0 extends CoreModule {
 
   pht.io.IN_pc := io.IN_pcNext
   pht.io.IN_phtUpdate := io.IN_phtUpdate
+  pht.io.IN_bpGHRUpdate := io.IN_bpGHRUpdate
+  pht.io.IN_flush := io.IN_flush
 
   ras.io.IN_bpUpdate := io.IN_rasBpUpdate
   ras.io.IN_commitUpdate := io.IN_rasCommitUpdate
@@ -70,16 +76,19 @@ class BPU0 extends CoreModule {
   }
 
   // * Collect Predicted Branches
-  val branchMap = Wire(Vec(FETCH_WIDTH, Bool()))
-  dontTouch(branchMap)
+  val brTakenMap = Wire(Vec(FETCH_WIDTH, Bool()))
+  val brOffset = PriorityEncoder(brTakenMap)
+  val hasBranchMap = Wire(Vec(FETCH_WIDTH, Bool()))
+  dontTouch(brTakenMap)
   for (i <- 0 until FETCH_WIDTH) {
-    branchMap(i) := instValidMap(i) && brTaken(i)
+    brTakenMap(i) := instValidMap(i) && brTaken(i)
+    hasBranchMap(i) := instValidMap(i) && (i.U <= brOffset) && btbValid(i) && btbBrType(i) === BrType.BRANCH 
   }
-  val brOffset = PriorityEncoder(branchMap)
 
   io.OUT_prediction.brOffset := brOffset
   io.OUT_prediction.phtTaken := phtTaken
-  io.OUT_prediction.brTaken := branchMap.asUInt.orR
+  io.OUT_prediction.hasBranch := hasBranchMap.asUInt.orR
+  io.OUT_prediction.brTaken := brTakenMap.asUInt.orR
   io.OUT_prediction.btbValid := btbValid(brOffset)
   io.OUT_prediction.btbType := btbBrType(brOffset)
   io.OUT_prediction.btbTarget := Mux(btbBrType(brOffset) === BrType.RET, ras.io.OUT_top + 4.U, btbTarget(brOffset))

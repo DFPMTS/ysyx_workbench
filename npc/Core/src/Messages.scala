@@ -72,6 +72,7 @@ class InstSignal extends Bundle {
   val access_fault = Bool()
   val pageFault    = Bool()
   val interrupt    = Bool()
+  val lastBranch   = Bool()
 }
 
 class ControlSignal extends Bundle {

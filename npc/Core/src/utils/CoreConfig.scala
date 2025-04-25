@@ -70,8 +70,11 @@ trait HasCoreParameters {
   def BTB_TAG = XLEN - BTB_INDEX_LEN - log2Up(FETCH_WIDTH * 4) // ! C-extension
 
   // * PHT Size (of a single Bank)
-  def PHT_INDEX_LEN = 7
+  def PHT_INDEX_LEN = 9
   def PHT_SIZE = 1 << PHT_INDEX_LEN
+
+  // * Global History Length
+  def GHR_LEN = 4
 
   // * Number of MSHR
   def NUM_MSHR = 8

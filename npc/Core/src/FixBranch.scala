@@ -11,6 +11,7 @@ class FixBranchIO extends CoreBundle {
 
   val OUT_fixBrOffset = UInt(log2Up(FETCH_WIDTH).W)
   val OUT_fixBrOffsetValid = Bool()
+  val OUT_lastBranchMap = Vec(FETCH_WIDTH, Bool())
 }
 
 // * Predecode branch instructions
@@ -119,6 +120,13 @@ class FixBranch extends CoreModule {
   
   io.OUT_redirect := 0.U.asTypeOf(io.OUT_redirect)
   io.OUT_btbUpdate := btbUpdateReg
+
+  // * Find the last branch inst
+  io.OUT_lastBranchMap := PriorityEncoderOH(
+    (0 until FETCH_WIDTH).map(
+      i => instValid(i) && brInfos(i).hasBr && brInfos(i).predecBrType(2, 1) === BrType.BRANCH
+    ).reverse
+  ).reverse
 
   val fixCandidates = (fixValid.asUInt & instValid.asUInt)
   val hasFix = fixCandidates.orR
