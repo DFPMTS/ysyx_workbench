@@ -49,17 +49,25 @@ class LoadQueue extends CoreModule {
   val uop = Reg(new AGUUop)
   val uopValid = RegInit(false.B)
 
+  val isInUopLoad = io.IN_AGUUop.fire && io.IN_AGUUop.bits.fuType === FuType.LSU && LSUOp.isLoad(io.IN_AGUUop.bits.opcode)
+  val issueFastLoad = isInUopLoad && isInLoadUopReady(io.IN_AGUUop.bits)
+  val isFastLoadFire = issueFastLoad && io.OUT_ldUop.fire
+
   def storeCommited(stqPtr: RingBufferPtr, commitStqPtr: RingBufferPtr) = {
     val flagDiff = stqPtr.flag ^ commitStqPtr.flag
     val indexLeq = stqPtr.index <= commitStqPtr.index
     (flagDiff ^ indexLeq).asBool
   }
 
+  def isInLoadUopReady(uop: AGUUop) = {
+    storeCommited(uop.stqPtr, io.IN_commitStqPtr) && !Addr.isUncached(uop.addr)
+  }
+
   // * enqueue
-  when(io.IN_AGUUop.fire && io.IN_AGUUop.bits.fuType === FuType.LSU && LSUOp.isLoad(io.IN_AGUUop.bits.opcode)) {
+  when(isInUopLoad) {
     ldq(io.IN_AGUUop.bits.ldqPtr.index) := io.IN_AGUUop.bits
     ldqValid(io.IN_AGUUop.bits.ldqPtr.index) := true.B
-    ldqIssued(io.IN_AGUUop.bits.ldqPtr.index) := false.B
+    ldqIssued(io.IN_AGUUop.bits.ldqPtr.index) := Mux(isFastLoadFire, true.B, false.B)
     // ldqReady(io.IN_AGUUop.bits.ldqPtr.index) := storeCommited(io.IN_AGUUop.bits.stqPtr, io.IN_commitStqPtr)
   }
 
@@ -92,7 +100,7 @@ class LoadQueue extends CoreModule {
   }
 
   // * issue logic
-  when(io.OUT_ldUop.ready || !uopValid) {
+  when((io.OUT_ldUop.ready && !isFastLoadFire) || !uopValid) {
     uop := ldq(ldqIssueIndex)
     uopValid := hasIssueReady
     when(hasIssueReady) {
@@ -109,6 +117,6 @@ class LoadQueue extends CoreModule {
     uopValid := false.B
   }
 
-  io.OUT_ldUop.valid := uopValid
-  io.OUT_ldUop.bits := uop
+  io.OUT_ldUop.valid := issueFastLoad || uopValid
+  io.OUT_ldUop.bits := Mux(issueFastLoad, io.IN_AGUUop.bits, uop)
 }

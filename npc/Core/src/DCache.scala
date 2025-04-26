@@ -16,7 +16,7 @@ class DCacheIO extends CoreBundle {
 class DCache extends CoreModule {
   val io = IO(new DCacheIO)
 
-  val tagArray = Module(new SRAMTemplate(DCACHE_SETS, DCACHE_WAYS, DCACHE_TAG + 1, DCACHE_TAG + 1))  
+  val tagArray = Module(new XilinxBRAM(DCACHE_SETS, DCACHE_WAYS, DCACHE_TAG + 1, DCACHE_TAG + 1))  
   val dataArray = Module(new XilinxBRAM(DCACHE_SETS, DCACHE_WAYS, CACHE_LINE_B * 8, 8))
 
   // * Src: 0 -> LSU, 1 -> Cache Controller

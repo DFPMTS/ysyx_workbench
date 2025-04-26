@@ -65,7 +65,7 @@ trait HasCoreParameters {
   def PAGE_NR_LEN = 20
 
   // * BTB Size (of a single Bank)
-  def BTB_INDEX_LEN = 7
+  def BTB_INDEX_LEN = 9
   def BTB_SIZE = 1 << BTB_INDEX_LEN
   def BTB_TAG = XLEN - BTB_INDEX_LEN - log2Up(FETCH_WIDTH * 4) // ! C-extension
 
@@ -74,7 +74,9 @@ trait HasCoreParameters {
   def PHT_SIZE = 1 << PHT_INDEX_LEN
 
   // * Global History Length
-  def GHR_LEN = 4
+  def FOLDED_GHR_LEN = 4
+
+  def GHR_LEN = 8
 
   // * Number of MSHR
   def NUM_MSHR = 8

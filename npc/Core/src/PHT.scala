@@ -41,6 +41,18 @@ class PHT extends CoreModule {
   val archGHR = RegInit(0.U(GHR_LEN.W))
   val curArchHist = RegInit(false.B)
 
+  // https://docs.boom-core.org/en/latest/sections/branch-prediction/backing-predictor.html#the-gshare-predictor
+  def foldedHist(hist: UInt, l: Int) = {
+    val nChunks = (GHR_LEN + l - 1) / l
+    val hist_chunks = (0 until nChunks) map {i =>
+      hist(scala.math.min((i+1)*l, GHR_LEN)-1, i*l)
+    }
+    hist_chunks.reduce(_^_)
+  }
+
+  val foldedSpecGHRNext = foldedHist(specGHRNext, FOLDED_GHR_LEN)
+  val foldedArchGHR = foldedHist(archGHR, FOLDED_GHR_LEN)
+
   dontTouch(specGHR)
   dontTouch(archGHR)
   dontTouch(curArchHist)
@@ -62,9 +74,9 @@ class PHT extends CoreModule {
     }
   }
 
-  val phtIndex = io.IN_pc(PHT_INDEX_LEN - 1 + log2Up(FETCH_WIDTH * 4), log2Up(FETCH_WIDTH * 4)) ^ (specGHRNext << (PHT_INDEX_LEN - GHR_LEN))
+  val phtIndex = io.IN_pc(PHT_INDEX_LEN - 1 + log2Up(FETCH_WIDTH * 4), log2Up(FETCH_WIDTH * 4)) ^ (foldedSpecGHRNext << (PHT_INDEX_LEN - FOLDED_GHR_LEN))
   val phtUpdateBank = if (FETCH_WIDTH == 1) 0.U else io.IN_phtUpdate.bits.pc(log2Up(FETCH_WIDTH) - 1 + 2, 2)
-  val phtUpdateIndex = io.IN_phtUpdate.bits.pc(PHT_INDEX_LEN - 1 + log2Up(FETCH_WIDTH * 4), log2Up(FETCH_WIDTH * 4)) ^ (archGHR << (PHT_INDEX_LEN - GHR_LEN))
+  val phtUpdateIndex = io.IN_phtUpdate.bits.pc(PHT_INDEX_LEN - 1 + log2Up(FETCH_WIDTH * 4), log2Up(FETCH_WIDTH * 4)) ^ (foldedArchGHR << (PHT_INDEX_LEN - FOLDED_GHR_LEN))
   val phtUpdateTaken = io.IN_phtUpdate.bits.taken
 
   for (i <- 0 until FETCH_WIDTH) {

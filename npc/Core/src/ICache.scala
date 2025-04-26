@@ -128,7 +128,7 @@ class ICacheIO extends CoreBundle {
 class NewICache extends CoreModule {
   val io = IO(new ICacheIO)
 
-  val tagArray = Module(new SRAMTemplate(ICACHE_SETS, ICACHE_WAYS, ICACHE_TAG + 1, ICACHE_TAG + 1))  
+  val tagArray = Module(new XilinxBRAM(ICACHE_SETS, ICACHE_WAYS, ICACHE_TAG + 1, ICACHE_TAG + 1))  
   val dataArray = Module(new XilinxBRAM(ICACHE_SETS, ICACHE_WAYS, CACHE_LINE_B * 8, 8))
 
   // * Tag

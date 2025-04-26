@@ -853,8 +853,12 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
   
   io.IN_loadResult.ready := hasEmptySlot
 
-  // Accept new load if there's space
-  when(io.IN_loadResult.fire && (!io.IN_flush || io.IN_loadResult.bits.dest === Dest.PTW)) {
+  val inLoadResult = io.IN_loadResult.bits
+  // * Write back now, without writing to result queue
+  val inLoadResultWriteback = io.IN_loadResult.fire && inLoadResult.ready
+
+  // * Accept new load if there's space and the loadResult is not ready
+  when(io.IN_loadResult.fire && !inLoadResult.ready && (!io.IN_flush || io.IN_loadResult.bits.dest === Dest.PTW)) {
     valid(allocPtr) := true.B
     entries(allocPtr) := io.IN_loadResult.bits
   }
@@ -883,35 +887,55 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
   val hasReady = readyEntries.reduce(_ || _)
   val readyIndex = PriorityEncoder(readyEntries)
   
+  val wbUopValid = RegInit(false.B)
+  val wbUop = Reg(new WritebackUop)
+
   // Generate writeback when entry is ready
   io.OUT_writebackUop.valid := hasReady
-  when(hasReady) {
-    val selectedEntry = entries(readyIndex)
-    val addrOffset = selectedEntry.addr(1, 0)
-    val rawData = selectedEntry.data >> (addrOffset << 3)
-    val loadU = selectedEntry.opcode(0)
-    val memLen = selectedEntry.opcode(2,1)
+
+  def loadResultToWriteback(loadResult: LoadResult) = {
+    val wbUopNext = Wire(new WritebackUop)
+    val addrOffset = loadResult.addr(1, 0)
+    val rawData = loadResult.data >> (addrOffset << 3)
+    val loadU = loadResult.opcode(0)
+    val memLen = loadResult.opcode(2,1)
     val shiftedData = MuxCase(rawData, Seq(
       (memLen === BYTE) -> Cat(Fill(24, ~loadU & rawData(7)), rawData(7,0)),
       (memLen === HALF) -> Cat(Fill(16, ~loadU & rawData(15)), rawData(15,0))
     ))
 
-    io.OUT_writebackUop.bits.prd := selectedEntry.prd
-    io.OUT_writebackUop.bits.data := shiftedData
-    io.OUT_writebackUop.bits.robPtr := selectedEntry.robPtr
-    io.OUT_writebackUop.bits.dest := selectedEntry.dest
-    io.OUT_writebackUop.bits.flag := 0.U
-    io.OUT_writebackUop.bits.target := 0.U
-    
+    wbUopNext.prd := loadResult.prd
+    wbUopNext.data := shiftedData
+    wbUopNext.robPtr := loadResult.robPtr
+    wbUopNext.dest := loadResult.dest
+    wbUopNext.flag := 0.U
+    wbUopNext.target := 0.U
+    wbUopNext
+  }
+
+  // * New load result with ready data writes back first
+  val wbLoadResult = Mux(inLoadResultWriteback, inLoadResult, entries(readyIndex))
+
+  wbUopValid := inLoadResultWriteback || hasReady
+  wbUop := loadResultToWriteback(wbLoadResult)
+
+  io.OUT_writebackUop.valid := wbUopValid
+  io.OUT_writebackUop.bits := wbUop
+
+  when(inLoadResultWriteback) {
+
+  }.elsewhen(hasReady) {
     // Clear entry after writeback
     valid(readyIndex) := false.B
-  }.otherwise {
-    io.OUT_writebackUop.bits := 0.U.asTypeOf(new WritebackUop)
   }
 
   when(io.IN_flush) {
+    when(wbLoadResult.dest === Dest.ROB) {
+      wbUopValid := false.B
+    }
+    
     for(i <- 0 until N) {
-      when(io.IN_flush && valid(i) && entries(i).dest === Dest.ROB) {
+      when(valid(i) && entries(i).dest === Dest.ROB) {
         valid(i) := false.B
       }
     }

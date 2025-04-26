@@ -18,10 +18,10 @@ class MemRead extends HasBlackBoxInline {
       |    output reg [255:0] data_r
       |);
       |    // synopsys translate_off
-      |    import "DPI-C" function void mem_read(input int addr, output bit [255:0] data);
+      |    import "DPI-C" function void mem_read(input int en, input int addr, output bit [255:0] data);
       |    
       |    always @(posedge clk) begin
-      |        if (en) mem_read(addr, data_r);
+      |        if (en) mem_read({31'b0, en}, addr, data_r);
       |        else data_r =  256'b0;
       |    end
       |    // synopsys translate_on
@@ -50,12 +50,13 @@ class MemWrite extends HasBlackBoxInline {
       |);
       |    // synopsys translate_off
       |    import "DPI-C" function void mem_write(
+      |        input int  en,
       |        input int  addr,
       |        input bit[255:0]  wdata,
       |        input int wmask
       |    );
       |    always @(posedge clk) begin
-      |        if (en) mem_write(addr, wdata, wmask);
+      |        if (en) mem_write({31'b0, en}, addr, wdata, wmask);
       |    end
       |    // synopsys translate_on
       |

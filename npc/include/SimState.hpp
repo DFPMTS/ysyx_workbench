@@ -532,7 +532,7 @@ public:
   void printInsts() {
     printf("=======================ROB=====================\n");
     char buf[512];
-    for (int i = 0; i < 128; ++i) {
+    for (int i = 0; i < ROB_SIZE; ++i) {
       if (insts[i].valid) {
         printInst(&insts[i], i);
       }

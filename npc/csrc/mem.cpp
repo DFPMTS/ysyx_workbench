@@ -125,7 +125,11 @@ void host_write(uint8_t *addr, mem_word_t wdata, unsigned char wmask) {
 }
 
 extern "C" {
-void mem_read(uint32_t addr, svBitVecVal *result) {
+void mem_read(uint32_t en, uint32_t addr, svBitVecVal *result) {
+  if (!en || !running.load()) {
+    printf("mem_read: en = %u  running = %u\n", en, running.load());
+    return;
+  }
   // #ifdef MTRACE
   //   if (begin_wave) {
   //     log_write("(%lu)read:  0x%08x : ", eval_time, addr);
@@ -213,9 +217,12 @@ void check_memory(paddr_t addr, size_t n) {
   }
 }
 
-void mem_write(uint32_t addr, const svBitVecVal *wdata, uint32_t wmask) {
-  if (!running.load())
+void mem_write(uint32_t en, uint32_t addr, const svBitVecVal *wdata,
+               uint32_t wmask) {
+  if (!en || !running.load()) {
+    printf("mem_write: en = %u  running = %u\n", en, running.load());
     return;
+  }
   auto raw_addr = addr;
   addr &= ADDR_MASK;
   // #ifdef MTRACE
