@@ -40,7 +40,7 @@ $(BIN): $(VSRCS_FLAG) $(CSRCS) $(CINCS)
 		--Mdir $(OBJ_DIR) --exe -o $(abspath $(BIN))
 
 verilog:
-	$(call git_commit, "generate verilog")	
+	# $(call git_commit, "generate verilog")	
 	-rm -rf $(VSRC_DIR)
 	mkdir -p $(VSRC_DIR)
 	./mill -i __.test.runMain Elaborate_$(SIM_TARGET) $(SIM_TARGET) $(MODE)
@@ -90,7 +90,7 @@ vivado:
 sim: 	
 	xmake build chisel
 	xmake build Vtop
-	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
+	# $(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	xmake run Vtop +verilator+rand+reset+2 $(MAINARGS)
 	
 test_sim:

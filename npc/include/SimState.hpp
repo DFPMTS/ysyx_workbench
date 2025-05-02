@@ -17,6 +17,7 @@ public:
   DecodeUop decodeUop[ISSUE_WIDTH];
   RenameUop renameROBUop[ISSUE_WIDTH];
   Uop renameIQUop[ISSUE_WIDTH];
+  RenameUop issueUop[MACHINE_WIDTH];
   WritebackUop writebackUop[WRITEBACK_WIDTH];
   ReadRegUop readRegUop[MACHINE_WIDTH];
   CommitUop commitUop[COMMIT_WIDTH];
@@ -56,11 +57,16 @@ public:
 
   FILE *konataFile = nullptr;
 
+#define KONATA
+
   void konataLogStage(uint64_t instId, const char *stage) {
+#ifdef KONATA
     fprintf(konataFile, "S\t%lu\t0\t%s\n", instId, stage);
+#endif
   }
 
   void konataLogDecode(uint64_t instId, word_t pc, uint32_t inst) {
+#ifdef KONATA
     char buf[512];
     itrace_generate(buf, pc, inst);
     auto buf_len = strlen(buf);
@@ -72,6 +78,7 @@ public:
     fprintf(konataFile, "I\t%lu\t0\t0\n", instId);
     fprintf(konataFile, "L\t%lu\t0\t%s\n", instId, buf);
     konataLogStage(instId, "RN");
+#endif
   }
 
   void konataLogRename(InstInfo *inst) {
@@ -93,19 +100,27 @@ public:
   }
 
   void konataLogCommit(InstInfo *inst) {
+#ifdef KONATA
     fprintf(konataFile, "R\t%lu\t%d\t0\n", inst->konataId, inst->robPtr_index);
+#endif
   }
 
   void konataLogFlush(InstInfo *inst) {
+#ifdef KONATA
     fprintf(konataFile, "R\t%lu\t%d\t1\n", inst->konataId, inst->robPtr_index);
+#endif
   }
 
   void konataLogFlush(uint64_t instId) {
+#ifdef KONATA
     fprintf(konataFile, "R\t%lu\t0\t1\n", instId);
+#endif
   }
 
   void konataLogCycle(uint64_t cycle) {
+#ifdef KONATA
     fprintf(konataFile, "C\t1\t//%lu\n", cycle);
+#endif
   }
 
   void bindUops() {
@@ -132,6 +147,16 @@ public:
 // #define V_UOP V_RENAME_UOP
 #define V_UOP_VALID V_RENAME_IQ_VALID
 #define V_UOP_READY V_RENAME_IQ_READY
+    REPEAT_4(BIND_VALID)
+    REPEAT_4(BIND_READY)
+
+// * IQ -> ReadReg
+#define UOP issueUop
+#define V_UOP V_ISSUE_UOP
+#define V_UOP_VALID V_ISSUE_VALID
+#define V_UOP_READY V_ISSUE_READY
+#define UOP_FIELDS RENAME_FIELDS
+    REPEAT_4(BIND_FIELDS)
     REPEAT_4(BIND_VALID)
     REPEAT_4(BIND_READY)
 
@@ -206,7 +231,7 @@ public:
       fflush(stdout);
     }
     konataLogCycle(cycle);
-    if (cycle > lastCommit + 1000) {
+    if (cycle > lastCommit + 2000) {
       Log("CPU hangs");
       stop = Stop::CPU_HANG;
       running.store(false);
@@ -424,6 +449,14 @@ public:
       }
     }
 
+    // * issue
+    for (int i = 0; i < MACHINE_WIDTH; ++i) {
+      if (*issueUop[i].valid && *issueUop[i].ready) {
+        auto robIndex = *issueUop[i].robPtr_index;
+        auto &inst = insts[robIndex];
+        konataLogIssue(&inst);
+      }
+    }
     // * fix PC with redirect
     if (V_REDIRECT_VALID) {
       if (begin_wave || begin_log) {

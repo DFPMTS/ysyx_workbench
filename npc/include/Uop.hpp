@@ -460,6 +460,14 @@ struct Ptr {
 #define V_RENAME_IQ_READY(i)                                                   \
   top->rootp->npc_top__DOT__npc__DOT__renameIQReady_##i
 
+// * issue
+#define V_ISSUE_UOP(i, field)                                                  \
+  top->rootp->npc_top__DOT__npc__DOT__issueUop_##i##_bits_##field
+#define V_ISSUE_VALID(i)                                                       \
+  top->rootp->npc_top__DOT__npc__DOT__issueUop_##i##_valid
+#define V_ISSUE_READY(i)                                                       \
+  top->rootp->npc_top__DOT__npc__DOT__issueUop_##i##_ready
+
 // * writeback
 #define V_WRITEBACK_UOP(i, field)                                              \
   top->rootp->npc_top__DOT__npc__DOT__writebackUop_##i##_bits_##field

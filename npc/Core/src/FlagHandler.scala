@@ -58,16 +58,23 @@ class FlagHandler extends CoreModule {
       flush := true.B
     }
     when(flag === FlagOp.DECODE_FLAG) {
-      when(decodeFlag === DecodeFlagOp.INTERRUPT && io.IN_trapCSR.interrupt) {
-        redirect.valid := true.B
-        redirect.pc := xtvec
-  
-        flush := true.B
-  
-        CSRCtrlNext.trap := true.B
-        CSRCtrlNext.intr := true.B
-        CSRCtrlNext.cause := io.IN_trapCSR.interruptCause
-        CSRCtrlNext.pc := io.IN_flagUop.bits.pc
+      when(decodeFlag === DecodeFlagOp.INTERRUPT) {
+        when(io.IN_trapCSR.interrupt) {
+          redirect.valid := true.B
+          redirect.pc := xtvec
+          
+          flush := true.B
+          
+          CSRCtrlNext.trap := true.B
+          CSRCtrlNext.intr := true.B
+          CSRCtrlNext.cause := io.IN_trapCSR.interruptCause
+          CSRCtrlNext.pc := io.IN_flagUop.bits.pc
+        }.otherwise {
+          redirect.valid := true.B
+          redirect.pc := io.IN_flagUop.bits.pc
+
+          flush := true.B
+        }
       }
       when(decodeFlag === DecodeFlagOp.EBREAK) {
         redirect.valid := true.B

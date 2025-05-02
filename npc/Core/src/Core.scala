@@ -12,6 +12,7 @@ class Core extends CoreModule {
     // val fetchRedirect = Output(new RedirectSignal)
     // val backendRedirect = Output(new RedirectSignal)
     // val flagOp = Output(Valid(new FlagUop))
+    // val trapCSR = Output(new TrapCSR)
     // val vPCNext = Output(UInt(XLEN.W))
     // val vPCNextValid = Output(Bool())
     // val prediction = Output(new Prediction)
@@ -21,14 +22,14 @@ class Core extends CoreModule {
     // val IFUcacheMiss = Output(Bool())
     // val slave     = Flipped(new AXI4ysyxSoC(AXI_DATA_WIDTH, AXI_ADDR_WIDTH))
     val interrupt = Input(Bool())
-    val commitUop = Valid(new CommitUop)
-    val instCommited = Output(UInt(64.W))
-    val robTailPtr = Output(RingBufferPtr(ROB_SIZE))
-    val robHeadPtr = Output(RingBufferPtr(ROB_SIZE))
-    val ldqTailPtr = Output(RingBufferPtr(LDQ_SIZE))
-    val stqTailPtr = Output(RingBufferPtr(STQ_SIZE))
-    val stqBasePtr = RingBufferPtr(STQ_SIZE)
-    val mshr = Vec(4, Output(new MSHR))
+    // val commitUop = Valid(new CommitUop)
+    // val instCommited = Output(UInt(64.W))
+    // val robTailPtr = Output(RingBufferPtr(ROB_SIZE))
+    // val robHeadPtr = Output(RingBufferPtr(ROB_SIZE))
+    // val ldqTailPtr = Output(RingBufferPtr(LDQ_SIZE))
+    // val stqTailPtr = Output(RingBufferPtr(STQ_SIZE))
+    // val stqBasePtr = RingBufferPtr(STQ_SIZE)
+    // val mshr = Vec(4, Output(new MSHR))
   })
 
   // * Internal MMIO 
@@ -103,6 +104,7 @@ class Core extends CoreModule {
   // io.prediction := ifu.io.OUT_prediction
   // io.fetchCanContinue := ifu.io.OUT_fetchCanContinue
   // io.flagOp := rob.io.OUT_flagUop
+  // io.trapCSR := csr.io.OUT_trapCSR
   // io.fetchGroup := ifu.io.OUT_fetchGroup
   // io.IFUcacheMiss := ifu.io.OUT_cacheMiss
   // io.phyPCValid := ifu.io.OUT_phyPCValid
@@ -123,7 +125,8 @@ class Core extends CoreModule {
   dontTouch(renameIQReady)
 
   // * issue
-  val issueUop = Wire(Vec(ISSUE_WIDTH, Decoupled(new RenameUop)))
+  val issueUop = Wire(Vec(MACHINE_WIDTH, Decoupled(new RenameUop)))
+  dontTouch(issueUop)
   val aluIssueUop = issueUop.take(NUM_ALU)
   
   // * read register
@@ -149,15 +152,15 @@ class Core extends CoreModule {
   dontTouch(commitUop)  
 
   // !
-  io.commitUop := commitUop(0)
+  // io.commitUop := commitUop(0)
   
-  io.instCommited := rob.io.OUT_instCommited
-  io.robHeadPtr := rename.io.OUT_robHeadPtr
-  io.robTailPtr := rob.io.OUT_robTailPtr
-  io.ldqTailPtr := rob.io.OUT_ldqTailPtr
-  io.stqTailPtr := rob.io.OUT_stqTailPtr
-  io.stqBasePtr := storeQueue.io.OUT_stqBasePtr
-  io.mshr := cacheController.io.OUT_MSHR.take(4)
+  // io.instCommited := rob.io.OUT_instCommited
+  // io.robHeadPtr := rename.io.OUT_robHeadPtr
+  // io.robTailPtr := rob.io.OUT_robTailPtr
+  // io.ldqTailPtr := rob.io.OUT_ldqTailPtr
+  // io.stqTailPtr := rob.io.OUT_stqTailPtr
+  // io.stqBasePtr := storeQueue.io.OUT_stqBasePtr
+  // io.mshr := cacheController.io.OUT_MSHR.take(4)
   //  !
 
   // * flag
