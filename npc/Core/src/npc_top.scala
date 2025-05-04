@@ -8,7 +8,7 @@ class npc_top extends Module {
 
   npc.io.master.viewAs[AXI4] <> sram.io
   dontTouch(npc.io.master)
-  npc.io.interrupt     := false.B
+  // npc.io.interrupt     := false.B
   // npc.io.slave.awvalid := false.B
   // npc.io.slave.awaddr  := 0.U
   // npc.io.slave.awlen   := 0.U

@@ -50,6 +50,7 @@ trait HasCoreParameters {
   def IQ_SIZE = 16
   def IQ_IDX_W = log2Up(IQ_SIZE).W
 
+  // ! LDQ and STQ must be at least the IQ size, or there will be ldPtr/stPtr problem (flag wrap two time)
   // * Load Queue
   def LDQ_SIZE = 16
   def LDQ_IDX_W = log2Up(LDQ_SIZE).W

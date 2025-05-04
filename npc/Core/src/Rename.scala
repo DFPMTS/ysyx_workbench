@@ -22,6 +22,10 @@ class RenameIO extends CoreBundle {
   // * commit
   val IN_commitUop = Flipped(Vec(COMMIT_WIDTH, Valid(new CommitUop)))
   val OUT_robHeadPtr = Output(RingBufferPtr(ROB_SIZE))
+  val IN_storeQueueEmpty = Flipped(Bool())
+  val IN_storeBufferEmpty = Flipped(Bool())
+  val OUT_backendLocked = Bool()
+
   val IN_flush     = Input(Bool())
 }
 
@@ -46,6 +50,8 @@ class Rename extends CoreModule {
 
   // ** Backend Lock
   val backendLocked = RegInit(false.B)
+  val backendEmpty = io.IN_robEmpty && io.IN_storeQueueEmpty && io.IN_storeBufferEmpty
+  io.OUT_backendLocked := backendLocked
 
   // ** robPtr/ldqPtr/stqPtr allocation
   val robHeadPtr = RegInit(RingBufferPtr(size = ROB_SIZE, flag = 0.U, index = 0.U))
@@ -167,12 +173,12 @@ class Rename extends CoreModule {
   }))
   val isBlocked = Wire(Vec(ISSUE_WIDTH, Bool()))
   dontTouch(isBlocked)
-  isBlocked(0) := isValidLockInst(0) && !io.IN_robEmpty
+  isBlocked(0) := isValidLockInst(0) && !backendEmpty
   // * IN_backendLocked: blocks all inst uncoditionally
   // * Logic: inst(0) blocked: self lock backend && rob not empty
   // *        inst(i) blocked: inst(i-1) blocked || (inst(i) lock backend && (rob not empty or inst before not issued))
   for (i <- 1 until ISSUE_WIDTH) {
-    isBlocked(i) := isBlocked(i - 1) || ((uopValid.asUInt(i - 1, 0).orR || !io.IN_robEmpty) && isValidLockInst(i)) || 
+    isBlocked(i) := isBlocked(i - 1) || ((uopValid.asUInt(i - 1, 0).orR || !backendEmpty) && isValidLockInst(i)) || 
                     isValidLockInst.asUInt(i - 1, 0).orR
   }
 
@@ -240,7 +246,7 @@ class Rename extends CoreModule {
 
   when(lockInstIssued) {
     backendLocked := true.B
-  }.elsewhen (io.IN_robEmpty) {
+  }.elsewhen (backendEmpty) {
     backendLocked := false.B
   }
   

@@ -57,7 +57,7 @@ public:
 
   FILE *konataFile = nullptr;
 
-#define KONATA
+  // #define KONATA
 
   void konataLogStage(uint64_t instId, const char *stage) {
 #ifdef KONATA
@@ -250,7 +250,9 @@ public:
         if (flag == FlagOp::DECODE_FLAG &&
             decodeFlag == DecodeFlagOp::INTERRUPT) {
           // * override the difftest ref
-          // fprintf(stderr, "INTERRUPT on PC: %x:\n", *flagUop[i].pc);
+          if (begin_wave || begin_log) {
+            fprintf(stderr, "INTERRUPT on PC: %x:\n", *flagUop[i].pc);
+          }
           access_device = true;
         }
 
@@ -308,6 +310,7 @@ public:
     }
 
     if (waitDifftest && difftestCountdown == 0) {
+      printf("Delay difftest: access_device = %d\n", access_device);
       difftest();
       waitDifftest = false;
     }
@@ -358,10 +361,10 @@ public:
           }
         }
         if (begin_wave || begin_log) {
-          // printf("commit[%d]: ", robIndex);
-          // printf("access_device = %s\n", access_device ? "True" : "False");
-          // printf("waitDifftest = %s\n", waitDifftest ? "True" : "False");
-          // printf("difftestCountdown = %d\n", difftestCountdown);
+          printf("commit[%d]: ", robIndex);
+          printf("access_device = %s\n", access_device ? "True" : "False");
+          printf("waitDifftest = %s\n", waitDifftest ? "True" : "False");
+          printf("difftestCountdown = %d\n", difftestCountdown);
           printInst(&inst, robIndex);
         }
         if (*uop.rd) {

@@ -10,10 +10,8 @@ object parseArgs {
       Config.debug = false
     }
     Config.debug = false
-    if (args.contains("npc")) {
-      Config.resetPC = "h1000_0000".U
-    } else {
-      Config.resetPC = "h30000000".U
+    if(args.contains("Core")) {
+      Config.target = "Core"
     }
   }
 }
@@ -37,7 +35,7 @@ object Elaborate_npc extends App {
     "--ignore-read-enable-mem",
   )
   println("firtool version", chisel3.BuildInfo.firtoolVersion, chisel3.BuildInfo.version, chisel3.BuildInfo.scalaVersion )
-  circt.stage.ChiselStage.emitSystemVerilogFile(new npc_top, Array("-td", "./vsrc", "--split-verilog", "--throw-on-first-error"), firtoolOptions)
+  circt.stage.ChiselStage.emitSystemVerilogFile(if(Config.target == "Core") (new Core) else (new npc_top), Array("-td", "./vsrc", "--split-verilog", "--throw-on-first-error"), firtoolOptions)
 }
 
 object Elaborate_soc extends App {

@@ -116,8 +116,11 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   val canServeCacheUop = Wire(Bool())
   val cacheCtrlUopNext = WireInit(0.U.asTypeOf(new CacheCtrlUop))
   
-  val fetchValid = WireInit(false.B)
-  val fetchGroup = Wire(new FetchGroup)
+  // val fetchValid = RegInit(false.B)
+  // val fetchGroup = Reg(new FetchGroup)
+  val fetchValid = RegInit(false.B)
+  val fetchGroup = Reg(new FetchGroup)
+  val fetchGroupPrediction = Reg(new Prediction)
   // !
   io.OUT_fetchGroup := fetchGroup
   io.OUT_phyPCValid := phyPCValid
@@ -127,7 +130,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   dontTouch(fetchValid)
   fixBranch.io.IN_fetchGroup.valid := fetchValid
   fixBranch.io.IN_fetchGroup.bits := fetchGroup
-  fixBranch.io.IN_prediction := prediction
+  fixBranch.io.IN_prediction := fetchGroupPrediction
 
   val cacheCtrlUop = Reg(new CacheCtrlUop)
   val cacheCtrlUopValid = RegInit(false.B)
@@ -261,7 +264,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   dontTouch(fetchRedirect)
 
   // ** Fetch Buffer
-  when(io.redirect.valid) {
+  when(io.redirect.valid || fixRedirect.valid) {
     fetchValid := false.B
   }.otherwise {   
     fetchValid := phyPCValid && (!cacheMiss || pageFault || accessFault)
@@ -278,6 +281,8 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   fetchGroup.interrupt := interrupt
   fetchGroup.pageFault := pageFault
   fetchGroup.access_fault := accessFault
+
+  fetchGroupPrediction := prediction
 
   val fixedFetchGroup = WireInit(fetchGroup)
   fixedFetchGroup.lastBranchMap := fixBranch.io.OUT_lastBranchMap

@@ -28,13 +28,16 @@ class PTW extends CoreModule {
   val state = RegInit(sIdle)
   val translateFin = Wire(Bool())
   
-  val needFlush = RegInit(false.B)
-  when(io.IN_TLBFlush && state =/= sIdle) {
-    needFlush := true.B
-  }
-  when(translateFin) {
-    needFlush := false.B
-  }
+  // val needFlush = RegInit(false.B)
+  // when(io.IN_TLBFlush && state =/= sIdle) {
+  //   needFlush := true.B
+  // }
+  // when(translateFin) {
+  //   needFlush := false.B
+  // }
+  // when(io.IN_TLBFlush) {
+  //   state := sIdle
+  // }
 
   val vpn = Reg(UInt(PAGE_NR_LEN.W))
   val stqPtr = Reg(RingBufferPtr(STQ_SIZE))
@@ -96,7 +99,7 @@ class PTW extends CoreModule {
   val finOnL0 = state === sL0 && hasLoadRepl
   translateFin := finOnL1 || finOnL0
   
-  io.OUT_PTWResp.valid := translateFin && !needFlush
+  io.OUT_PTWResp.valid := translateFin
   io.OUT_PTWResp.bits.isSuper := finOnL1
   io.OUT_PTWResp.bits.pte := io.IN_writebackUop.bits.data.asTypeOf(new PTE)
   io.OUT_PTWResp.bits.vpn := vpn

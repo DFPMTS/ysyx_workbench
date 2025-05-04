@@ -40,10 +40,10 @@ $(BIN): $(VSRCS_FLAG) $(CSRCS) $(CINCS)
 		--Mdir $(OBJ_DIR) --exe -o $(abspath $(BIN))
 
 verilog:
-	# $(call git_commit, "generate verilog")	
+# $(call git_commit, "generate verilog")	
 	-rm -rf $(VSRC_DIR)
 	mkdir -p $(VSRC_DIR)
-	./mill -i __.test.runMain Elaborate_$(SIM_TARGET) $(SIM_TARGET) $(MODE)
+	./mill -i __.test.runMain Elaborate_npc $(SIM_TARGET) $(MODE)
 
 help:
 	./mill -i __.test.runMain Elaborate --help
@@ -66,7 +66,7 @@ checkformat:
 clean:
 	-rm -rf $(BUILD_DIR)
 
-.PHONY: test verilog help compile bsp reformat checkformat clean gen_verilog
+.PHONY: test verilog help compile bsp reformat checkformat clean gen_verilog vivado
 
 override MAINARGS += --diff=$(NEMU_HOME)/build/riscv32-nemu-interpreter-so
 
@@ -83,16 +83,22 @@ $(SRC_AUTO_BIND): $(NXDC_FILES)
 nxdc: $(SRC_AUTO_BIND)
 
 
+VIVADO_VSRC_DIR = ./vivado_vsrc
 vivado:
-	xmake build chisel
-	mv ./vsrc/Core.sv ./vsrc/Core.v
+	make gen_verilog SIM_TARGET=Core MODE=Evaluation
+	-rm -rf $(VIVADO_VSRC_DIR)
+	mv $(VSRC_DIR) $(VIVADO_VSRC_DIR)
+	mv $(VIVADO_VSRC_DIR)/Core.sv $(VIVADO_VSRC_DIR)/Core.v
 
 sim: 	
 	xmake build chisel
 	xmake build Vtop
-	# $(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
+# $(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	xmake run Vtop +verilator+rand+reset+2 $(MAINARGS)
 	
+view_wave:
+	gtkwave ./build/linux/x86_64/release/wave.fst 
+
 test_sim:
 	xmake build chisel
 	xmake build Vtop

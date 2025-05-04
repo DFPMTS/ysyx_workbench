@@ -6,8 +6,8 @@ import chisel3.experimental.dataview._
 class Core extends CoreModule {
   val io = IO(new Bundle {
     val master    = new AXI4ysyxSoC(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
-    // val vPC = Output(UInt(XLEN.W))
-    // val phyPC = Output(UInt(XLEN.W))
+    val vPC = Output(UInt(XLEN.W))
+    val phyPC = Output(UInt(XLEN.W))
     // val fixRedirect = Output(new RedirectSignal)
     // val fetchRedirect = Output(new RedirectSignal)
     // val backendRedirect = Output(new RedirectSignal)
@@ -21,15 +21,17 @@ class Core extends CoreModule {
     // val phyPCValid = Output(Bool())
     // val IFUcacheMiss = Output(Bool())
     // val slave     = Flipped(new AXI4ysyxSoC(AXI_DATA_WIDTH, AXI_ADDR_WIDTH))
-    val interrupt = Input(Bool())
-    // val commitUop = Valid(new CommitUop)
+    // val interrupt = Input(Bool())
+    val commitUop = Valid(new CommitUop)
+    val loadUop = Valid(new AGUUop)
+    val storeUop = Valid(new AGUUop)
     // val instCommited = Output(UInt(64.W))
     // val robTailPtr = Output(RingBufferPtr(ROB_SIZE))
     // val robHeadPtr = Output(RingBufferPtr(ROB_SIZE))
     // val ldqTailPtr = Output(RingBufferPtr(LDQ_SIZE))
     // val stqTailPtr = Output(RingBufferPtr(STQ_SIZE))
     // val stqBasePtr = RingBufferPtr(STQ_SIZE)
-    // val mshr = Vec(4, Output(new MSHR))
+    val mshr = Vec(4, Output(new MSHR))
   })
 
   // * Internal MMIO 
@@ -93,8 +95,8 @@ class Core extends CoreModule {
 
 
   // !
-  // io.vPC := ifu.io.OUT_vPC
-  // io.phyPC := ifu.io.OUT_phyPC
+  io.vPC := ifu.io.OUT_vPC
+  io.phyPC := ifu.io.OUT_phyPC
   // io.fetchRedirect := ifu.io.OUT_fetchRedirect
   // io.backendRedirect := redirect
   // io.fixRedirect := ifu.io.OUT_fixRedirect
@@ -152,15 +154,16 @@ class Core extends CoreModule {
   dontTouch(commitUop)  
 
   // !
-  // io.commitUop := commitUop(0)
-  
+  io.commitUop := commitUop(0)
+  io.loadUop := loadArb.io.OUT_AGUUop
+  io.storeUop := storeQueue.io.OUT_stUop
   // io.instCommited := rob.io.OUT_instCommited
   // io.robHeadPtr := rename.io.OUT_robHeadPtr
   // io.robTailPtr := rob.io.OUT_robTailPtr
   // io.ldqTailPtr := rob.io.OUT_ldqTailPtr
   // io.stqTailPtr := rob.io.OUT_stqTailPtr
   // io.stqBasePtr := storeQueue.io.OUT_stqBasePtr
-  // io.mshr := cacheController.io.OUT_MSHR.take(4)
+  io.mshr := cacheController.io.OUT_MSHR.take(4)
   //  !
 
   // * flag
@@ -217,6 +220,9 @@ class Core extends CoreModule {
   rename.io.OUT_renameUop <> renameUop
   rename.io.OUT_robValid <> renameRobValid
   rename.io.OUT_issueQueueValid <> renameIQValid
+
+  rename.io.IN_storeQueueEmpty := storeQueue.io.OUT_storeQueueEmpty
+  rename.io.IN_storeBufferEmpty := storeBuffer.io.OUT_storeBufferEmpty
 
   // * ROB
   rob.io.IN_renameRobHeadPtr := rename.io.OUT_robHeadPtr
@@ -340,6 +346,7 @@ class Core extends CoreModule {
   xtvalRecorder.io.IN_flush := flush
   xtvalRecorder.io.IN_tval := agu.io.OUT_xtvalRec
 
+  loadArb.io.IN_stopPTWUop := amoUnit.io.OUT_amoActive
   loadArb.io.IN_AGUUop <> loadQueue.io.OUT_ldUop
   loadArb.io.IN_PTWUop <> ptw.io.OUT_PTWUop
   lsu.io.IN_loadUop <> loadArb.io.OUT_AGUUop

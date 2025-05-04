@@ -5,6 +5,7 @@ import utils._
 class LoadArbiterIO extends CoreBundle {
   val IN_PTWUop = Flipped(Decoupled(new PTWUop))
   val IN_AGUUop = Flipped(Decoupled(new AGUUop))
+  val IN_stopPTWUop = Flipped(Bool())
 
   val OUT_AGUUop = Decoupled(new AGUUop)
 }
@@ -12,7 +13,7 @@ class LoadArbiterIO extends CoreBundle {
 class LoadArbiter extends CoreModule {
   val io = IO(new LoadArbiterIO)
 
-  when(io.IN_AGUUop.valid) {
+  when(io.IN_stopPTWUop || io.IN_AGUUop.valid) {
     io.IN_PTWUop.ready := false.B
     io.IN_AGUUop <> io.OUT_AGUUop
   }.otherwise {

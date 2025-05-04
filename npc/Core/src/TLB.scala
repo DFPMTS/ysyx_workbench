@@ -40,15 +40,21 @@ class TLB(size: Int, id: Int) extends CoreModule {
       counter.inc()
     }
   }
+  val ignoreInflight = RegInit(false.B)
 
-  when(io.IN_PTWResp.valid && io.IN_PTWResp.bits.id === id.U){
-    entry(counter.value).valid := true.B
-    entry(counter.value).vpn := io.IN_PTWResp.bits.vpn
-    entry(counter.value).pte := io.IN_PTWResp.bits.pte
-    entry(counter.value).isSuper := io.IN_PTWResp.bits.isSuper
+  when(io.IN_PTWResp.valid && io.IN_PTWResp.bits.id === id.U) {
+    when(!ignoreInflight) {
+      entry(counter.value).valid := true.B
+      entry(counter.value).vpn := io.IN_PTWResp.bits.vpn
+      entry(counter.value).pte := io.IN_PTWResp.bits.pte
+      entry(counter.value).isSuper := io.IN_PTWResp.bits.isSuper
+    }.otherwise {
+      ignoreInflight := false.B
+    }
   }
 
   when(io.IN_TLBFlush) {
+    ignoreInflight := true.B
     entry.foreach(e => e.valid := false.B)
   }
 }

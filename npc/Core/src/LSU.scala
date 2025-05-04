@@ -316,8 +316,8 @@ class NewLSU extends CoreModule with HasLSUOps {
     }
   }
 
-  // * write tag
-  val writeTag = WireInit(false.B)
+  // * write data
+  val writeTag = RegInit(false.B)
   val storeWriteData = WireInit(false.B)
 
   // * Load Pipeline
@@ -509,48 +509,50 @@ class NewLSU extends CoreModule with HasLSUOps {
   val canServeCacheUop = (!cacheCtrlUopValid || io.OUT_cacheCtrlUop.ready) && 
                          (!cacheUopValidNext || !isMSHRConflict(cacheUopNext)) && 
                           flushState === sFlushIdle
-
+  // val cacheUopTagReq = WireInit(0.U.asTypeOf(new DTagReq))
+  val cacheUopTagReq = Reg(new DTagReq)
+  writeTag := false.B
+  when(writeTag) {
+    io.OUT_tagReq.valid := true.B
+    io.OUT_tagReq.bits := cacheUopTagReq
+  }
   when(flushState === sFlushActive){
     writeTag := true.B
-    io.OUT_tagReq.valid := true.B
-    io.OUT_tagReq.bits.addr := Cat(flushIndex, 0.U(log2Up(CACHE_LINE_B).W))
-    io.OUT_tagReq.bits.write := true.B
-    io.OUT_tagReq.bits.way := flushWay
-    io.OUT_tagReq.bits.data.valid := false.B
-    io.OUT_tagReq.bits.data.tag := 0.U
+    cacheUopTagReq.addr := Cat(flushIndex, 0.U(log2Up(CACHE_LINE_B).W))
+    cacheUopTagReq.write := true.B
+    cacheUopTagReq.way := flushWay
+    cacheUopTagReq.data.valid := false.B
+    cacheUopTagReq.data.tag := 0.U
   }.elsewhen(loadNeedCacheUop && canServeCacheUop) {
     // * Write tag
     writeTag := true.B
-    io.OUT_tagReq.valid := true.B
-    io.OUT_tagReq.bits.addr := loadStage(0).addr
-    io.OUT_tagReq.bits.write := true.B
-    io.OUT_tagReq.bits.way := replaceCounter
+    cacheUopTagReq.addr := loadStage(0).addr
+    cacheUopTagReq.write := true.B
+    cacheUopTagReq.way := replaceCounter
     val dtag = Wire(new DTag)
     dtag.valid := true.B
     dtag.tag := loadStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
-    io.OUT_tagReq.bits.data := dtag
+    cacheUopTagReq.data := dtag
   }.elsewhen(storeNeedCacheUop && canServeCacheUop) {
     // * Write tag
     writeTag := true.B
-    io.OUT_tagReq.valid := true.B
-    io.OUT_tagReq.bits.addr := storeStage(0).addr
-    io.OUT_tagReq.bits.write := true.B
-    io.OUT_tagReq.bits.way := replaceCounter
+    cacheUopTagReq.addr := storeStage(0).addr
+    cacheUopTagReq.write := true.B
+    cacheUopTagReq.way := replaceCounter
     val dtag = Wire(new DTag)
     dtag.valid := true.B
     dtag.tag := storeStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
-    io.OUT_tagReq.bits.data := dtag
+    cacheUopTagReq.data := dtag
   }.elsewhen(amoNeedCacheUop && canServeCacheUop) {
     // * Write tag
     writeTag := true.B
-    io.OUT_tagReq.valid := true.B
-    io.OUT_tagReq.bits.addr := amoUopReg.addr
-    io.OUT_tagReq.bits.write := true.B
-    io.OUT_tagReq.bits.way := replaceCounter
+    cacheUopTagReq.addr := amoUopReg.addr
+    cacheUopTagReq.write := true.B
+    cacheUopTagReq.way := replaceCounter
     val dtag = Wire(new DTag)
     dtag.valid := true.B
     dtag.tag := amoUopReg.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
-    io.OUT_tagReq.bits.data := dtag
+    cacheUopTagReq.data := dtag
   }
 
   when(loadStageValid(0) || uncachedLSU.io.OUT_loadUop.valid) {
@@ -776,13 +778,17 @@ class NewLSU extends CoreModule with HasLSUOps {
 
       amoSuccess := io.OUT_dataReq.ready
       
-      amoAckValid := true.B
-      amoAck.resp := Mux(amoSuccess, 0.U, 1.U)
+      when(!amoSuccess) {
+        amoAckValid := true.B
+        amoAck.resp := 1.U
+      }
 
       amoState := Mux(amoSuccess, sAmoWriteback, sAmoIdle)
     }
     is(sAmoWriteback) {
       when(amoCanWriteback) {
+        amoAckValid := true.B
+        amoAck.resp := 0.U
         when(amoIsLr) {
           reservation := amoUopReg.addr
           reservationValid := true.B
@@ -977,7 +983,6 @@ class UncachedLSU extends CoreModule {
   val sIdle :: sLoadReq :: sStoreReq :: sWaitLoadResp :: sWaitStoreResp :: sLoadFin :: Nil = Enum(6)
   val state = RegInit(sIdle)
   val cacheCtrlUop = Reg(new CacheCtrlUop)
-  cacheCtrlUop := 0.U.asTypeOf(new CacheCtrlUop)
   cacheCtrlUop.cacheId := CacheId.DCACHE
 
   val loadUop = Reg(new AGUUop)

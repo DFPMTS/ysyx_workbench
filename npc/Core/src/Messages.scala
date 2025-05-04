@@ -5,8 +5,9 @@ import chisel3.experimental.dataview._
 object Config {
   val XLEN         = 32
   var debug        = true
-  var resetPC      = "h80000000".U
+  var resetPC      = "h10000000".U
   val eventIdWidth = 6.W
+  var target       = "npc_top"
 }
 
 trait HasDecodeConstants

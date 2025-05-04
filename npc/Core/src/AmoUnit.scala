@@ -8,6 +8,7 @@ class AmoUnitIO extends CoreBundle {
 
   val IN_storeQueueEmpty = Flipped(Bool())
   val IN_storeBufferEmpty = Flipped(Bool())
+  val OUT_amoActive = Bool()
 
   val OUT_amoUop = Decoupled(new AGUUop)
 }
@@ -18,6 +19,8 @@ class AmoUnit extends CoreModule {
   val amoUop = Reg(new AGUUop)
   val amoUopValid = RegInit(false.B)
   val amoUopIssued = Reg(Bool())
+
+  io.OUT_amoActive := amoUopValid
 
   when(io.IN_AGUUop.valid && io.IN_AGUUop.bits.fuType === FuType.AMO) {
     amoUop := io.IN_AGUUop.bits
