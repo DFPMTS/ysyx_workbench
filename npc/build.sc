@@ -8,7 +8,7 @@ import mill.bsp._
 
 object Core extends ScalaModule with ScalafmtModule { m =>
   val useChisel7            = false
-  override def scalaVersion = "2.13.15"
+  override def scalaVersion = "2.13.16"
   override def scalacOptions = Seq(
     "-language:reflectiveCalls",
     "-deprecation",
@@ -16,12 +16,12 @@ object Core extends ScalaModule with ScalafmtModule { m =>
     "-Xcheckinit"
   )
   override def ivyDeps = Agg(
-    if (useChisel7) ivy"org.chipsalliance::chisel:7.0.0-M1"
+    if (useChisel7) ivy"org.chipsalliance::chisel:7.0.0-RC1"
     else
       ivy"org.chipsalliance::chisel:6.7.0"
   )
   override def scalacPluginIvyDeps = Agg(
-    if (useChisel7) ivy"org.chipsalliance:::chisel-plugin:7.0.0-M1"
+    if (useChisel7) ivy"org.chipsalliance:::chisel-plugin:7.0.0-RC1"
     else
       ivy"org.chipsalliance:::chisel-plugin:6.7.0"
   )

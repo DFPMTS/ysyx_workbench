@@ -1,7 +1,6 @@
 import chisel3._
 import chisel3.util._
 import utils._
-import coursier.Fetch
 
 class FetchBufferIO extends CoreBundle {
   val in = Flipped(Valid(new FetchGroup))

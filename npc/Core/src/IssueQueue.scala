@@ -1,7 +1,6 @@
 import chisel3._
 import chisel3.util._
 import utils._
-import org.fusesource.jansi.internal.Kernel32.FOCUS_EVENT_RECORD
 
 class IssueQueueIO extends CoreBundle {
   val IN_renameUop = Flipped(Decoupled(new RenameUop))

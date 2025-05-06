@@ -22,6 +22,7 @@
 !bugs/*
 build/
 vsrc/
+vivado_vsrc/
 # xmake config
 !csrc/config.h.in
 

@@ -89,7 +89,7 @@ trait HasCoreParameters {
   def CACHE_LINE_B = 32
 
   // * DCache Ways
-  def DCACHE_WAYS = 4
+  def DCACHE_WAYS = 2
 
   // * DCache Sets
   def DCACHE_SETS = 128
@@ -101,7 +101,7 @@ trait HasCoreParameters {
   def FETCH_WIDTH = 4
 
   // * ICache Ways
-  def ICACHE_WAYS = 4
+  def ICACHE_WAYS = 2
 
   // * ICache Sets
   def ICACHE_SETS = 128

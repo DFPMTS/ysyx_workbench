@@ -2,7 +2,6 @@ import chisel3._
 import chisel3.util._
 import utils._
 import scala.language.implicitConversions
-import coursier.internal.shaded.fastparse.ScriptWhitespace.whitespace
 
 class CacheControllerResp extends CoreBundle {
   val data = UInt(32.W)

@@ -1,7 +1,6 @@
 import chisel3._
 import chisel3.util._
 import utils._
-import scribe.output.Color.Black
 
 class SRAMTemplateR(N: Int, ways: Int, width: Int, writeWidth: Int) extends CoreBundle {
   val en = Bool()

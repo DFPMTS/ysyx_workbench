@@ -273,7 +273,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   }
   val fetchGroupIndex = if(FETCH_WIDTH == CACHE_LINE_B / 4) 0.U else phyPC(log2Up(CACHE_LINE_B) - 1, log2Ceil(FETCH_WIDTH) + 2)
   val fetchGroups = Wire(Vec((CACHE_LINE_B / 4) /FETCH_WIDTH, Vec(FETCH_WIDTH, UInt(32.W))))
-  fetchGroups := dataResp(tagHitWay).asTypeOf(fetchGroups)
+  fetchGroups := Mux1H(tagHitVec, dataResp).asTypeOf(fetchGroups)
   fetchGroup.pc := vPC1
   fetchGroup.brTaken := prediction.brTaken
   fetchGroup.brOffset := prediction.brOffset

@@ -560,7 +560,8 @@ class NewLSU extends CoreModule with HasLSUOps {
     val loadCacheHit = ((loadTagHit || (~bypassDataMask & loadMask) === 0.U) || isInternalMMIO) && !loadAddrAlreadyInFlight
     val wordOffset = loadStage(0).addr(log2Up(CACHE_LINE_B) - 1, 2)
     dontTouch(wordOffset)
-    val loadWord = dataResp(loadTagHitWay)(wordOffset).asUInt
+    val loadHitCacheline = Mux1H(loadTagHitOH, dataResp)
+    val loadWord = loadHitCacheline(wordOffset)
     val finalData = {
       val data = Wire(Vec(4, UInt(8.W)))
       for(i <- 0 until 4) {
@@ -762,7 +763,8 @@ class NewLSU extends CoreModule with HasLSUOps {
       }
 
       amoHitWayReg := amoTagHitWay
-      amoLoadData := dataResp(amoTagHitWay)(amoUopReg.addr(log2Up(CACHE_LINE_B) - 1, 2))
+      val amoHitCacheline = Mux1H(amoTagHitOH, dataResp)
+      amoLoadData := amoHitCacheline(amoUopReg.addr(log2Up(CACHE_LINE_B) - 1, 2))
       amoState := Mux(!amoLoadFailed, Mux(amoIsSc, sAmoStore, Mux(amoIsLr, sAmoWriteback, sAmoALU)), sAmoIdle)
     }
     is(sAmoALU) {
