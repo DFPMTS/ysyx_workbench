@@ -10,6 +10,8 @@ class FlagHandlerIO extends CoreBundle {
   val OUT_CSRCtrl = new CSRCtrl
   val OUT_redirect = new RedirectSignal
   val OUT_TLBFlush = Bool()
+  val OUT_flushICache = Bool()
+  val OUT_flushDCache = Bool()
 }
 
 class CSRCtrl extends CoreBundle {
@@ -32,12 +34,16 @@ class FlagHandler extends CoreModule {
 
   val flush = Reg(Bool())
   val TLBFlush = Reg(Bool())
+  val flushICache = Reg(Bool())
+  val flushDCache = Reg(Bool())
   val redirect = Reg(new RedirectSignal)
   val CSRCtrl = Reg(new CSRCtrl)
   val CSRCtrlNext = WireInit(0.U.asTypeOf(new CSRCtrl))
 
   flush := false.B
   TLBFlush := false.B
+  flushICache := false.B
+  flushDCache := false.B
   redirect.pc := 0.U
   redirect.valid := false.B
   CSRCtrl := CSRCtrlNext
@@ -116,6 +122,15 @@ class FlagHandler extends CoreModule {
   
         TLBFlush := true.B
       }
+      when(decodeFlag === DecodeFlagOp.FENCE_I) {
+        // * Invalidate ICache, write back all DCache
+        redirect.valid := true.B
+        redirect.pc := io.IN_flagUop.bits.pc + 4.U
+        flush := true.B
+
+        flushICache := true.B
+        flushDCache := true.B
+      }
       when(decodeFlag === DecodeFlagOp.INST_PAGE_FAULT) {
         redirect.valid := true.B
         redirect.pc := xtvec
@@ -143,4 +158,6 @@ class FlagHandler extends CoreModule {
   io.OUT_redirect := redirect  
   io.OUT_CSRCtrl := CSRCtrl
   io.OUT_TLBFlush := TLBFlush
+  io.OUT_flushICache := flushICache
+  io.OUT_flushDCache := flushDCache
 }

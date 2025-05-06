@@ -73,7 +73,7 @@ class Decode extends CoreModule {
   def mret       = BitPat("b0011000 00010 00000 000 00000 11100 11")
   def sret       = BitPat("b0001000 00010 00000 000 00000 11100 11")
   def fence      = BitPat("b???? ???? ???? ????? 000 ????? 00011 11")
-  def sfence_vma = BitPat("b0001001 ????? ????? 000 ????? 11100 11")
+  def sfence_vma = BitPat("b0001001 ????? ????? 000 00000 11100 11")
   def wfi        = BitPat("b0001000 00101 00000 000 00000 11100 11")
   // * RV32M
   def mul        = BitPat("b0000001 ????? ????? 000 ????? 01100 11")
@@ -139,7 +139,7 @@ sra        -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.ARITH,  
 or         -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.OR,                   ImmType.X, N),
 and        -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.AND,                  ImmType.X, N),
 fence      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.NONE,          ImmType.X, N), // TODO
-fence_i    -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.NONE,          ImmType.X, N), // TODO
+fence_i    -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.FENCE_I,       ImmType.X, Y), // TODO
 sfence_vma -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.SFENCE_VMA,    ImmType.X, Y),
 ecall      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.ECALL,         ImmType.X, N),
 ebreak     -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.EBREAK,        ImmType.X, N),

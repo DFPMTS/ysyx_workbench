@@ -17,7 +17,9 @@ class FetchGroup extends CoreBundle {
 
 class IFUIO extends CoreBundle {
   // * Invalidate whole ICache
-  val flushICache = Input(Bool())
+  val IN_flushICache = Input(Bool())
+  // * Enable fetch
+  val IN_fetchEnable = Input(Bool())
   // * Redirect PC
   val redirect = Input(new RedirectSignal)
   // * BPU update
@@ -140,9 +142,9 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   val flushState = RegInit(sFlushActive)
   val flushIndex = RegInit(0.U(log2Up(ICACHE_SETS).W))
   val flushWay   = RegInit(0.U(log2Up(ICACHE_WAYS).W))
-  switch(sFlushActive) {
+  switch(flushState) {
     is(sFlushIdle) {
-      when(io.flushICache) {
+      when(io.IN_flushICache) {
         flushState := sFlushActive
         flushIndex := 0.U
         flushWay := 0.U
@@ -206,7 +208,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   io.OUT_TLBReq.bits.vpn := vPC(31, 12)
   phyPCValidNext := (!doTranslate || io.IN_TLBResp.valid) && 
                     fetchBuffer.io.fetchCanContinue && 
-                    flushState === sFlushIdle
+                    flushState === sFlushIdle && io.IN_fetchEnable
   phyPCNext := Mux(doTranslate, io.IN_TLBResp.bits.vaddrToPaddr(vPC), vPC)    
 
   val dataResp = WireInit(io.IN_IDataResp.data)

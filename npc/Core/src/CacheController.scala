@@ -181,6 +181,7 @@ object MSHRChecker extends HasCoreParameters {
     for (i <- 0 until NUM_MSHR) {
       mshrConflict(i) := false.B
       when(mshr(i).valid && mshr(i).cacheId === uop.cacheId) {
+        // ! TODO: check if mshr/uop really read/write the memReadAddr/memWriteAddr
         // * Read after write: read must be processed after write to mem. Note that mshr(i)/uop can be different cache line
         when(mshr(i).memWriteAddr(XLEN - 1, log2Up(CACHE_LINE_B)) === uop.readAddr()(XLEN - 1, log2Up(CACHE_LINE_B))) {
           mshrConflict(i) := true.B
@@ -276,6 +277,14 @@ class CacheController extends CoreModule {
       newMSHR.needWriteMem := true.B
 
       newMSHR.axiReadDone := false.B
+      newMSHR.axiWriteDone := false.B
+    }.elsewhen(uop.opcode === CacheOpcode.INVALIDATE) {
+      // * invalidate cache line
+      newMSHR.memWriteAddr := waddr
+
+      newMSHR.needReadCache := true.B
+      newMSHR.needWriteMem := true.B
+
       newMSHR.axiWriteDone := false.B
     }.elsewhen(CacheOpcode.isUnCachedLoad(uop.opcode)) {
       // * uncached load

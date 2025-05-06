@@ -241,7 +241,9 @@ class Rename extends CoreModule {
   }
 
   val lockInstIssued = (0 until ISSUE_WIDTH).map(i => {
-    io.OUT_renameUop(i).lockBackend && io.OUT_issueQueueValid(i) && io.IN_issueQueueReady(i)
+    io.OUT_renameUop(i).lockBackend && Mux(io.OUT_renameUop(i).fuType === FuType.FLAG, 
+      io.OUT_robValid(i), 
+      io.OUT_issueQueueValid(i) && io.IN_issueQueueReady(i))
   }).reduce(_ || _)
 
   when(lockInstIssued) {

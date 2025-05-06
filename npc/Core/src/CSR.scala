@@ -48,9 +48,9 @@ object CSRList {
 }
 
 object Priv {
-  val M = 3.U
-  val S = 1.U
-  val U = 0.U
+  val M = 3.U(2.W)
+  val S = 1.U(2.W)
+  val U = 0.U(2.W)
 }
 
 class Mstatus extends CoreBundle {

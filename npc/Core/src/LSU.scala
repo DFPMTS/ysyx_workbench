@@ -3,6 +3,7 @@ import chisel3.util._
 import utils._
 import os.stat
 import dataclass.data
+import os.write
 
 trait HasLSUOps {
   def U    = 0.U(1.W)
@@ -271,6 +272,9 @@ class NewLSUIO extends CoreBundle {
 
   val OUT_writebackUop = Valid(new WritebackUop)
 
+  val IN_flushDCache = Flipped(Bool())
+  val OUT_flushBusy = Bool()
+
   val IN_flush = Flipped(Bool())
 }
 
@@ -294,27 +298,13 @@ class NewLSU extends CoreModule with HasLSUOps {
   io.OUT_tagReq.bits := 0.U.asTypeOf(new DTagReq)
 
   // * DCache Flush State Machine
-  val sFlushIdle :: sFlushActive :: Nil = Enum(2)
+  val flushNeedWriteback = RegInit(false.B)
+  val sFlushIdle :: sFlushActive :: sFlushWaitStart :: sFlushWriteTag :: sFlushRead :: sFlushWaitEnd :: Nil = Enum(6)
   val flushState = RegInit(sFlushActive)
   val flushIndex = RegInit(0.U(log2Up(DCACHE_SETS).W))
   val flushWay = RegInit(0.U(log2Up(DCACHE_WAYS).W))
-  switch(sFlushActive) {
-    is(sFlushIdle) {
-      flushState := sFlushIdle
-    }
-    is(sFlushActive) {
-      when(flushIndex === (DCACHE_SETS - 1).U) {        
-        when(flushWay === (DCACHE_WAYS - 1).U) {
-          flushState := sFlushIdle
-        }.otherwise {
-          flushIndex := 0.U
-          flushWay := flushWay + 1.U
-        }
-      }.otherwise {
-        flushIndex := flushIndex + 1.U
-      }
-    }
-  }
+
+  io.OUT_flushBusy := flushState =/= sFlushIdle
 
   // * write data
   val writeTag = RegInit(false.B)
@@ -426,7 +416,10 @@ class NewLSU extends CoreModule with HasLSUOps {
   val amoUop = io.IN_amoUop.valid && serveAmo
   amoUopReg := inAmoUop
 
-  when(loadUop) {
+  when(flushState === sFlushRead) {
+    io.OUT_tagReq.valid := true.B
+    io.OUT_tagReq.bits.addr := Cat(flushIndex, 0.U(log2Up(CACHE_LINE_B).W))
+  }.elsewhen(loadUop) {
     when(loadIsInternalMMIO) {
       io.OUT_mmioReq.ren := true.B
       io.OUT_mmioReq.addr := inLoadUop.addr
@@ -479,19 +472,16 @@ class NewLSU extends CoreModule with HasLSUOps {
   val loadTagHitOH = tagResp.map(e => e.valid && e.tag === loadTag)
   val loadTagHit = loadTagHitOH.reduce(_ || _)
   val loadTagHitWay = OHToUInt(loadTagHitOH)
-  val loadHit = loadTagHit
   // * store cache hit or miss
   val storeTag = storeStage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
   val storeTagHitOH = tagResp.map(e => e.valid && e.tag === storeTag)
   val storeTagHit = storeTagHitOH.reduce(_ || _)
   val storeTagHitWay = OHToUInt(storeTagHitOH)
-  val storeHit = storeTagHit
   // * Amo cache hit or miss
   val amoTag = amoUopReg.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
   val amoTagHitOH = tagResp.map(e => e.valid && e.tag === amoTag)
   val amoTagHit = amoTagHitOH.reduce(_ || _)
   val amoTagHitWay = OHToUInt(amoTagHitOH)
-  val amoHit = amoTagHit
 
   def getWmask(aguUop: AGUUop): UInt = {
     val memLen = aguUop.opcode(2, 1)
@@ -507,8 +497,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   }
 
   val canServeCacheUop = (!cacheCtrlUopValid || io.OUT_cacheCtrlUop.ready) && 
-                         (!cacheUopValidNext || !isMSHRConflict(cacheUopNext)) && 
-                          flushState === sFlushIdle
+                         (!cacheUopValidNext || !isMSHRConflict(cacheUopNext))
   // val cacheUopTagReq = WireInit(0.U.asTypeOf(new DTagReq))
   val cacheUopTagReq = Reg(new DTagReq)
   writeTag := false.B
@@ -568,7 +557,7 @@ class NewLSU extends CoreModule with HasLSUOps {
     val loadMask = getWmask(loadStage(0))
     val isInternalMMIO = Addr.isInternalMMIO(loadStage(0).addr)
     val loadAddrAlreadyInFlight = isLoadAddrAlreadyInFlight(loadStage(0).addr)
-    val loadCacheHit = ((loadHit || (~bypassDataMask & loadMask) === 0.U) || isInternalMMIO) && !loadAddrAlreadyInFlight
+    val loadCacheHit = ((loadTagHit || (~bypassDataMask & loadMask) === 0.U) || isInternalMMIO) && !loadAddrAlreadyInFlight
     val wordOffset = loadStage(0).addr(log2Up(CACHE_LINE_B) - 1, 2)
     dontTouch(wordOffset)
     val loadWord = dataResp(loadTagHitWay)(wordOffset).asUInt
@@ -618,7 +607,12 @@ class NewLSU extends CoreModule with HasLSUOps {
     loadResult.robPtr := loadUop.robPtr
     loadResult.dest := loadUop.dest
 
-    when(!loadResultBuffer.io.IN_loadResult.ready) {
+    when(writeTag) {
+      // * If write tag on current cycle, then tag read last cycle may be stale
+      // * Fail unconditionally, ask Load Queue to retry
+      loadNegAckValid := true.B
+      loadResultValid := false.B
+    }.elsewhen(!loadResultBuffer.io.IN_loadResult.ready) {
       loadNegAckValid := true.B
     }.elsewhen(miss) {
       when(!loadAddrAlreadyInFlight) {
@@ -656,14 +650,17 @@ class NewLSU extends CoreModule with HasLSUOps {
     storeAck.resp := 1.U
     val storeAddrAlreadyInFlight = isLoadAddrAlreadyInFlight(storeStage(0).addr)
     dontTouch(storeAddrAlreadyInFlight)
-    dontTouch(storeHit)
+    dontTouch(storeTagHit)
     val isInternalMMIO = Addr.isInternalMMIO(storeStage(0).addr)
     val isUncached = Addr.isUncached(storeStage(0).addr)
     when(isUncached) {
       storeAck.resp := 0.U
     }.elsewhen(isInternalMMIO){
       storeAck.resp := 0.U
-    }.elsewhen(storeHit && !storeAddrAlreadyInFlight) {
+    }.elsewhen(writeTag) {
+      // ! For writeTag, see LoadPipeline
+      storeAck.resp := 1.U
+    }.elsewhen(storeTagHit && !storeAddrAlreadyInFlight) {
       val offset = storeStage(0).addr(log2Up(CACHE_LINE_B) - 1, 2)
       // * Cache Hit - Write data
       io.OUT_dataReq.valid := true.B
@@ -741,28 +738,32 @@ class NewLSU extends CoreModule with HasLSUOps {
     is(sAmoLoad) {
       val amoAddrAlreadyInFlight = isLoadAddrAlreadyInFlight(amoUopReg.addr)
       // * Tag / Data is available
-      when(!amoHit || amoAddrAlreadyInFlight) {
+      // ! For writeTag, see LoadPipeline situation
+      val amoLoadFailed = writeTag || !amoTagHit || amoAddrAlreadyInFlight
+      val amoNeedLoad = !writeTag && !amoTagHit && !amoAddrAlreadyInFlight
+
+      when(amoLoadFailed) {
+        // * Amo Neg Ack
         amoAckValid := true.B
         amoAck.resp := 1.U      
-      }
-
-      when(!amoHit && !amoAddrAlreadyInFlight) {
-        amoNeedCacheUop := true.B
-        // * Cache Controller           
-        cacheUopValidNext := true.B
-        cacheUopNext.index := amoUopReg.addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
-        cacheUopNext.rtag := amoUopReg.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
-        cacheUopNext.wtag := tagResp(replaceCounter).tag
-        cacheUopNext.way := replaceCounter
-        cacheUopNext.wmask := 0.U
-        cacheUopNext.wdata := 0.U
-        cacheUopNext.opcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
-        cacheUopNext.offset := amoUopReg.addr(log2Up(CACHE_LINE_B) - 1, 0)
+        when(amoNeedLoad) {
+          amoNeedCacheUop := true.B
+          // * Cache Controller           
+          cacheUopValidNext := true.B
+          cacheUopNext.index := amoUopReg.addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
+          cacheUopNext.rtag := amoUopReg.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+          cacheUopNext.wtag := tagResp(replaceCounter).tag
+          cacheUopNext.way := replaceCounter
+          cacheUopNext.wmask := 0.U
+          cacheUopNext.wdata := 0.U
+          cacheUopNext.opcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
+          cacheUopNext.offset := amoUopReg.addr(log2Up(CACHE_LINE_B) - 1, 0)
+        }
       }
 
       amoHitWayReg := amoTagHitWay
       amoLoadData := dataResp(amoTagHitWay)(amoUopReg.addr(log2Up(CACHE_LINE_B) - 1, 2))
-      amoState := Mux(amoHit && !amoAddrAlreadyInFlight, Mux(amoIsSc, sAmoStore, Mux(amoIsLr, sAmoWriteback, sAmoALU)), sAmoIdle)
+      amoState := Mux(!amoLoadFailed, Mux(amoIsSc, sAmoStore, Mux(amoIsLr, sAmoWriteback, sAmoALU)), sAmoIdle)
     }
     is(sAmoALU) {
       amoState := sAmoStore
@@ -799,6 +800,68 @@ class NewLSU extends CoreModule with HasLSUOps {
       }
     }
   }
+
+  // * Flush State Machine
+  switch(flushState) {
+    is(sFlushIdle) {
+      when(io.IN_flushDCache) {
+        flushState := sFlushWaitStart
+        flushIndex := 0.U
+        flushWay := 0.U
+        flushNeedWriteback := true.B
+      }
+    }
+    is(sFlushActive) {
+      when(flushNeedWriteback) {
+        cacheUopValidNext := tagResp(flushWay).valid
+        cacheUopNext.opcode := CacheOpcode.INVALIDATE
+        cacheUopNext.index := flushIndex
+        cacheUopNext.way := flushWay
+        cacheUopNext.wtag := tagResp(flushWay).tag
+        cacheUopNext.cacheId := CacheId.DCACHE
+      }
+      flushState := Mux(flushNeedWriteback, sFlushWriteTag, sFlushActive)
+      when(flushIndex === (DCACHE_SETS - 1).U) {        
+        when(flushWay === (DCACHE_WAYS - 1).U) {
+          flushState := Mux(flushNeedWriteback, sFlushWaitEnd, sFlushIdle)
+        }.otherwise {
+          flushIndex := 0.U
+          flushWay := flushWay + 1.U
+        }
+      }.otherwise {
+        flushIndex := flushIndex + 1.U
+      }
+    }
+    is(sFlushWaitStart) {
+      // * Wait for all MSHR & cacheCtrlUop to be idle
+      val hasActiveMSHR = io.IN_mshrs.map(_.valid).reduce(_ || _)
+      
+      when(!hasActiveMSHR && !io.OUT_cacheCtrlUop.valid) {
+        flushState := sFlushRead
+      }
+    }
+    is(sFlushWriteTag) {
+      // * sFlushActive Writes Tag on this cycle
+      flushState := sFlushRead
+    }
+    is(sFlushRead) {
+      // * Read tag
+      when(!io.OUT_cacheCtrlUop.valid || io.OUT_cacheCtrlUop.ready) {
+        // * Wait until we can send a new cacheCtrlUop
+        flushState := sFlushActive
+      }
+    }
+    is(sFlushWaitEnd) {
+      // * Wait for all MSHR & cacheCtrlUop to be idle
+      val hasActiveMSHR = io.IN_mshrs.map(_.valid).reduce(_ || _)
+      
+      when(!hasActiveMSHR && !io.OUT_cacheCtrlUop.valid) {
+        flushState := sFlushIdle
+        flushNeedWriteback := false.B
+      }
+    }
+  }
+
 
   when(canServeCacheUop) {
     cacheCtrlUopValid := cacheUopValidNext

@@ -6,8 +6,8 @@ import chisel3.experimental.dataview._
 class Core extends CoreModule {
   val io = IO(new Bundle {
     val master    = new AXI4ysyxSoC(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
-    val vPC = Output(UInt(XLEN.W))
-    val phyPC = Output(UInt(XLEN.W))
+    // val vPC = Output(UInt(XLEN.W))
+    // val phyPC = Output(UInt(XLEN.W))
     // val fixRedirect = Output(new RedirectSignal)
     // val fetchRedirect = Output(new RedirectSignal)
     // val backendRedirect = Output(new RedirectSignal)
@@ -22,16 +22,16 @@ class Core extends CoreModule {
     // val IFUcacheMiss = Output(Bool())
     // val slave     = Flipped(new AXI4ysyxSoC(AXI_DATA_WIDTH, AXI_ADDR_WIDTH))
     // val interrupt = Input(Bool())
-    val commitUop = Valid(new CommitUop)
-    val loadUop = Valid(new AGUUop)
-    val storeUop = Valid(new AGUUop)
+    // val commitUop = Valid(new CommitUop)
+    // val loadUop = Valid(new AGUUop)
+    // val storeUop = Valid(new AGUUop)
     // val instCommited = Output(UInt(64.W))
     // val robTailPtr = Output(RingBufferPtr(ROB_SIZE))
     // val robHeadPtr = Output(RingBufferPtr(ROB_SIZE))
     // val ldqTailPtr = Output(RingBufferPtr(LDQ_SIZE))
     // val stqTailPtr = Output(RingBufferPtr(STQ_SIZE))
     // val stqBasePtr = RingBufferPtr(STQ_SIZE)
-    val mshr = Vec(4, Output(new MSHR))
+    // val mshr = Vec(4, Output(new MSHR))
   })
 
   // * Internal MMIO 
@@ -43,7 +43,7 @@ class Core extends CoreModule {
   val cacheController = Module(new CacheController)
 
   val ifu = Module(new IFU)
-  val itlb = Module(new TLB(size = 2, id = 0))
+  val itlb = Module(new TLB(size = 1, id = 0))
   val idu = Module(new IDU)
   val rename = Module(new Rename)
   val rob = Module(new ROB)
@@ -81,7 +81,7 @@ class Core extends CoreModule {
   val storeBuffer = Module(new StoreBuffer)
   val amoUnit = Module(new AmoUnit)
   val lsu  = Module(new NewLSU)
-  val dtlb = Module(new TLB(size = 2, id = 1))
+  val dtlb = Module(new TLB(size = 1, id = 1))
   val ptw  = Module(new PTW)
   val loadArb = Module(new LoadArbiter)
 
@@ -95,8 +95,8 @@ class Core extends CoreModule {
 
 
   // !
-  io.vPC := ifu.io.OUT_vPC
-  io.phyPC := ifu.io.OUT_phyPC
+  // io.vPC := ifu.io.OUT_vPC
+  // io.phyPC := ifu.io.OUT_phyPC
   // io.fetchRedirect := ifu.io.OUT_fetchRedirect
   // io.backendRedirect := redirect
   // io.fixRedirect := ifu.io.OUT_fixRedirect
@@ -154,16 +154,16 @@ class Core extends CoreModule {
   dontTouch(commitUop)  
 
   // !
-  io.commitUop := commitUop(0)
-  io.loadUop := loadArb.io.OUT_AGUUop
-  io.storeUop := storeQueue.io.OUT_stUop
+  // io.commitUop := commitUop(0)
+  // io.loadUop := loadArb.io.OUT_AGUUop
+  // io.storeUop := storeQueue.io.OUT_stUop
   // io.instCommited := rob.io.OUT_instCommited
   // io.robHeadPtr := rename.io.OUT_robHeadPtr
   // io.robTailPtr := rob.io.OUT_robTailPtr
   // io.ldqTailPtr := rob.io.OUT_ldqTailPtr
   // io.stqTailPtr := rob.io.OUT_stqTailPtr
   // io.stqBasePtr := storeQueue.io.OUT_stqBasePtr
-  io.mshr := cacheController.io.OUT_MSHR.take(4)
+  // io.mshr := cacheController.io.OUT_MSHR.take(4)
   //  !
 
   // * flag
@@ -179,7 +179,8 @@ class Core extends CoreModule {
   ifu.io.IN_btbUpdate := alu2.io.OUT_btbUpdate.get
   ifu.io.IN_phtUpdate := rob.io.OUT_phtUpdate
   ifu.io.IN_rasCommitUpdate := rob.io.OUT_rasUpdate
-  ifu.io.flushICache := false.B
+  ifu.io.IN_flushICache := flagHandler.io.OUT_flushICache
+  ifu.io.IN_fetchEnable := !lsu.io.OUT_flushBusy
   ifu.io.OUT_TLBReq <> itlb.io.IN_TLBReq
   ifu.io.IN_TLBResp <> itlb.io.OUT_TLBResp
   ifu.io.OUT_PTWReq <> ptw.io.IN_PTWReq(0)
@@ -351,6 +352,7 @@ class Core extends CoreModule {
   loadArb.io.IN_PTWUop <> ptw.io.OUT_PTWUop
   lsu.io.IN_loadUop <> loadArb.io.OUT_AGUUop
   lsu.io.IN_flush := flush
+  lsu.io.IN_flushDCache := flagHandler.io.OUT_flushDCache
   
   val aguUop = Wire(Valid(new AGUUop))
   dontTouch(aguUop)

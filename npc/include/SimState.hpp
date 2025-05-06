@@ -57,6 +57,8 @@ public:
 
   FILE *konataFile = nullptr;
 
+  uint64_t debugStopCycle = -1;
+
   // #define KONATA
 
   void konataLogStage(uint64_t instId, const char *stage) {
@@ -222,6 +224,10 @@ public:
   }
 
   void log(uint64_t cycle) {
+    if (cycle > debugStopCycle) {
+      running.store(false);
+      stop = Stop::DIFFTEST_FAILED;
+    }
     --difftestCountdown;
     // if (waitDifftest) {
     //   printf("wait difftest: %d\n", difftestCountdown);
@@ -231,7 +237,7 @@ public:
       fflush(stdout);
     }
     konataLogCycle(cycle);
-    if (cycle > lastCommit + 2000) {
+    if (cycle > lastCommit + 20000) {
       Log("CPU hangs");
       stop = Stop::CPU_HANG;
       running.store(false);
@@ -247,14 +253,14 @@ public:
 
         // * skip the difftest since inst has commited but CSR is not changed
         // * for now / redirect signal is not fired
-        if (flag == FlagOp::DECODE_FLAG &&
-            decodeFlag == DecodeFlagOp::INTERRUPT) {
-          // * override the difftest ref
-          if (begin_wave || begin_log) {
-            fprintf(stderr, "INTERRUPT on PC: %x:\n", *flagUop[i].pc);
-          }
-          access_device = true;
-        }
+        // if (flag == FlagOp::DECODE_FLAG &&
+        //     decodeFlag == DecodeFlagOp::INTERRUPT) {
+        //   // * override the difftest ref
+        //   if (begin_wave || begin_log) {
+        //     fprintf(stderr, "INTERRUPT on PC: %x:\n", *flagUop[i].pc);
+        //   }
+        //   access_device = true;
+        // }
 
         if (flag == FlagOp::DECODE_FLAG && decodeFlag == DecodeFlagOp::EBREAK) {
           running.store(false);
@@ -310,7 +316,10 @@ public:
     }
 
     if (waitDifftest && difftestCountdown == 0) {
-      printf("Delay difftest: access_device = %d\n", access_device);
+      if (begin_wave || begin_log) {
+        fprintf(stderr, "Delayed Difftest, access_device = %d\n",
+                access_device);
+      }
       difftest();
       waitDifftest = false;
     }
@@ -360,6 +369,14 @@ public:
             access_device = true;
           }
         }
+        if (inst.flag == FlagOp::DECODE_FLAG &&
+            (DecodeFlagOp)inst.rd == DecodeFlagOp::INTERRUPT) {
+          // * override the difftest ref
+          if (begin_wave || begin_log) {
+            fprintf(stderr, "INTERRUPT on PC: %x:\n", *flagUop[i].pc);
+          }
+          access_device = true;
+        }
         if (begin_wave || begin_log) {
           printf("commit[%d]: ", robIndex);
           printf("access_device = %s\n", access_device ? "True" : "False");
@@ -367,6 +384,15 @@ public:
           printf("difftestCountdown = %d\n", difftestCountdown);
           printInst(&inst, robIndex);
         }
+        // PTW AMO bug
+        // if (inst.pc == 0xc01527c8 && inst.paddr == 0x1fd75288) {
+        //   printf("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n");
+        //   printf("pc = %x\n", inst.pc);
+        //   printf("instRetired = %lu\n", instRetired);
+        //   printf("cycle = %lu\n", cycle);
+        //   debugStopCycle = cycle + FORK_CYCLE / 2;
+        //   printf("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n");
+        // }
         if (*uop.rd) {
           if (begin_wave || begin_log) {
             printf("      archTable[%d] = %d\n", *uop.rd, *uop.prd);

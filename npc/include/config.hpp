@@ -26,7 +26,7 @@ constexpr size_t SDRAM_SIZE = 0x02000000;
 constexpr size_t WAIT_INTERVAL = 1;
 constexpr size_t SLOT_SIZE = 2;
 
-constexpr size_t FORK_CYCLE = 100000;
+constexpr size_t FORK_CYCLE = 200000;
 
 constexpr size_t ISSUE_WIDTH = 4;
 constexpr size_t MACHINE_WIDTH = 4;

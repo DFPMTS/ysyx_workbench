@@ -23,6 +23,7 @@ class MMUResp extends CoreBundle {
     !pte.x || // * Execute perm fail
     (!pte.r && pte.w) || // * illegal combination
     (!pte.u && vmCSR.priv === Priv.U) || // * User program can only access page with U bit set
+    (pte.u && vmCSR.priv === Priv.S) || // * Supervisor cannot execute user page
     (isSuper && pte.ppn0 =/= 0.U)
   }
 }

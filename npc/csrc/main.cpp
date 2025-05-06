@@ -176,7 +176,10 @@ int main(int argc, char *argv[]) {
     Log("\033[31mDifftest failed.\033[0m\n");
   } else if (stop == Stop::CPU_HANG) {
     Log("\033[31mCPU hangs.\033[0m\n");
+  } else if (stop == Stop::DEBUG) {
+    Log("\033[31mDebug Stop.\033[0m\n");
   }
+
 #ifdef NVBOARD
   nvboard_quit();
 #endif
