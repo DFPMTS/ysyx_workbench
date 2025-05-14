@@ -43,6 +43,8 @@ class ROBEntry extends CoreBundle {
 
   val isCall = Bool()
   val isRet = Bool()
+
+  val phtState = new SaturatedCounter
   val isLastBranch = Bool()
 }
 
@@ -77,6 +79,7 @@ class ROB extends CoreModule with HasPerfCounters {
     enqEntry.isStore := renameUop.fuType === FuType.LSU && LSUOp.isStore(renameUop.opcode)
     enqEntry.isCall := renameUop.fuType === FuType.BRU && renameUop.opcode === BRUOp.CALL
     enqEntry.isRet := renameUop.fuType === FuType.BRU && renameUop.opcode === BRUOp.RET
+    enqEntry.phtState := renameUop.phtState
     enqEntry.isLastBranch := renameUop.lastBranch
     // !
     enqEntry.ldqPtr := renameUop.ldqPtr
@@ -170,6 +173,7 @@ class ROB extends CoreModule with HasPerfCounters {
       phtUpdateValidNext := deqValid(i) && (branchTaken || branchNotTaken)
       phtUpdateNext.pc := deqEntry(i).pc
       phtUpdateNext.taken := branchTaken
+      phtUpdateNext.nextState := deqEntry(i).phtState.nextState(branchTaken)
       phtUpdateNext.isLastBranch := deqEntry(i).isLastBranch
 
       rasUpdateValidNext := deqValid(i) && (deqEntry(i).isCall || deqEntry(i).isRet)
@@ -233,7 +237,7 @@ class ROB extends CoreModule with HasPerfCounters {
     }
   }
 
-  io.OUT_robEmpty := robHeadPtr.isEmpty(robTailPtr)
+  io.OUT_robEmpty := RegNext(robHeadPtr.isEmpty(robTailPtr))
   io.OUT_robTailPtr := robTailPtr
   io.OUT_ldqTailPtr := ldqCommitPtr
   io.OUT_stqTailPtr := stqCommitPtr

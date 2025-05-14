@@ -49,17 +49,20 @@ class Core extends CoreModule {
   val rob = Module(new ROB)
   val scheduler = Module(new Scheduler)
   val iq = Seq(
-    Module(new IssueQueue(Seq(FuType.ALU, FuType.MUL, FuType.CSR))),
+    Module(new IssueQueue(Seq(FuType.ALU, FuType.MUL))),
     Module(new IssueQueue(Seq(FuType.ALU, FuType.DIV))),
-    Module(new IssueQueue(Seq(FuType.ALU))),
+    Module(new IssueQueue(Seq(FuType.ALU, FuType.CSR))),
     Module(new IssueQueue(Seq(FuType.LSU))),
   )
   val dispatcher = Seq(
     Module(new Dispatcher(
-      Seq(Seq(FuType.ALU), Seq(FuType.MUL), Seq(FuType.CSR))
+      Seq(Seq(FuType.ALU), Seq(FuType.MUL))
     )),
     Module(new Dispatcher(
       Seq(Seq(FuType.ALU), Seq(FuType.DIV))
+    )),
+    Module(new Dispatcher(
+      Seq(Seq(FuType.ALU, FuType.BRU), Seq(FuType.CSR))
     )),
   )
 
@@ -68,12 +71,12 @@ class Core extends CoreModule {
   // * Port 0
   val alu0 = Module(new ALU(hasBru = false))
   val mul  = Module(new MUL)
-  val csr  = Module(new CSR)
   // * Port 1
   val alu1 = Module(new ALU(hasBru = false))
   val div  = Module(new DIV)
   // * Port 2
   val alu2 = Module(new ALU(hasBru = true))
+  val csr  = Module(new CSR)
   // * Port 3
   val agu  = Module(new AGU)
   val loadQueue = Module(new LoadQueue)
@@ -257,7 +260,12 @@ class Core extends CoreModule {
     for(j <- 0 until NUM_ALU) {
       iq(i).io.IN_issueUops(j).valid := aluIssueUop(j).valid
       iq(i).io.IN_issueUops(j).bits := aluIssueUop(j).bits
+      
+      iq(i).io.IN_readRegUop(j).valid := readRegUop(j).valid
+      iq(i).io.IN_readRegUop(j).bits := readRegUop(j).bits
     }
+    iq(i).io.IN_lsuWakeUp := lsu.io.OUT_wakeUp
+
     iq(i).io.IN_writebackUop := writebackUop
     iq(i).io.IN_robTailPtr := rob.io.OUT_robTailPtr
     iq(i).io.IN_ldqBasePtr := rob.io.OUT_ldqTailPtr
@@ -284,7 +292,7 @@ class Core extends CoreModule {
   pReg.io.IN_writebackUop := writebackUop
 
   // * Execute
-  // ** Port 0: ALU / MUL / CSR
+  // ** Port 0: ALU / MUL
   dispatcher(0).io.IN_uop <> readRegUop(0)
 
   alu0.io.IN_flush := flush
@@ -292,19 +300,13 @@ class Core extends CoreModule {
 
   alu0.io.IN_readRegUop <> dispatcher(0).io.OUT_uop(0)
   mul.io.IN_readRegUop  <> dispatcher(0).io.OUT_uop(1)
-  csr.io.IN_readRegUop  <> dispatcher(0).io.OUT_uop(2)
-  csr.io.IN_mtime := internalMMIO.io.OUT_mtime
-  csr.io.IN_MTIP := internalMMIO.io.OUT_MTIP
-  csr.io.IN_xtvalRec <> xtvalRecorder.io.OUT_tval
-  csr.io.IN_CSRCtrl <> CSRCtrl
 
-  val port0wbsel = Module(new WritebackSel(3))
+  val port0wbsel = Module(new WritebackSel(2))
   port0wbsel.io.IN_uop(0) := alu0.io.OUT_writebackUop
   port0wbsel.io.IN_uop(1) := mul.io.OUT_writebackUop
-  port0wbsel.io.IN_uop(2) := csr.io.OUT_writebackUop
   writebackUop(0) := port0wbsel.io.OUT_uop
 
-  // ** Port 1: ALU / DIV / CSR
+  // ** Port 1: ALU / DIV
   dispatcher(1).io.IN_uop <> readRegUop(1)
 
   alu1.io.IN_flush := flush
@@ -318,10 +320,23 @@ class Core extends CoreModule {
   port1wbsel.io.IN_uop(1) := div.io.OUT_writebackUop
   writebackUop(1) := port1wbsel.io.OUT_uop
 
-  // ** Port 2: ALU / BRU
+  // ** Port 2: ALU / BRU / CSR
+  dispatcher(2).io.IN_uop <> readRegUop(2)
+
   alu2.io.IN_flush := flush
-  alu2.io.IN_readRegUop <> readRegUop(2)
-  alu2.io.OUT_writebackUop <> writebackUop(2)
+
+  alu2.io.IN_readRegUop <> dispatcher(2).io.OUT_uop(0)
+  csr.io.IN_readRegUop  <> dispatcher(2).io.OUT_uop(1)
+
+  csr.io.IN_mtime := internalMMIO.io.OUT_mtime
+  csr.io.IN_MTIP := internalMMIO.io.OUT_MTIP
+  csr.io.IN_xtvalRec <> xtvalRecorder.io.OUT_tval
+  csr.io.IN_CSRCtrl <> CSRCtrl
+
+  val port2wbsel = Module(new WritebackSel(2))
+  port2wbsel.io.IN_uop(0) := alu2.io.OUT_writebackUop
+  port2wbsel.io.IN_uop(1) := csr.io.OUT_writebackUop
+  writebackUop(2) := port2wbsel.io.OUT_uop
 
   // ** Port 3: LSU
   agu.io.IN_readRegUop <> readRegUop(3)
@@ -396,8 +411,10 @@ class Core extends CoreModule {
   amoUnit.io.IN_storeQueueEmpty := storeQueue.io.OUT_storeQueueEmpty
 
   // ** Cache 
-  lsu.io.OUT_tagReq <> dcache.io.IN_tagReq
-  lsu.io.OUT_dataReq <> dcache.io.IN_dataReq
+  lsu.io.OUT_tagRead <> dcache.io.IN_tagRead
+  lsu.io.OUT_tagWrite <> dcache.io.IN_tagWrite
+  lsu.io.OUT_dataRead <> dcache.io.IN_dataRead
+  lsu.io.OUT_dataWrite <> dcache.io.IN_dataWrite
   lsu.io.IN_tagResp <> dcache.io.OUT_tagResp
   lsu.io.IN_dataResp <> dcache.io.OUT_dataResp
   lsu.io.IN_mshrs <> cacheController.io.OUT_MSHR

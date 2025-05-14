@@ -73,6 +73,7 @@ class InstSignal extends Bundle {
   val access_fault = Bool()
   val pageFault    = Bool()
   val interrupt    = Bool()
+  val phtState     = new SaturatedCounter
   val lastBranch   = Bool()
 }
 

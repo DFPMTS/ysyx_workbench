@@ -17,7 +17,6 @@ class RASIO extends CoreBundle {
 
 class RAS extends CoreModule {
   val io = IO(new RASIO)
-  val RAS_SIZE = 16
 
   val top = RegInit(0.U(log2Up(RAS_SIZE).W))
   val ras = Reg(Vec(RAS_SIZE, UInt(XLEN.W)))

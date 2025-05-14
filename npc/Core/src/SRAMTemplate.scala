@@ -2,25 +2,23 @@ import chisel3._
 import chisel3.util._
 import utils._
 
-class SRAMTemplateR(N: Int, ways: Int, width: Int, writeWidth: Int) extends CoreBundle {
+class SRAMTemplateR(N: Int, width: Int, writeWidth: Int) extends CoreBundle {
   val en = Bool()
   val addr = UInt(log2Up(N).W)
-  val rdata = Flipped(Vec(ways, UInt(width.W)))
+  val rdata = Flipped(UInt(width.W))
   def apply(paddr: UInt, lineBytes: Int, en: Bool) = {
-    this.addr := paddr(log2Up(N) - 1 + log2Up(lineBytes), log2Up(lineBytes))
+    this.addr := paddr(log2Up(N) - 1 + log2Ceil(lineBytes), log2Ceil(lineBytes))
     this.en := en
   }
 }
 
-class SRAMTemplateRW(N: Int, ways: Int, width: Int, writeWidth: Int) extends SRAMTemplateR(N, ways, width, writeWidth) {
+class SRAMTemplateRW(N: Int, width: Int, writeWidth: Int) extends SRAMTemplateR(N, width, writeWidth) {
   val write = Bool()
   val wdata = UInt(width.W)
-  val way = UInt(log2Up(ways).W)
   val wmask = UInt((width / writeWidth).W)
   def apply(paddr: UInt, lineBytes: Int, write: UInt, way: UInt, mask: UInt, data: UInt, en: Bool) = {
-    this.addr := paddr(log2Up(N) - 1 + log2Up(lineBytes), log2Up(lineBytes))
+    this.addr := paddr(log2Up(N) - 1 + log2Ceil(lineBytes), log2Ceil(lineBytes))
     this.wmask := mask
-    this.way := way
     this.write := write
     this.wdata := data
     this.en := en
@@ -28,49 +26,43 @@ class SRAMTemplateRW(N: Int, ways: Int, width: Int, writeWidth: Int) extends SRA
 }
 
 // * N: 数量 width: 元素宽度 writeWidth: wmask每一位对应的宽度
-class SRAMTemplateIO(N: Int, ways: Int, width: Int, writeWidth: Int) extends CoreBundle {  
-  val r = Flipped(new SRAMTemplateR(N, ways, width, writeWidth))
-  val rw = Flipped(new SRAMTemplateRW(N, ways, width, writeWidth))
+class SRAMTemplateIO(N: Int, width: Int, writeWidth: Int) extends CoreBundle {  
+  val r = Flipped(new SRAMTemplateR(N, width, writeWidth))
+  val rw = Flipped(new SRAMTemplateRW(N, width, writeWidth))
 }
 
 
-class SRAMTemplate(N: Int, ways: Int, width: Int, writeWidth: Int) extends CoreModule {
-  val io = IO(new SRAMTemplateIO(N, ways, width, writeWidth))
+// class SRAMTemplate(N: Int, ways: Int, width: Int, writeWidth: Int) extends CoreModule {
+//   val io = IO(new SRAMTemplateIO(N, ways, width, writeWidth))
 
-  assert(width % writeWidth == 0, "width must be multiple of writeWidth")
+//   assert(width % writeWidth == 0, "width must be multiple of writeWidth")
 
-  val numEntries = width / writeWidth
-  val PhysicalSet = Vec(ways * numEntries, UInt(writeWidth.W))
-  val Line = Vec(numEntries, UInt(writeWidth.W))
-  val Set = Vec(ways, Line)
-  val array = SyncReadMem(N, PhysicalSet, SyncReadMem.ReadFirst)
+//   val numEntries = width / writeWidth
+//   val PhysicalSet = Vec(ways * numEntries, UInt(writeWidth.W))
+//   val Line = Vec(numEntries, UInt(writeWidth.W))
+//   val Set = Vec(ways, Line)
+//   val array = SyncReadMem(N, PhysicalSet, SyncReadMem.ReadFirst)
 
-  val writeDataVec = Fill(ways, io.rw.wdata).asTypeOf(PhysicalSet) 
-  val writeMaskVec = (io.rw.wmask << (io.rw.way * numEntries.U)).take(numEntries * ways)
+//   val writeDataVec = Fill(ways, io.rw.wdata).asTypeOf(PhysicalSet) 
+//   val writeMaskVec = (io.rw.wmask << (io.rw.way * numEntries.U)).take(numEntries * ways)
 
-  // * Port0: R 读通道
-  io.r.rdata := array.read(io.r.addr, io.r.en).asTypeOf(io.r.rdata)
+//   // * Port0: R 读通道
+//   io.r.rdata := array.read(io.r.addr, io.r.en).asTypeOf(io.r.rdata)
 
-  // * Port1: RW 读写通道
-  io.rw.rdata := array.readWrite(io.rw.addr, writeDataVec, writeMaskVec.asBools, io.rw.en, io.rw.write).asTypeOf(io.rw.rdata)
-}
+//   // * Port1: RW 读写通道
+//   io.rw.rdata := array.readWrite(io.rw.addr, writeDataVec, writeMaskVec.asBools, io.rw.en, io.rw.write).asTypeOf(io.rw.rdata)
+// }
 
-class XilinxBRAM(N: Int, ways: Int, width: Int, writeWidth: Int) extends CoreModule {
-  val io = IO(new SRAMTemplateIO(N, ways, width, writeWidth))
+class XilinxBRAM(N: Int, width: Int, writeWidth: Int) extends CoreModule {
+  val io = IO(new SRAMTemplateIO(N, width, writeWidth))
 
   val NumCol = width / writeWidth
   val ColWidth = writeWidth
-  val PhysicalSet = Vec(ways * NumCol, UInt(ColWidth.W))
   val Line = Vec(NumCol, UInt(ColWidth.W))
-  val Set = Vec(ways, Line)
-  val bramArray = Module(new BRAM1R1RW(N, ways * NumCol, ColWidth))
+  val bramArray = Module(new BRAM1R1RW(N, NumCol, ColWidth))
 
-  val writeDataVec = Fill(ways, io.rw.wdata).asTypeOf(PhysicalSet) 
-  // val writeMaskVec = (io.rw.wmask << (io.rw.way * numEntries.U)).take(numEntries * ways)
-  val writeMaskVec = Wire(Vec(ways, UInt(NumCol.W)))
-  for (i <- 0 until ways) {
-    writeMaskVec(i) := Mux(io.rw.way === i.U, io.rw.wmask, 0.U)
-  }
+  val writeDataVec = io.rw.wdata.asTypeOf(Line) 
+  val writeMaskVec = io.rw.wmask
 
   bramArray.io.clk := clock
 

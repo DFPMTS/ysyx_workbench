@@ -61,6 +61,9 @@ class AGUUop extends CoreBundle {
   val fuType = UInt(FuTypeWidth.W)
   val opcode = UInt(OpcodeWidth.W)
 
+  val isInternalMMIO = Bool()
+  val isUncached = Bool()
+
   val predTarget = UInt(XLEN.W)
   val compressed = Bool()
 }
@@ -128,7 +131,8 @@ class AGU extends CoreModule {
   when(inValid) {
     uopNextValid := true.B
     uopNext.prd := inUop.prd
-    uopNext.addr := Mux(inUop.fuType === FuType.AMO, inUop.src1, inUop.src1 + inUop.imm)
+    // ! uopNext.addr := Mux(inUop.fuType === FuType.AMO, inUop.src1, inUop.src1 + inUop.imm)
+    uopNext.addr := inUop.src1
     uopNext.wdata := inUop.src2
 
     uopNext.dest := Dest.ROB
@@ -141,6 +145,9 @@ class AGU extends CoreModule {
     uopNext.opcode := inUop.opcode
     uopNext.predTarget := inUop.predTarget
     uopNext.compressed := inUop.compressed
+
+    uopNext.isInternalMMIO := false.B
+    uopNext.isUncached := false.B
   }.otherwise {
     uopNextValid := tlbMissQueue.io.OUT_uop.valid
     uopNext := tlbMissQueue.io.OUT_uop.bits    
@@ -205,7 +212,11 @@ class AGU extends CoreModule {
       val permFail = io.IN_TLBResp.bits.loadStorePermFail(isWrite, io.IN_VMCSR)
       when(true.B) {
         uop := uopNext
-        uop.addr := Mux(doTranslate, io.IN_TLBResp.bits.vaddrToPaddr(uopNext.addr), uopNext.addr)
+        val paddr = Mux(doTranslate, io.IN_TLBResp.bits.vaddrToPaddr(uopNext.addr), uopNext.addr)
+        uop.addr := paddr
+        uop.isInternalMMIO := Addr.isInternalMMIO(paddr)
+        uop.isUncached := Addr.isUncached(paddr)
+
         uopValid := Mux(doTranslate, !permFail, true.B)
         when(doTranslate && permFail) {
           wbUopValid := true.B

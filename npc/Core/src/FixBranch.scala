@@ -111,6 +111,11 @@ class FixBranch extends CoreModule {
           fixValid(i) := true.B
           redirectTarget(i) := brInfo.target
         }
+        when(!prediction.btbValidMap(i) && brInfo.isBranch && !prediction.phtTaken(i)) {
+          // * Redirect to next instruction
+          fixValid(i) := true.B
+          redirectTarget(i) := snPCs(i)
+        }
       }
     }
   }

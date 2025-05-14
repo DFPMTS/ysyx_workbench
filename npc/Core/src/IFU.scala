@@ -10,6 +10,7 @@ class FetchGroup extends CoreBundle {
   val brTarget = UInt(XLEN.W)
   val insts = Vec(FETCH_WIDTH, UInt(32.W))
   val lastBranchMap = Vec(FETCH_WIDTH, Bool())
+  val phtState = Vec(FETCH_WIDTH, new SaturatedCounter)
   val pageFault = Bool()
   val interrupt = Bool()
   val access_fault = Bool()
@@ -28,7 +29,7 @@ class IFUIO extends CoreBundle {
   val IN_rasCommitUpdate = Flipped(Valid(new RASUpdate))
 
   // * Output, inst + pc
-  val out = Vec(FETCH_WIDTH, Valid(new InstSignal))
+  val out = Vec(ISSUE_WIDTH, Valid(new InstSignal))
   val IN_ready = Flipped(Bool())
 
   // * ICache Interface 
@@ -82,6 +83,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
 
   val fetchBuffer = Module(new FetchBuffer)
   val instAligner = Module(new InstAligner)
+  val instBuffer = Module(new InstBuffer)
 
   val replaceCounter = RegInit(0.U(2.W))
   replaceCounter := Mux(replaceCounter === ICACHE_WAYS.U - 1.U, 0.U, replaceCounter + 1.U)
@@ -169,6 +171,11 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   val fetchRedirect = Wire(new RedirectSignal)
   // * Fix Branch generated redirect
   val fixRedirect = Wire(new RedirectSignal)  
+  val fixRedirectReg = Reg(new RedirectSignal)
+  fixRedirectReg := fixRedirect
+  when(io.redirect.valid) {
+    fixRedirectReg.valid := false.B
+  }
   dontTouch(fixRedirect)
   fixRedirect := fixBranch.io.OUT_redirect
 
@@ -179,7 +186,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
 
   val redirect = Mux(io.redirect.valid, 
                     io.redirect, 
-                    Mux(fixRedirect.valid, fixRedirect, fetchRedirect))
+                    Mux(fixRedirectReg.valid, fixRedirectReg, fetchRedirect))
 
   // * Stage 0: PC addr translation
   // ** Branch Prediction
@@ -266,7 +273,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   dontTouch(fetchRedirect)
 
   // ** Fetch Buffer
-  when(io.redirect.valid || fixRedirect.valid) {
+  when(io.redirect.valid || fixRedirect.valid || fixRedirectReg.valid) {
     fetchValid := false.B
   }.otherwise {   
     fetchValid := phyPCValid && (!cacheMiss || pageFault || accessFault)
@@ -279,6 +286,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   fetchGroup.brOffset := prediction.brOffset
   fetchGroup.brTarget := prediction.btbTarget
   fetchGroup.insts := fetchGroups(fetchGroupIndex)
+  fetchGroup.phtState := prediction.phtState
   fetchGroup.lastBranchMap := 0.U.asTypeOf(fetchGroup.lastBranchMap)
   fetchGroup.interrupt := interrupt
   fetchGroup.pageFault := pageFault
@@ -301,12 +309,18 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
 
   // ** Inst Aligner
   instAligner.io.IN_fetchGroup <> fetchBuffer.io.out
-  instAligner.io.IN_ready <> io.IN_ready
-  instAligner.io.OUT_insts <> io.out
+  instAligner.io.IN_ready <> instBuffer.io.OUT_instBufferReady
   instAligner.io.IN_flush := io.redirect.valid
 
+  // ** Inst Buffer 
+  instBuffer.io.IN_fetchInsts <> instAligner.io.OUT_insts
+  instBuffer.io.IN_flush := io.redirect.valid
+  instBuffer.io.IN_decodeReady := io.IN_ready
+  instBuffer.io.OUT_insts <> io.out
+
   // ** Write Tag
-  val ITagWrite = Wire(Valid(new ITagWrite))
+  val ITagWrite = Reg(Valid(new ITagWrite))
+  ITagWrite.valid := false.B
   io.OUT_ITagWrite := ITagWrite
   when(flushState === sFlushActive) {
     ITagWrite.valid := true.B

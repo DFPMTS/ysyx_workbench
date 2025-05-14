@@ -19,11 +19,11 @@ trait HasCoreParameters {
   def IDLEN = 4  
 
   // * Issue Width
-  def ISSUE_WIDTH = 4
-  def FETCH_BUFFER_SIZE = 8
+  def ISSUE_WIDTH = 3
+  def FETCH_BUFFER_SIZE = 4
   def MACHINE_WIDTH = 4
   def WRITEBACK_WIDTH = 5
-  def COMMIT_WIDTH = 4
+  def COMMIT_WIDTH = 3
 
   def USE_DUMMY_MUL_DIV = false
   // def USE_DUMMY_MUL_DIV = true
@@ -47,16 +47,16 @@ trait HasCoreParameters {
   def ROB_IDX_W = log2Up(ROB_SIZE).W
 
   // * Issue Queue
-  def IQ_SIZE = 16
+  def IQ_SIZE = 8
   def IQ_IDX_W = log2Up(IQ_SIZE).W
 
   // ! LDQ and STQ must be at least the IQ size, or there will be ldPtr/stPtr problem (flag wrap two time)
   // * Load Queue
-  def LDQ_SIZE = 16
+  def LDQ_SIZE = 8
   def LDQ_IDX_W = log2Up(LDQ_SIZE).W
 
   // * Store Queue
-  def STQ_SIZE = 16
+  def STQ_SIZE = 8
   def STQ_IDX_W = log2Up(STQ_SIZE).W
 
   // * Flag
@@ -64,6 +64,9 @@ trait HasCoreParameters {
 
   // * Page Number Length
   def PAGE_NR_LEN = 20
+
+  // * RAS Size
+  def RAS_SIZE = 8
 
   // * BTB Size (of a single Bank)
   def BTB_INDEX_LEN = 7
@@ -80,7 +83,7 @@ trait HasCoreParameters {
   def GHR_LEN = 8
 
   // * Number of MSHR
-  def NUM_MSHR = 8
+  def NUM_MSHR = 4
 
   // * Cache Id Length
   def CACHE_ID_LEN = 1

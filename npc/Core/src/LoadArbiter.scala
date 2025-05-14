@@ -33,6 +33,9 @@ class LoadArbiter extends CoreModule {
     io.OUT_AGUUop.bits.predTarget := ZERO
     io.OUT_AGUUop.bits.compressed := false.B
 
+    io.OUT_AGUUop.bits.isInternalMMIO := false.B
+    io.OUT_AGUUop.bits.isUncached := false.B
+
     io.OUT_AGUUop.valid := io.IN_PTWUop.valid    
     io.IN_PTWUop.ready := io.OUT_AGUUop.ready
   }

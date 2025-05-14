@@ -59,7 +59,9 @@ public:
 
   uint64_t debugStopCycle = -1;
 
-  // #define KONATA
+  FILE *customFile = nullptr;
+
+#define KONATA
 
   void konataLogStage(uint64_t instId, const char *stage) {
 #ifdef KONATA
@@ -132,25 +134,25 @@ public:
 #define V_UOP_VALID V_DECODE_VALID
 #define V_UOP_READY V_DECODE_READY
 #define UOP_FIELDS DECODE_FIELDS
-    REPEAT_4(BIND_FIELDS)
-    REPEAT_4(BIND_VALID)
-    REPEAT_4(BIND_READY)
+    REPEAT_3(BIND_FIELDS)
+    REPEAT_3(BIND_VALID)
+    REPEAT_3(BIND_READY)
 
     // * renameUop -> ROB
 #define UOP renameROBUop
 #define V_UOP V_RENAME_UOP
 #define V_UOP_VALID V_RENAME_ROB_VALID
 #define UOP_FIELDS RENAME_FIELDS
-    REPEAT_4(BIND_FIELDS)
-    REPEAT_4(BIND_VALID)
+    REPEAT_3(BIND_FIELDS)
+    REPEAT_3(BIND_VALID)
 
     // * renameUop -> IQ
 #define UOP renameIQUop
 // #define V_UOP V_RENAME_UOP
 #define V_UOP_VALID V_RENAME_IQ_VALID
 #define V_UOP_READY V_RENAME_IQ_READY
-    REPEAT_4(BIND_VALID)
-    REPEAT_4(BIND_READY)
+    REPEAT_3(BIND_VALID)
+    REPEAT_3(BIND_READY)
 
 // * IQ -> ReadReg
 #define UOP issueUop
@@ -188,8 +190,8 @@ public:
 #define V_UOP_VALID V_COMMIT_VALID
 #define UOP_FIELDS COMMIT_FIELDS
 
-    REPEAT_4(BIND_FIELDS)
-    REPEAT_4(BIND_VALID)
+    REPEAT_3(BIND_FIELDS)
+    REPEAT_3(BIND_VALID)
 
     // * flagUop
 #define UOP flagUop
@@ -221,9 +223,16 @@ public:
     konataFile = fopen("konata.log", "w");
     fprintf(konataFile, "Kanata 0004\n");
     fprintf(konataFile, "C=0\n");
+
+    customFile = fopen("custom.log", "w");
   }
 
   void log(uint64_t cycle) {
+
+    if (cycle % 100 == 0) {
+      fprintf(customFile, "%lu %lu\n", cycle, instRetired);
+    }
+
     if (cycle > debugStopCycle) {
       running.store(false);
       stop = Stop::DIFFTEST_FAILED;
@@ -363,6 +372,7 @@ public:
           }
         }
         if (inst.fuType == FuType::CSR) {
+          // TODO: skip mip register
           auto csrAddr = inst.imm & ((1 << 12) - 1);
           if (csrAddr == 0xC01 || csrAddr == 0xC81) {
             // fprintf(stderr, "CSR MMIO: %x\n", csrAddr);

@@ -17,6 +17,7 @@ class PHTUpdate extends CoreBundle {
   val pc = UInt(XLEN.W)
   val isLastBranch = Bool()
   val taken = Bool()
+  val nextState = new SaturatedCounter
 }
 
 class GHRUpdate extends CoreBundle {
@@ -27,14 +28,15 @@ class PHTIO extends CoreBundle {
   val IN_bpGHRUpdate = Flipped(Valid(new GHRUpdate))
   val IN_phtUpdate = Flipped(Valid(new PHTUpdate))
   val IN_pc = Flipped(UInt(XLEN.W))
-  val OUT_phtTaken = Vec(FETCH_WIDTH, Bool())
+  val OUT_phtState = Vec(FETCH_WIDTH, new SaturatedCounter)
 
   val IN_flush = Flipped(Bool())
 }
 
 class PHT extends CoreModule {
   val io = IO(new PHTIO)
-  val pht = Seq.fill(FETCH_WIDTH)(RegInit(VecInit(Seq.fill(PHT_SIZE)("b10".U.asTypeOf(new SaturatedCounter)))))
+  // val pht = Seq.fill(FETCH_WIDTH)(RegInit(VecInit(Seq.fill(PHT_SIZE)("b10".U.asTypeOf(new SaturatedCounter)))))
+  val pht = Seq.fill(FETCH_WIDTH)(Module(new XilinxBRAM(PHT_SIZE, (new SaturatedCounter).getWidth, (new SaturatedCounter).getWidth)))
 
   val specGHR = RegInit(0.U(GHR_LEN.W))
   val specGHRNext = WireInit(specGHR)
@@ -80,12 +82,14 @@ class PHT extends CoreModule {
   val phtUpdateTaken = io.IN_phtUpdate.bits.taken
 
   for (i <- 0 until FETCH_WIDTH) {
-    io.OUT_phtTaken(i) := RegNext(pht(i)(phtIndex).counter(1))
+    pht(i).io.r(phtIndex, 1, true.B)
+    io.OUT_phtState(i) := pht(i).io.r.rdata.asTypeOf(new SaturatedCounter)
   }
 
   for (i <- 0 until FETCH_WIDTH) {
+    pht(i).io.rw(phtUpdateIndex, 1, true.B, 0.U, 1.U, io.IN_phtUpdate.bits.nextState.asUInt, false.B)
     when(io.IN_phtUpdate.valid && phtUpdateBank === i.U) {
-      pht(i)(phtUpdateIndex) := pht(i)(phtUpdateIndex).nextState(phtUpdateTaken)
+      pht(i).io.rw(phtUpdateIndex, 1, true.B, 0.U, 1.U, io.IN_phtUpdate.bits.nextState.asUInt, true.B)
     }
   }
 }

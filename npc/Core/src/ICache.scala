@@ -103,7 +103,6 @@ class IDataRead extends CoreBundle {
 class IDataWrite extends CoreBundle {
   val addr = UInt(XLEN.W)
   val way = UInt(log2Up(ICACHE_WAYS).W)
-  val wmask = UInt(CACHE_LINE_B.W)
   val data = Vec(CACHE_LINE_B/4, UInt(32.W))
 }
 
@@ -128,19 +127,23 @@ class ICacheIO extends CoreBundle {
 class NewICache extends CoreModule {
   val io = IO(new ICacheIO)
 
-  val tagArray = Module(new XilinxBRAM(ICACHE_SETS, ICACHE_WAYS, ICACHE_TAG + 1, ICACHE_TAG + 1))  
-  val dataArray = Module(new XilinxBRAM(ICACHE_SETS, ICACHE_WAYS, CACHE_LINE_B * 8, 8))
+  val tagArray = Seq.fill(ICACHE_WAYS)(Module(new XilinxBRAM(ICACHE_SETS, ICACHE_TAG + 1, ICACHE_TAG + 1)))
+  val dataArray = Seq.fill(ICACHE_WAYS)(Module(new XilinxBRAM(ICACHE_SETS, CACHE_LINE_B * 8, CACHE_LINE_B * 8)))
 
   // * Tag
-  tagArray.io.r(io.IN_tagRead.bits.addr, CACHE_LINE_B, io.IN_tagRead.valid)
-  tagArray.io.rw(io.IN_tagWrite.bits.addr, CACHE_LINE_B, true.B, io.IN_tagWrite.bits.way, true.B, io.IN_tagWrite.bits.data.asUInt, io.IN_tagWrite.valid)
-
-  io.OUT_tagResp := tagArray.io.r.rdata.asTypeOf(new ITagResp)
-
+  for (i <- 0 until ICACHE_WAYS) {
+    tagArray(i).io.r(io.IN_tagRead.bits.addr, CACHE_LINE_B, io.IN_tagRead.valid)
+    tagArray(i).io.rw(io.IN_tagWrite.bits.addr, CACHE_LINE_B, true.B, io.IN_tagWrite.bits.way, true.B, io.IN_tagWrite.bits.data.asUInt, io.IN_tagWrite.valid && io.IN_tagWrite.bits.way === i.U)
+    
+    io.OUT_tagResp.tags(i) := tagArray(i).io.r.rdata.asTypeOf(new ITag)
+  }
+  
   // * Data
-  dataArray.io.r(io.IN_dataRead.bits.addr, CACHE_LINE_B, io.IN_dataRead.valid)
-  dataArray.io.rw(io.IN_ctrlDataWrite.bits.addr, CACHE_LINE_B, true.B, io.IN_ctrlDataWrite.bits.way, io.IN_ctrlDataWrite.bits.wmask, io.IN_ctrlDataWrite.bits.data.asUInt, io.IN_ctrlDataWrite.valid)
+  for (i <- 0 until ICACHE_WAYS) {
+    dataArray(i).io.r(io.IN_dataRead.bits.addr, CACHE_LINE_B, io.IN_dataRead.valid)
+    dataArray(i).io.rw(io.IN_ctrlDataWrite.bits.addr, CACHE_LINE_B, true.B, io.IN_ctrlDataWrite.bits.way, 1.U, io.IN_ctrlDataWrite.bits.data.asUInt, io.IN_ctrlDataWrite.valid && io.IN_ctrlDataWrite.bits.way === i.U)
 
-  io.OUT_dataResp := dataArray.io.r.rdata.asTypeOf(new IDataResp)
-
+    io.OUT_dataResp.data(i) := dataArray(i).io.r.rdata.asTypeOf(io.OUT_dataResp.data(i))
+  }
+  
 }

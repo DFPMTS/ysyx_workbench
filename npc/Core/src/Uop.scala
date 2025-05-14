@@ -349,6 +349,7 @@ class DecodeUop extends CoreBundle{
 
   val lockBackend = Bool()
 
+  val phtState = new SaturatedCounter
   val lastBranch  = Bool()
 
   // * debug
@@ -383,6 +384,7 @@ class RenameUop extends CoreBundle {
   val predTarget = UInt(XLEN.W)
   val compressed = Bool()
 
+  val phtState = new SaturatedCounter
   val lastBranch  = Bool()
 
   // * debug

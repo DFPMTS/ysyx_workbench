@@ -19,7 +19,7 @@ class Scheduler extends CoreModule {
 
   for (i <- 0 until MACHINE_WIDTH) {
     io.OUT_renameUop(i).valid := false.B
-    io.OUT_renameUop(i).bits := io.IN_renameUop(i)
+    io.OUT_renameUop(i).bits := DontCare
   }
 
   // * Port 0: ALU/MUL/CSR
@@ -28,13 +28,13 @@ class Scheduler extends CoreModule {
   // * Port 3: LSU
   def isPort(portIndex: Int, uop: RenameUop) = {
     if (portIndex == 0) {
-      (uop.fuType === FuType.ALU || uop.fuType === FuType.MUL || uop.fuType === FuType.CSR) &&
+      (uop.fuType === FuType.ALU || uop.fuType === FuType.MUL) &&
       (!(uop.fuType === FuType.ALU) || uop.robPtr.index(0) === 0.U)
     }else if (portIndex == 1) {
       (uop.fuType === FuType.ALU || uop.fuType === FuType.DIV) && 
       (!(uop.fuType === FuType.ALU) || uop.robPtr.index(0) === 1.U)
     }else if (portIndex == 2) {
-      uop.fuType === FuType.ALU || uop.fuType === FuType.BRU
+      uop.fuType === FuType.ALU || uop.fuType === FuType.BRU || uop.fuType === FuType.CSR
     }else {
       uop.fuType === FuType.LSU || uop.fuType === FuType.AMO
     }

@@ -149,7 +149,7 @@ class StoreQueue extends CoreModule {
       stqBasePtr := stqBasePtr + 1.U
     }
   }
-  io.OUT_storeQueueEmpty := !hasIssueReady && !uopValid
+  io.OUT_storeQueueEmpty := RegNext(!hasIssueReady && !uopValid)
   io.OUT_stUop.valid := uopValid
   io.OUT_stUop.bits  := uop
 }

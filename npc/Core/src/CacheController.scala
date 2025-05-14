@@ -401,7 +401,6 @@ class CacheController extends CoreModule {
       io.OUT_IDataWrite.bits.addr := rMSHR.memReadAddr
       io.OUT_IDataWrite.bits.data := wdata.asTypeOf(io.OUT_IDataWrite.bits.data)
       io.OUT_IDataWrite.bits.way := rMSHR.way
-      io.OUT_IDataWrite.bits.wmask := Fill(CACHE_LINE_B, 1.U(1.W))
       io.OUT_IDataWrite.valid := true.B
     }
     rMSHR.axiReadDone := true.B

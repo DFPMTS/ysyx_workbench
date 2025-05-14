@@ -38,6 +38,7 @@ class InstAligner extends CoreModule {
       insts(i).pageFault := inFetchGroup.pageFault
       insts(i).interrupt := inFetchGroup.interrupt
       insts(i).access_fault := inFetchGroup.access_fault
+      insts(i).phtState := inFetchGroup.phtState(fetchOffset + i.U)
       insts(i).lastBranch := inFetchGroup.lastBranchMap(fetchOffset + i.U)
     }
   }.elsewhen(io.IN_ready) {

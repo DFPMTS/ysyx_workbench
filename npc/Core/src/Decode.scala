@@ -102,7 +102,7 @@ class Decode extends CoreModule {
   val defaultCtrl: List[BitPat] = List(Y, N, BitPat.dontCare(2), BitPat.dontCare(2), BitPat.dontCare(FuTypeWidth), BitPat.dontCare(OpcodeWidth), ImmType.X, N)
   val lut: List[(BitPat, List[BitPat])] = List(
 lui        -> List(N, Y, SrcType.ZERO, SrcType.IMM,  FuType.ALU,  ALUOp.ADD,                  ImmType.U, N),
-auipc      -> List(N, Y, SrcType.PC,   SrcType.IMM,  FuType.ALU,  ALUOp.ADD,                  ImmType.U, N),
+auipc      -> List(N, Y, SrcType.PC,   SrcType.IMM,  FuType.BRU,  ALUOp.ADD,                  ImmType.U, N),
 jal        -> List(N, Y, SrcType.PC,   SrcType.IMM,  FuType.BRU,  BRUOp.JAL,                  ImmType.J, N),
 jalr       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.BRU,  BRUOp.JALR,                 ImmType.I, N),
 beq        -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.BRU,  BRUOp.BEQ,                  ImmType.B, N),

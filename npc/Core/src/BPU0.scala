@@ -3,7 +3,8 @@ import chisel3.util._
 import utils._
 
 class Prediction extends CoreBundle {
-  val phtTaken = Vec(FETCH_WIDTH, Bool())
+  val btbValidMap = Vec(FETCH_WIDTH, Bool())
+  val phtState = Vec(FETCH_WIDTH, new SaturatedCounter)
   // * For GHR
   val hasBranch = Bool()
   // * Branch Taken?
@@ -13,6 +14,8 @@ class Prediction extends CoreBundle {
   val btbValid  = Bool()
   val btbType   = BrType()
   val btbTarget = UInt(XLEN.W)
+
+  def phtTaken(i: Int) = phtState(i).counter(1)
 }
 
 class BPU0IO extends CoreBundle {
@@ -67,7 +70,7 @@ class BPU0 extends CoreModule {
 
   val phtTaken = Wire(Vec(FETCH_WIDTH, Bool()))
   for (i <- 0 until FETCH_WIDTH) {
-    phtTaken(i) := pht.io.OUT_phtTaken(i)
+    phtTaken(i) := pht.io.OUT_phtState(i).counter(1)
   }
 
   val brTaken = Wire(Vec(FETCH_WIDTH, Bool()))
@@ -86,7 +89,8 @@ class BPU0 extends CoreModule {
   }
 
   io.OUT_prediction.brOffset := brOffset
-  io.OUT_prediction.phtTaken := phtTaken
+  io.OUT_prediction.btbValidMap := btbValid
+  io.OUT_prediction.phtState := pht.io.OUT_phtState
   io.OUT_prediction.hasBranch := hasBranchMap.asUInt.orR
   io.OUT_prediction.brTaken := brTakenMap.asUInt.orR
   io.OUT_prediction.btbValid := btbValid(brOffset)
