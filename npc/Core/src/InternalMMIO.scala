@@ -43,7 +43,8 @@ class InternalMMIO extends CoreModule {
   val mtimecmph = mtimecmp(63, 32)
 
 
-  val mmioReadData = Reg(UInt(XLEN.W))  
+  val mmioReadData = Wire(UInt(XLEN.W))  
+  mmioReadData := DontCare
   io.OUT_mmioResp.data := mmioReadData
 
   def addrMatch(addr: UInt, base: UInt, offset: UInt) = {
@@ -85,6 +86,7 @@ class InternalMMIO extends CoreModule {
     }
   }
 
-  io.OUT_mtime := mtime
-  io.OUT_MTIP := mtime >= mtimecmp
+  // * Latch 1 cycle
+  io.OUT_mtime := RegNext(mtime)
+  io.OUT_MTIP := RegNext(mtime >= mtimecmp)
 }

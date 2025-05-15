@@ -339,7 +339,8 @@ class NewLSU extends CoreModule with HasLSUOps {
   val cacheCtrlUop = Reg(new CacheCtrlUop)
   val cacheCtrlUopValid = RegInit(false.B)  
 
-  val cacheUopReq = WireInit(0.U.asTypeOf(new CacheCtrlUop))
+  val cacheUopReq = Wire(new CacheCtrlUop)
+  cacheUopReq := DontCare
   cacheUopReq.cacheId := CacheId.DCACHE
   val cacheUopReqValid = WireInit(false.B)
   
@@ -385,24 +386,26 @@ class NewLSU extends CoreModule with HasLSUOps {
   // ** Load/Store Stage 0
   val inLoadUop = io.IN_loadUop.bits
   val loadIsUncached = inLoadUop.isUncached
-  val loadIsInternalMMIO = inLoadUop.isInternalMMIO
-  val loadUop = io.IN_loadUop.valid && serveLoad && (!loadIsUncached || loadIsInternalMMIO)
+  val loadUop = io.IN_loadUop.valid && serveLoad && !loadIsUncached
 
   val inStoreUop = io.IN_storeUop.bits
   val storeIsUncached = inStoreUop.isUncached
-  val storeIsInternalMMIO = inStoreUop.isInternalMMIO
   val storeUop = io.IN_storeUop.valid && serveStore
 
   stageValid(0) := loadUop && (!io.IN_flush || inLoadUop.dest === Dest.PTW) || storeUop
   stage(0) := Mux(storeUop, inStoreUop, inLoadUop)
 
   // * Uncache Load/Store
-  uncachedLSU.io.IN_loadUop.valid := io.IN_loadUop.valid && loadIsUncached && !loadIsInternalMMIO && serveLoad
+  uncachedLSU.io.IN_loadUop.valid := io.IN_loadUop.valid && loadIsUncached && serveLoad
   uncachedLSU.io.IN_loadUop.bits := io.IN_loadUop.bits
-  uncachedLSU.io.IN_storeUop.valid := io.IN_storeUop.valid && storeIsUncached && !storeIsInternalMMIO && serveStore
+  uncachedLSU.io.IN_storeUop.valid := io.IN_storeUop.valid && storeIsUncached && serveStore
   uncachedLSU.io.IN_storeUop.bits := io.IN_storeUop.bits
   uncachedLSU.io.IN_memLoadFoward := io.IN_memLoadFoward
   uncachedLSU.io.IN_uncacheStoreResp := io.IN_uncacheStoreResp
+
+  io.OUT_mmioReq := uncachedLSU.io.OUT_mmioReq
+  uncachedLSU.io.IN_mmioResp := io.IN_mmioResp
+
   uncachedLSU.io.IN_flush := io.IN_flush
 
   uncachedLSU.io.OUT_cacheCtrlUop.ready := false.B
@@ -414,8 +417,6 @@ class NewLSU extends CoreModule with HasLSUOps {
   io.OUT_storeBypassReq.addr := io.IN_loadUop.bits.addr
   io.OUT_storeBypassReq.stqPtr := io.IN_loadUop.bits.stqPtr
 
-  io.OUT_mmioReq := 0.U.asTypeOf(new MMIOReq)
-
   // * Amo 
   val inAmoUop = io.IN_amoUop.bits
   val inAmoIsLr = inAmoUop.opcode === AMOOp.LR_W
@@ -426,24 +427,13 @@ class NewLSU extends CoreModule with HasLSUOps {
   when(flushState === sFlushRead) {
     io.OUT_tagRead.bits.addr := Cat(flushIndex, 0.U(log2Up(CACHE_LINE_B).W))
   }.elsewhen(loadUop) {
-    when(loadIsInternalMMIO) {
-      io.OUT_mmioReq.ren := true.B
-      io.OUT_mmioReq.addr := inLoadUop.addr
-    }.otherwise {
-      // * Tag Request
-      io.OUT_tagRead.bits.addr := inLoadUop.addr
-      // * Data Request
-      io.OUT_dataRead.bits.addr := inLoadUop.addr
-    }
+    // * Tag Request
+    io.OUT_tagRead.bits.addr := inLoadUop.addr
+    // * Data Request
+    io.OUT_dataRead.bits.addr := inLoadUop.addr
   }.elsewhen(storeUop) {
-    when(storeIsInternalMMIO) {
-      io.OUT_mmioReq.wen := true.B
-      io.OUT_mmioReq.addr := inStoreUop.addr
-      io.OUT_mmioReq.wdata := inStoreUop.wdata
-    }.otherwise {
-      // * Tag Request
-      io.OUT_tagRead.bits.addr := inStoreUop.addr
-    }
+    // * Tag Request
+    io.OUT_tagRead.bits.addr := inStoreUop.addr
   }.elsewhen(amoUop) { // amoState === sAmoIdle && amoUop
     // * Tag
     io.OUT_tagRead.bits.addr := inAmoUop.addr
@@ -529,9 +519,9 @@ class NewLSU extends CoreModule with HasLSUOps {
 
   io.OUT_wakeUp := 0.U.asTypeOf(Valid(new WritebackUop))
 
+  stageValid(1) := false.B
+  stage(1) := stage(0)
   when(stageValid(0)) {
-    stageValid(1) := false.B
-    stage(1) := stage(0)
     cacheUopReqValid := false.B
     loadResultValid := false.B
     val mask = getWmask(stage(0))
@@ -547,8 +537,7 @@ class NewLSU extends CoreModule with HasLSUOps {
           io.IN_storeBufferBypassResp.data((i + 1) * 8 - 1, i * 8)
         )
       }
-      val isInternalMMIO = stage(0).isInternalMMIO
-      val loadCacheHit = ((tagHit || (~bypassDataMask & mask) === 0.U) || isInternalMMIO) && !addrInFlight
+      val loadCacheHit = (tagHit || (~bypassDataMask & mask) === 0.U) && !addrInFlight
       val wordOffset = stage(0).addr(log2Up(CACHE_LINE_B) - 1, 2)
       dontTouch(wordOffset)
       val loadHitCacheline = Mux1H(tagHitOH, dataResp)
@@ -581,20 +570,28 @@ class NewLSU extends CoreModule with HasLSUOps {
       // * One load have two control signals: [miss] and [need cache uop]
       // * negAck: miss && !canServeCacheUop
 
-      val miss = !isInternalMMIO && !loadCacheHit
+      val miss = !loadCacheHit
       val loadMiss = miss && !addrInFlight
       // ! ?????? 逻辑一团乱, 跑sum继续debug
 
       // * LoadResult
       loadResultValid := true.B
-      loadResult.data := Mux(isInternalMMIO, io.IN_mmioResp.data, finalData.asUInt)
-      loadResult.ready := Mux(isInternalMMIO, true.B, loadCacheHit)
-      loadResult.bypassMask := Mux(isInternalMMIO, Fill(XLEN/8, "b1".U), bypassDataMask | ~mask)
+      loadResult.data := finalData.asUInt
+      loadResult.ready := loadCacheHit
+      loadResult.bypassMask := bypassDataMask | ~mask
       loadResult.addr := loadUop.addr
       loadResult.opcode := loadUop.opcode
       loadResult.prd := loadUop.prd
       loadResult.robPtr := loadUop.robPtr
       loadResult.dest := loadUop.dest
+      // * CacheUop
+      cacheUopReq.index := loadUop.addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
+      cacheUopReq.rtag := loadUop.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+      cacheUopReq.wtag := tagResp(replaceCounter).tag
+      cacheUopReq.way := replaceCounter
+      cacheUopReq.wmask := 0.U
+      cacheUopReq.wdata := 0.U
+      cacheUopReq.opcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
 
       // * Load NegAck generated on Stage(1)
       stageValid(1) := true.B
@@ -602,16 +599,9 @@ class NewLSU extends CoreModule with HasLSUOps {
       // * To Next Stage: Hit / Miss, but cacheUop can be served
       when(loadMiss) {
         cacheUopReqValid := true.B
-        cacheUopReq.index := loadUop.addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
-        cacheUopReq.rtag := loadUop.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
-        cacheUopReq.wtag := tagResp(replaceCounter).tag
-        cacheUopReq.way := replaceCounter
-        cacheUopReq.wmask := 0.U
-        cacheUopReq.wdata := 0.U
-        cacheUopReq.opcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
       }
 
-      when(!isInternalMMIO && ((tagHit && addrInFlight) || (loadMiss && !canServeCacheUop))) {
+      when((tagHit && addrInFlight) || (loadMiss && !canServeCacheUop)) {
         loadFailed := true.B
         loadResultValid := false.B
       }
@@ -622,23 +612,23 @@ class NewLSU extends CoreModule with HasLSUOps {
       storeAck.index := stage(0).stqPtr.index
       storeAck.resp := 1.U
       dontTouch(tagHit)
-      val isInternalMMIO = stage(0).isInternalMMIO
       val isUncached = stage(0).isUncached
       val isCached = !isUncached
-      val storeMiss = !isInternalMMIO && !isUncached && !tagHit && !addrInFlight
+      val storeMiss = !isUncached && !tagHit && !addrInFlight
+
+      cacheUopReq.index := stage(0).addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
+      cacheUopReq.rtag := stage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+      cacheUopReq.way := replaceCounter
+      cacheUopReq.wtag := tagResp(replaceCounter).tag
+      cacheUopReq.wdata := 0.U
+      cacheUopReq.wmask := 0.U
+      cacheUopReq.offset := stage(0).addr(log2Up(CACHE_LINE_B) - 1, 0)
+      cacheUopReq.opcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
 
       when(storeMiss) {
         cacheUopReqValid := true.B  
-        cacheUopReq.index := stage(0).addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
-        cacheUopReq.rtag := stage(0).addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
-        cacheUopReq.way := replaceCounter
-        cacheUopReq.wtag := tagResp(replaceCounter).tag
-        cacheUopReq.wdata := 0.U
-        cacheUopReq.wmask := 0.U
-        cacheUopReq.offset := stage(0).addr(log2Up(CACHE_LINE_B) - 1, 0)
-        cacheUopReq.opcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
       }
-      when(isInternalMMIO || isUncached) {
+      when(isUncached) {
         storeAck.resp := 0.U
       }.elsewhen(tagHit && !addrInFlight) {
         val offset = stage(0).addr(log2Up(CACHE_LINE_B) - 1, 2)
@@ -724,22 +714,22 @@ class NewLSU extends CoreModule with HasLSUOps {
       val amoLoadFailed = writeTag || !amoTagHit || amoAddrAlreadyInFlight
       val amoNeedLoad = !writeTag && !amoTagHit && !amoAddrAlreadyInFlight
 
+      cacheUopReq.index := amoUopReg.addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
+      cacheUopReq.rtag := amoUopReg.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
+      cacheUopReq.wtag := tagResp(replaceCounter).tag
+      cacheUopReq.way := replaceCounter
+      cacheUopReq.wmask := 0.U
+      cacheUopReq.wdata := 0.U
+      cacheUopReq.opcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
+      cacheUopReq.offset := amoUopReg.addr(log2Up(CACHE_LINE_B) - 1, 0)
       when(amoLoadFailed) {
         // * Amo Neg Ack
         amoAckValid := true.B
-        amoAck.resp := 1.U      
+        amoAck.resp := 1.U
         when(amoNeedLoad) {
           // * Cache Controller
           amoNeedCacheUop := true.B
           cacheUopReqValid := true.B
-          cacheUopReq.index := amoUopReg.addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
-          cacheUopReq.rtag := amoUopReg.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
-          cacheUopReq.wtag := tagResp(replaceCounter).tag
-          cacheUopReq.way := replaceCounter
-          cacheUopReq.wmask := 0.U
-          cacheUopReq.wdata := 0.U
-          cacheUopReq.opcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
-          cacheUopReq.offset := amoUopReg.addr(log2Up(CACHE_LINE_B) - 1, 0)
         }
       }
 
