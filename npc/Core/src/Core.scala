@@ -369,6 +369,9 @@ class Core extends CoreModule {
   lsu.io.IN_flush := flush
   lsu.io.IN_flushDCache := flagHandler.io.OUT_flushDCache
   
+  lsu.io.IN_aguVirtualIndex <> agu.io.OUT_virtualIndex
+  lsu.io.IN_aguLoadUop := loadQueue.io.OUT_aguLoadUop
+
   val aguUop = Wire(Valid(new AGUUop))
   dontTouch(aguUop)
 

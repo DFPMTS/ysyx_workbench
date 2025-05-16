@@ -328,8 +328,8 @@ class CacheController extends CoreModule {
   memLoadFowardReg.data := io.OUT_axi.r.bits.data
   memLoadFowardReg.uncached := mshr(axiRId).uncached
 
-  io.OUT_memLoadFoward.valid := RegNext(memLoadFowardValidReg)
-  io.OUT_memLoadFoward.bits := RegNext(memLoadFowardReg)
+  io.OUT_memLoadFoward.valid := ShiftRegister(memLoadFowardValidReg, 3)
+  io.OUT_memLoadFoward.bits := ShiftRegister(memLoadFowardReg, 3)
 
   // * cache interface
   // ** cache read

@@ -57,19 +57,6 @@ class StoreQueue extends CoreModule {
   //     }
   // }
 
-  def getWmask(aguUop: AGUUop): UInt = {
-    val memLen = aguUop.opcode(2, 1)
-    val addrOffset = aguUop.addr(log2Up(XLEN/8) - 1, 0)
-    val wmask = MuxLookup(memLen, 0.U(4.W))(
-      Seq(
-        0.U(2.W) -> "b0001".U,
-        1.U(2.W) -> "b0011".U,
-        2.U(2.W) -> "b1111".U
-      )
-    ) << addrOffset
-    wmask(3, 0)
-  }
-
   def getShiftedData(aguUop: AGUUop): UInt = {
     val addrOffset = aguUop.addr(log2Up(XLEN/8) - 1, 0)
     (aguUop.wdata << (addrOffset << 3))(XLEN - 1, 0)
@@ -88,11 +75,11 @@ class StoreQueue extends CoreModule {
   val bypassDataMask = RegNext(bypassDataMaskNext)
   io.OUT_storeBypassResp.data := bypassData.asTypeOf(UInt(32.W))
   io.OUT_storeBypassResp.mask := bypassDataMask.asUInt
-  val wmask = stq.map(getWmask(_))
+  val wmask = stq.map(_.mask)
   val shiftedData = stq.map(getShiftedData(_))
 
   when(addrMatch(io.IN_storeBypassReq.addr, uop.addr) && uopValid) {
-    val uopWmask = getWmask(uop)
+    val uopWmask = uop.mask
     val uopShiftedData = getShiftedData(uop)
     dontTouch(uopShiftedData)
     for (i <- 0 until 4) {

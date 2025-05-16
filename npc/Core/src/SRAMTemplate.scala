@@ -74,7 +74,7 @@ class XilinxBRAM(N: Int, width: Int, writeWidth: Int) extends CoreModule {
   bramArray.io.ena := io.r.en
   bramArray.io.enb := io.rw.en
 
-  bramArray.io.web := writeMaskVec.asUInt
+  bramArray.io.web := writeMaskVec.asUInt & Fill(NumCol, io.rw.write)
   
   io.r.rdata := bramArray.io.douta.asTypeOf(io.r.rdata)
   io.rw.rdata := bramArray.io.doutb.asTypeOf(io.rw.rdata)

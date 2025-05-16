@@ -16,6 +16,7 @@ class LoadResult extends CoreBundle{
 }
 
 class LoadResultBufferIO extends CoreBundle {
+  val IN_hitLoadResult = Flipped(Valid(new LoadResult))
   val IN_loadResult = Flipped(Decoupled(new LoadResult))
   val IN_memLoadFoward = Flipped(Valid(new MemLoadFoward))
   val OUT_writebackUop = Valid(new WritebackUop)
@@ -37,12 +38,12 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
   
   io.IN_loadResult.ready := hasEmptySlot
 
-  val inLoadResult = io.IN_loadResult.bits
+  val inHitLoadResult = io.IN_hitLoadResult.bits
   // * Write back now, without writing to result queue
-  val inLoadResultWriteback = io.IN_loadResult.fire && inLoadResult.ready
+  val inLoadResultWriteback = io.IN_hitLoadResult.valid
 
   // * Accept new load if there's space and the loadResult is not ready
-  when(io.IN_loadResult.fire && !inLoadResult.ready && (!io.IN_flush || io.IN_loadResult.bits.dest === Dest.PTW)) {
+  when(io.IN_loadResult.fire && (!io.IN_flush || io.IN_loadResult.bits.dest === Dest.PTW)) {
     valid(allocPtr) := true.B
     entries(allocPtr) := io.IN_loadResult.bits
   }
@@ -100,7 +101,7 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
   }
 
   // * New load result with ready data writes back first
-  val wbLoadResult = Mux(inLoadResultWriteback, inLoadResult, entries(readyIndex))
+  val wbLoadResult = Mux(inLoadResultWriteback, inHitLoadResult, entries(readyIndex))
 
   wbUopValid := inLoadResultWriteback || hasReady
   wbUop := loadResultToWriteback(wbLoadResult)

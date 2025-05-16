@@ -51,6 +51,7 @@ class AGUUop extends CoreBundle {
 
   val addr = UInt(XLEN.W)
   val wdata = UInt(XLEN.W)
+  val mask = UInt((XLEN / 8).W)
 
   val dest = UInt(1.W)
 
@@ -63,6 +64,7 @@ class AGUUop extends CoreBundle {
 
   val isInternalMMIO = Bool()
   val isUncached = Bool()
+  val virtualIndexIssued = Bool()
 
   val predTarget = UInt(XLEN.W)
   val compressed = Bool()
@@ -83,12 +85,27 @@ class AGUIO extends CoreBundle {
   val OUT_writebackUop = Valid(new WritebackUop)
   val OUT_xtvalRec   = Valid(new XtvalRec)
 
+  val OUT_virtualIndex = Decoupled(new VirtualIndex)
+
   val IN_flush       = Flipped(Bool())
 }
 
 class AGU extends CoreModule {
   val io = IO(new AGUIO)
   
+  def getWmask(aguUop: AGUUop): UInt = {
+    val memLen = aguUop.opcode(2, 1)
+    val addrOffset = aguUop.addr(log2Up(XLEN/8) - 1, 0)
+    val mask = MuxLookup(memLen, 0.U(4.W))(
+      Seq(
+        0.U(2.W) -> "b0001".U,
+        1.U(2.W) -> "b0011".U,
+        2.U(2.W) -> "b1111".U
+      )
+    ) << addrOffset
+    mask(3, 0)
+  }
+
   val tlbMissQueue = Module(new TLBMissQueue(4))
   tlbMissQueue.io.IN_flush := io.IN_flush
 
@@ -146,8 +163,11 @@ class AGU extends CoreModule {
     uopNext.predTarget := inUop.predTarget
     uopNext.compressed := inUop.compressed
 
-    uopNext.isInternalMMIO := false.B
-    uopNext.isUncached := false.B
+    uopNext.virtualIndexIssued := io.OUT_virtualIndex.ready
+
+    uopNext.mask := DontCare
+    uopNext.isInternalMMIO := DontCare
+    uopNext.isUncached := DontCare
   }.otherwise {
     uopNextValid := tlbMissQueue.io.OUT_uop.valid
     uopNext := tlbMissQueue.io.OUT_uop.bits    
@@ -216,6 +236,7 @@ class AGU extends CoreModule {
         uop.addr := paddr
         uop.isInternalMMIO := Addr.isInternalMMIO(paddr)
         uop.isUncached := Addr.isUncached(paddr)
+        uop.mask := getWmask(uopNext)
 
         uopValid := Mux(doTranslate, !permFail, true.B)
         when(doTranslate && permFail) {
@@ -246,6 +267,10 @@ class AGU extends CoreModule {
 
   io.OUT_xtvalRec.valid := wbUopValid
   io.OUT_xtvalRec.bits := xtvalRec
+
+  io.OUT_virtualIndex.valid := io.IN_readRegUop.fire && LSUOp.isLoad(io.IN_readRegUop.bits.opcode)
+  io.OUT_virtualIndex.bits.index := io.IN_readRegUop.bits.src1(log2Up(DCACHE_SETS) + log2Up(CACHE_LINE_B) - 1, log2Up(CACHE_LINE_B))
+  io.OUT_virtualIndex.bits.opcode := io.IN_readRegUop.bits.opcode
 
   when(io.IN_flush) {
     uopValid := false.B
@@ -278,6 +303,7 @@ class TLBMissQueue(size: Int) extends CoreModule {
     val enqIndex = valid.indexWhere(_ === false.B)
     valid(enqIndex) := true.B
     entry(enqIndex) := io.IN_uop.bits
+    entry(enqIndex).virtualIndexIssued := false.B
   }
 
   // * Dequeue valid && ready

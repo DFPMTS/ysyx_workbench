@@ -29,6 +29,7 @@ class LoadQueueIO extends CoreBundle {
   val IN_robTailPtr = Input(RingBufferPtr(ROB_SIZE))
   val IN_commitLdqPtr = Input(RingBufferPtr(LDQ_SIZE))
   val IN_commitStqPtr = Input(RingBufferPtr(STQ_SIZE))
+  val OUT_aguLoadUop = Valid(new AGUUop)
   val OUT_ldUop = Decoupled(new AGUUop)
 
   val IN_flush = Flipped(Bool())
@@ -51,7 +52,6 @@ class LoadQueue extends CoreModule {
 
   val isInUopLoad = io.IN_AGUUop.fire && io.IN_AGUUop.bits.fuType === FuType.LSU && LSUOp.isLoad(io.IN_AGUUop.bits.opcode)
   val issueFastLoad = isInUopLoad && isInLoadUopReady(io.IN_AGUUop.bits)
-  val isFastLoadFire = issueFastLoad && io.OUT_ldUop.fire
 
   def storeCommited(stqPtr: RingBufferPtr, commitStqPtr: RingBufferPtr) = {
     val flagDiff = stqPtr.flag ^ commitStqPtr.flag
@@ -60,14 +60,14 @@ class LoadQueue extends CoreModule {
   }
 
   def isInLoadUopReady(uop: AGUUop) = {
-    storeCommited(uop.stqPtr, io.IN_commitStqPtr) && !uop.isUncached
+    storeCommited(uop.stqPtr, io.IN_commitStqPtr) && !uop.isUncached && uop.virtualIndexIssued
   }
 
   // * enqueue
   when(isInUopLoad) {
     ldq(io.IN_AGUUop.bits.ldqPtr.index) := io.IN_AGUUop.bits
     ldqValid(io.IN_AGUUop.bits.ldqPtr.index) := true.B
-    ldqIssued(io.IN_AGUUop.bits.ldqPtr.index) := Mux(isFastLoadFire, true.B, false.B)
+    ldqIssued(io.IN_AGUUop.bits.ldqPtr.index) := Mux(issueFastLoad, true.B, false.B)
     // ldqReady(io.IN_AGUUop.bits.ldqPtr.index) := storeCommited(io.IN_AGUUop.bits.stqPtr, io.IN_commitStqPtr)
   }
 
@@ -100,7 +100,7 @@ class LoadQueue extends CoreModule {
   }
 
   // * issue logic
-  when((io.OUT_ldUop.ready && !isFastLoadFire) || !uopValid) {
+  when(io.OUT_ldUop.ready || !uopValid) {
     uop := ldq(ldqIssueIndex)
     uopValid := hasIssueReady
     when(hasIssueReady) {
@@ -117,6 +117,9 @@ class LoadQueue extends CoreModule {
     uopValid := false.B
   }
 
-  io.OUT_ldUop.valid := issueFastLoad || uopValid
-  io.OUT_ldUop.bits := Mux(issueFastLoad, io.IN_AGUUop.bits, uop)
+  io.OUT_aguLoadUop.valid := issueFastLoad
+  io.OUT_aguLoadUop.bits := io.IN_AGUUop.bits
+
+  io.OUT_ldUop.valid := uopValid
+  io.OUT_ldUop.bits := uop
 }
