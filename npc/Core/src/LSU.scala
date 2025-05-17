@@ -605,8 +605,10 @@ class NewLSU extends CoreModule with HasLSUOps {
 
   // * Stage 1 Signal: CacheMiss CacheLoadData
 
-  val bypassData = Wire(Vec(4, UInt(8.W)))
-  val bypassDataMask = io.IN_storeBypassResp.mask | io.IN_storeBufferBypassResp.mask
+  val bypassData = Reg(Vec(4, UInt(8.W)))
+  val bypassDataMaskNext = io.IN_storeBypassResp.mask | io.IN_storeBufferBypassResp.mask
+  val bypassDataMask = RegNext(bypassDataMaskNext)
+  val bypassDataHit = RegNext((~bypassDataMaskNext & stage(1).mask) === 0.U)
   for(i <- 0 until 4) {
     bypassData(i) := Mux(
       io.IN_storeBypassResp.mask(i),
@@ -626,7 +628,7 @@ class NewLSU extends CoreModule with HasLSUOps {
     data
   }
 
-  val stage1LoadHit = cacheHit || (~bypassDataMask & stage(1).mask) === 0.U
+  val stage1LoadHit = cacheHit || bypassDataHit
 
   hitLoadResult.data := finalData.asUInt
   hitLoadResult.ready := false.B

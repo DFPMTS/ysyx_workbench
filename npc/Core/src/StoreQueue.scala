@@ -71,8 +71,10 @@ class StoreQueue extends CoreModule {
   bypassDataNext := 0.U.asTypeOf(bypassDataNext)
   val bypassDataMaskNext = Wire(Vec(4, Bool()))
   bypassDataMaskNext := 0.U.asTypeOf(bypassDataMaskNext)
-  val bypassData = RegNext(bypassDataNext)
-  val bypassDataMask = RegNext(bypassDataMaskNext)
+  // val bypassData = RegNext(bypassDataNext)
+  // val bypassDataMask = RegNext(bypassDataMaskNext)
+  val bypassData = bypassDataNext
+  val bypassDataMask = bypassDataMaskNext
   io.OUT_storeBypassResp.data := bypassData.asTypeOf(UInt(32.W))
   io.OUT_storeBypassResp.mask := bypassDataMask.asUInt
   val wmask = stq.map(_.mask)
