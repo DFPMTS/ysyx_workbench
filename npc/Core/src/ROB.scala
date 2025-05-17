@@ -237,7 +237,7 @@ class ROB extends CoreModule with HasPerfCounters {
     }
   }
 
-  io.OUT_robEmpty := RegNext(robHeadPtr.isEmpty(robTailPtr))
+  io.OUT_robEmpty := robHeadPtr.isEmpty(robTailPtr)
   io.OUT_robTailPtr := robTailPtr
   io.OUT_ldqTailPtr := ldqCommitPtr
   io.OUT_stqTailPtr := stqCommitPtr

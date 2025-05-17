@@ -480,7 +480,7 @@ class NewLSU extends CoreModule with HasLSUOps {
 
   // val loadNeedCacheUop = WireInit(false.B)
   // val storeNeedCacheUop = WireInit(false.B)
-  val amoNeedCacheUop = RegInit(false.B)
+  val amoNeedCacheUop = WireInit(false.B)
   amoNeedCacheUop := false.B
   // dontTouch(loadNeedCacheUop)
   // dontTouch(storeNeedCacheUop)
@@ -536,7 +536,7 @@ class NewLSU extends CoreModule with HasLSUOps {
     val addr = Mux(amoNeedCacheUop, amoUopReg.addr, stage(1).addr)
     cacheUopTagReq.addr := addr
     cacheUopTagReq.write := true.B
-    cacheUopTagReq.way := replaceWay
+    cacheUopTagReq.way := Mux(amoNeedCacheUop, replaceCounter, replaceWay)
     val dtag = Wire(new DTag)
     dtag.valid := true.B
     dtag.tag := addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)

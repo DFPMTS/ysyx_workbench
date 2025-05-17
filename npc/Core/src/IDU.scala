@@ -68,6 +68,9 @@ class IDU extends CoreModule with HasPerfCounters {
     decodeSignal.opcode === CSROp.CSRRSI || decodeSignal.opcode === CSROp.CSRRCI)) {
       uopNext.imm := Cat(rs1, imm(11, 0))
     }
+    when(decodeSignal.fuType === FuType.AMO) {
+      uopNext.imm := 0.U
+    }
 
     uopNext.compressed := false.B
 
