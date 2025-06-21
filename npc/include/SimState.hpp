@@ -61,7 +61,7 @@ public:
 
   FILE *customFile = nullptr;
 
-#define KONATA
+  // #define KONATA
 
   void konataLogStage(uint64_t instId, const char *stage) {
 #ifdef KONATA

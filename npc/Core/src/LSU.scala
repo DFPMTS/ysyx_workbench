@@ -284,10 +284,17 @@ class NewLSUIO extends CoreBundle {
 
   val OUT_writebackUop = Valid(new WritebackUop)
 
+  val IN_storeQueueEmpty = Flipped(Bool())
+  val IN_storeBufferEmpty = Flipped(Bool())
+
   val IN_flushDCache = Flipped(Bool())
   val OUT_flushBusy = Bool()
 
+  // * One cycle before the writeback
   val OUT_wakeUp = Valid(new WritebackUop)
+  
+  // * Is there LSUOp in the pipeline?
+  val OUT_busy = Bool()
 
   val IN_flush = Flipped(Bool())
 }
@@ -300,7 +307,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   replaceCounter := Mux(replaceCounter === DCACHE_WAYS.U - 1.U, 0.U, replaceCounter + 1.U)
 
   // * Submodules
-  val loadResultBuffer = Module(new LoadResultBuffer(NUM_MSHR))
+  val loadResultBuffer = Module(new LoadResultBuffer)
   val uncachedLSU = Module(new UncachedLSU)
   val amoALU = Module(new AMOALU)
 
@@ -417,7 +424,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   val inAGUVirtualIndex = io.IN_aguVirtualIndex.bits
   val aguVirtualIndex = io.IN_aguVirtualIndex.valid && serveVirtualIndex
 
-  stageValid(0) := loadUop && (!io.IN_flush || inLoadUop.dest === Dest.PTW) || storeUop || aguVirtualIndex
+  stageValid(0) := (loadUop && (!io.IN_flush || inLoadUop.dest === Dest.PTW)) || storeUop || aguVirtualIndex
   stage(0) := Mux(storeUop, inStoreUop, inLoadUop)
   when(aguVirtualIndex) {
     stage(0).addr := Cat(inAGUVirtualIndex.index, 0.U(log2Up(CACHE_LINE_B).W))
@@ -563,9 +570,9 @@ class NewLSU extends CoreModule with HasLSUOps {
       val virtualIndexMatch = stage(0).addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B)) === io.IN_aguLoadUop.bits.addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B)) && io.IN_aguLoadUop.valid
       stageValid(1) := (!io.IN_flush || stage(0).dest === Dest.PTW) && (!needAGULoadUop || io.IN_aguLoadUop.valid)
       loadDiscard := needAGULoadUop && !virtualIndexMatch
-      cacheHit := tagHit && !addrInFlight
-      cacheMiss := !(tagHit && !addrInFlight)
-      needCacheUop := !addrInFlight
+      cacheHit := tagHit && !addrInFlight && !writeTag
+      cacheMiss := !(tagHit && !addrInFlight && !writeTag)
+      needCacheUop := !addrInFlight && !writeTag
     }.otherwise {
       // * Store
       storeAckValid := true.B
@@ -576,9 +583,9 @@ class NewLSU extends CoreModule with HasLSUOps {
       val isCached = !isUncached
       val storeMiss = !isUncached && !tagHit && !addrInFlight
       
-      cacheHit := isUncached || (tagHit && !addrInFlight)
-      cacheMiss := !isUncached && !(tagHit && !addrInFlight)
-      needCacheUop := !addrInFlight
+      cacheHit := isUncached || (tagHit && !addrInFlight && !writeTag)
+      cacheMiss := !isUncached && !(tagHit && !addrInFlight && !writeTag)
+      needCacheUop := !addrInFlight && !writeTag
 
       when(!isUncached && !(tagHit && !addrInFlight)) {
         stageValid(1) := true.B
@@ -608,7 +615,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   val bypassData = Reg(Vec(4, UInt(8.W)))
   val bypassDataMaskNext = io.IN_storeBypassResp.mask | io.IN_storeBufferBypassResp.mask
   val bypassDataMask = RegNext(bypassDataMaskNext)
-  val bypassDataHit = RegNext((~bypassDataMaskNext & stage(1).mask) === 0.U)
+  val bypassDataHit = RegNext((~bypassDataMaskNext & stage(0).mask) === 0.U)
   for(i <- 0 until 4) {
     bypassData(i) := Mux(
       io.IN_storeBypassResp.mask(i),
@@ -628,7 +635,7 @@ class NewLSU extends CoreModule with HasLSUOps {
     data
   }
 
-  val stage1LoadHit = cacheHit || bypassDataHit
+  val stage1LoadHit = (cacheHit || bypassDataHit) && !loadDiscard
 
   hitLoadResult.data := finalData.asUInt
   hitLoadResult.ready := false.B
@@ -665,7 +672,7 @@ class NewLSU extends CoreModule with HasLSUOps {
 
         // * LoadResult: from Stage(0)
         when(!stage1LoadHit) {
-          when(!loadResultBuffer.io.IN_loadResult.ready || !canServeCacheUop || !needCacheUop) {
+          when(!(loadResultBuffer.io.OUT_numEmpty > 1.U) || !canServeCacheUop || !needCacheUop) {
             // * NegAck
             loadNegAckValid := true.B
             loadNegAck.dest := stage(1).dest
@@ -801,6 +808,11 @@ class NewLSU extends CoreModule with HasLSUOps {
     }
   }
 
+  when(canServeCacheUop) {
+    cacheCtrlUopValid := cacheUopReqValid
+    cacheCtrlUop := cacheUopReq
+  }
+
   // * Flush State Machine
   switch(flushState) {
     is(sFlushIdle) {
@@ -813,12 +825,13 @@ class NewLSU extends CoreModule with HasLSUOps {
     }
     is(sFlushActive) {
       when(flushNeedWriteback) {
-        cacheUopReqValid := tagResp(flushWay).valid
-        cacheUopReq.opcode := CacheOpcode.INVALIDATE
-        cacheUopReq.index := flushIndex
-        cacheUopReq.way := flushWay
-        cacheUopReq.wtag := tagResp(flushWay).tag
-        cacheUopReq.cacheId := CacheId.DCACHE
+        cacheCtrlUopValid := tagResp(flushWay).valid
+        cacheCtrlUop.opcode := CacheOpcode.INVALIDATE
+        cacheCtrlUop.index := flushIndex
+        cacheCtrlUop.way := flushWay
+        cacheCtrlUop.rtag := 0.U
+        cacheCtrlUop.wtag := tagResp(flushWay).tag
+        cacheCtrlUop.cacheId := CacheId.DCACHE
       }
       flushState := Mux(flushNeedWriteback, sFlushWriteTag, sFlushActive)
       when(flushIndex === (DCACHE_SETS - 1).U) {        
@@ -862,12 +875,6 @@ class NewLSU extends CoreModule with HasLSUOps {
     }
   }
 
-
-  when(canServeCacheUop) {
-    cacheCtrlUopValid := cacheUopReqValid
-    cacheCtrlUop := cacheUopReq
-  }
-
   io.OUT_loadNegAck.valid := loadNegAckValid
   io.OUT_loadNegAck.bits := loadNegAck
 
@@ -877,6 +884,8 @@ class NewLSU extends CoreModule with HasLSUOps {
   io.OUT_amoAck.valid := amoAckValid
   io.OUT_amoAck.bits := amoAck
   
+  io.OUT_busy := stageValid(0) || stageValid(1) || cacheCtrlUopValid
+
   // * Output 
   when(loadResultBuffer.io.OUT_writebackUop.valid) {
     io.OUT_writebackUop := loadResultBuffer.io.OUT_writebackUop
@@ -889,6 +898,8 @@ class NewLSU extends CoreModule with HasLSUOps {
   when(io.IN_flush) {
     when(LSUOp.isLoad(stage(0).opcode) && stage(0).dest =/= Dest.PTW) {
       stageValid(1) := false.B
+    }
+    when(LSUOp.isLoad(stage(1).opcode) && stage(1).dest =/= Dest.PTW) {
       loadResultValid := false.B
     }
   }

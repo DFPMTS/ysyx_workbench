@@ -397,10 +397,12 @@ class Core extends CoreModule {
   // ** Store Queue Bypass
   lsu.io.IN_storeBypassResp <> storeQueue.io.OUT_storeBypassResp
   storeQueue.io.IN_storeBypassReq <> lsu.io.OUT_storeBypassReq
+  lsu.io.IN_storeQueueEmpty := storeQueue.io.OUT_storeQueueEmpty
 
   // ** Store Buffer Bypass
   lsu.io.IN_storeBufferBypassResp <> storeBuffer.io.OUT_storeBypassResp
   storeBuffer.io.IN_storeBypassReq <> lsu.io.OUT_storeBypassReq
+  lsu.io.IN_storeBufferEmpty := storeBuffer.io.OUT_storeBufferEmpty
 
   // ** Internal MMIO
   lsu.io.OUT_mmioReq <> internalMMIO.io.IN_mmioReq
@@ -410,6 +412,7 @@ class Core extends CoreModule {
   amoUnit.io.IN_AGUUop <> aguUop
   amoUnit.io.OUT_amoUop <> lsu.io.IN_amoUop
   amoUnit.io.IN_amoAck <> lsu.io.OUT_amoAck
+  amoUnit.io.IN_lsuBusy := lsu.io.OUT_busy
   amoUnit.io.IN_storeBufferEmpty := storeBuffer.io.OUT_storeBufferEmpty
   amoUnit.io.IN_storeQueueEmpty := storeQueue.io.OUT_storeQueueEmpty
 

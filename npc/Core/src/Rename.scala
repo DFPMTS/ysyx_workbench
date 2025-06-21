@@ -226,19 +226,19 @@ class RenameBuffer extends CoreModule {
   val uopIQValid = renamedUopIQValid(tailPtr(0))
   val uopValid = VecInit((0 until ISSUE_WIDTH).map(i => uopRobValid(i) || uopIQValid(i)))
 
-  val backendEmpty = io.IN_robEmpty && io.IN_storeQueueEmpty && io.IN_storeBufferEmpty
+  val robEmpty = io.IN_robEmpty && io.IN_storeBufferEmpty && io.IN_storeQueueEmpty
   val isValidLockInst = VecInit((0 until ISSUE_WIDTH).map(i => {
     uopValid(i) && uop(i).lockBackend
   }))
 
   val isBlocked = Wire(Vec(ISSUE_WIDTH, Bool()))
   dontTouch(isBlocked)
-  isBlocked(0) := isValidLockInst(0) && !backendEmpty
+  isBlocked(0) := isValidLockInst(0) && !robEmpty
   // * IN_backendLocked: blocks all inst uncoditionally
   // * Logic: inst(0) blocked: self lock backend && rob not empty
   // *        inst(i) blocked: inst(i-1) blocked || (inst(i) lock backend && (rob not empty or inst before not issued))
   for (i <- 1 until ISSUE_WIDTH) {
-    isBlocked(i) := isBlocked(i - 1) || ((uopValid.asUInt(i - 1, 0).orR || !backendEmpty) && isValidLockInst(i)) || 
+    isBlocked(i) := isBlocked(i - 1) || ((uopValid.asUInt(i - 1, 0).orR || !robEmpty) && isValidLockInst(i)) || 
                     isValidLockInst.asUInt(i - 1, 0).orR
   }
 
@@ -275,7 +275,7 @@ class RenameBuffer extends CoreModule {
 
   when(lockInstIssued) {
     backendLocked := true.B
-  }.elsewhen (backendEmpty) {
+  }.elsewhen (robEmpty) {
     backendLocked := false.B
   }
 

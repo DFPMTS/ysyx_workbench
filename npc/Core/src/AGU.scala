@@ -268,7 +268,7 @@ class AGU extends CoreModule {
   io.OUT_xtvalRec.valid := wbUopValid
   io.OUT_xtvalRec.bits := xtvalRec
 
-  io.OUT_virtualIndex.valid := io.IN_readRegUop.fire && LSUOp.isLoad(io.IN_readRegUop.bits.opcode)
+  io.OUT_virtualIndex.valid := io.IN_readRegUop.fire && LSUOp.isLoad(io.IN_readRegUop.bits.opcode) && io.IN_readRegUop.bits.fuType === FuType.LSU
   io.OUT_virtualIndex.bits.index := io.IN_readRegUop.bits.src1(log2Up(DCACHE_SETS) + log2Up(CACHE_LINE_B) - 1, log2Up(CACHE_LINE_B))
   io.OUT_virtualIndex.bits.opcode := io.IN_readRegUop.bits.opcode
 

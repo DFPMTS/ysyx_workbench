@@ -8,6 +8,7 @@ class AmoUnitIO extends CoreBundle {
 
   val IN_storeQueueEmpty = Flipped(Bool())
   val IN_storeBufferEmpty = Flipped(Bool())
+  val IN_lsuBusy = Flipped(Bool())
   val OUT_amoActive = Bool()
 
   val OUT_amoUop = Decoupled(new AGUUop)
@@ -40,5 +41,5 @@ class AmoUnit extends CoreModule {
     }
   }
   io.OUT_amoUop.bits := amoUop
-  io.OUT_amoUop.valid := amoUopValid && !amoUopIssued && io.IN_storeQueueEmpty && io.IN_storeBufferEmpty
+  io.OUT_amoUop.valid := amoUopValid && !io.IN_lsuBusy && RegNext(io.IN_storeBufferEmpty && io.IN_storeQueueEmpty) && !amoUopIssued
 }

@@ -18,18 +18,20 @@ class LoadResult extends CoreBundle{
 class LoadResultBufferIO extends CoreBundle {
   val IN_hitLoadResult = Flipped(Valid(new LoadResult))
   val IN_loadResult = Flipped(Decoupled(new LoadResult))
+  val OUT_numEmpty = UInt(log2Up(NUM_MSHR + 1).W)
+  
   val IN_memLoadFoward = Flipped(Valid(new MemLoadFoward))
   val OUT_writebackUop = Valid(new WritebackUop)
 
   val IN_flush = Flipped(Bool())
 }
 
-class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
+class LoadResultBuffer extends CoreModule with HasLSUOps {
   val io = IO(new LoadResultBufferIO)
   
   // Load result entries
-  val valid = RegInit(VecInit(Seq.fill(N)(false.B)))
-  val entries = Reg(Vec(N, new LoadResult))
+  val valid = RegInit(VecInit(Seq.fill(NUM_MSHR)(false.B)))
+  val entries = Reg(Vec(NUM_MSHR, new LoadResult))
   
   // Find an empty slot for new load
   val emptySlots = valid.map(!_) 
@@ -37,6 +39,7 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
   val allocPtr = PriorityEncoder(emptySlots)
   
   io.IN_loadResult.ready := hasEmptySlot
+  io.OUT_numEmpty := PopCount(emptySlots)
 
   val inHitLoadResult = io.IN_hitLoadResult.bits
   // * Write back now, without writing to result queue
@@ -49,7 +52,7 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
   }
   
   // Forward load data to all entries
-  for (i <- 0 until N) {
+  for (i <- 0 until NUM_MSHR) {
     when(valid(i) && io.IN_memLoadFoward.valid &&
           io.IN_memLoadFoward.bits.addr(XLEN - 1, log2Up(AXI_DATA_WIDTH / 8)) === entries(i).addr(XLEN - 1, log2Up(AXI_DATA_WIDTH / 8))) {
       val data = Wire(Vec(4, UInt(8.W)))
@@ -121,7 +124,7 @@ class LoadResultBuffer(N: Int = 8) extends CoreModule with HasLSUOps {
       wbUopValid := false.B
     }
     
-    for(i <- 0 until N) {
+    for(i <- 0 until NUM_MSHR) {
       when(valid(i) && entries(i).dest === Dest.ROB) {
         valid(i) := false.B
       }
