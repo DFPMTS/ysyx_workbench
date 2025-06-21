@@ -6,7 +6,7 @@ reset_vector:
   add t1, t0, t1 // read control from RESER_VECTOR + CTRL_OFFSET
   lw t1, 0(t1)
   bnez t1, restore_cpt // if control is 0, do not restore checkpoint
-  li t1, 0x80100000
+  li t1, 0x10100000
   jr t1
 restore_cpt:
 
