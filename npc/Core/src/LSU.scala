@@ -4,6 +4,7 @@ import utils._
 import os.stat
 import dataclass.data
 import os.write
+import MSHRChecker.isInFlightAddrDataAvailable
 
 trait HasLSUOps {
   def U    = 0.U(1.W)
@@ -303,7 +304,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   val io = IO(new NewLSUIO)
 
   // * dummy counter for replacement
-  val replaceCounter = RegInit(0.U(2.W))
+  val replaceCounter = RegInit(0.U(4.W))
   replaceCounter := Mux(replaceCounter === DCACHE_WAYS.U - 1.U, 0.U, replaceCounter + 1.U)
 
   // * Submodules
@@ -379,6 +380,10 @@ class NewLSU extends CoreModule with HasLSUOps {
 
   def isLoadAddrAlreadyInFlight(addr: UInt) = {
     MSHRChecker.isLoadAddrAlreadyInFlight(io.IN_mshrs, io.OUT_cacheCtrlUop, CacheId.DCACHE, addr)
+  }
+
+  def isInFlightAddrDataAvailable(addr: UInt) = {
+    MSHRChecker.isInFlightAddrDataAvailable(io.IN_mshrs, io.OUT_cacheCtrlUop, CacheId.DCACHE, addr)
   }
 
   def isMSHRConflict(uop: CacheCtrlUop) = {
@@ -558,6 +563,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   replaceOpcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
 
   val addrInFlight = isLoadAddrAlreadyInFlight(loadStage0.addr)
+  val inFlightAddrDataAvailable = isInFlightAddrDataAvailable(loadStage0.addr)
 
   val wordOffset = loadStage0.addr(log2Up(CACHE_LINE_B) - 1, 2)
   val loadHitCacheline = Mux1H(tagHitOH, dataResp)
@@ -570,7 +576,7 @@ class NewLSU extends CoreModule with HasLSUOps {
       val virtualIndexMatch = stage(0).addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B)) === io.IN_aguLoadUop.bits.addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B)) && io.IN_aguLoadUop.valid
       stageValid(1) := (!io.IN_flush || stage(0).dest === Dest.PTW) && (!needAGULoadUop || io.IN_aguLoadUop.valid)
       loadDiscard := needAGULoadUop && !virtualIndexMatch
-      cacheHit := tagHit && !addrInFlight && !writeTag
+      cacheHit := tagHit && (!addrInFlight || inFlightAddrDataAvailable) && !writeTag
       cacheMiss := !(tagHit && !addrInFlight && !writeTag)
       needCacheUop := !addrInFlight && !writeTag
     }.otherwise {

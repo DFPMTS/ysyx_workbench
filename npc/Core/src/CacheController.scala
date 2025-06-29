@@ -55,6 +55,11 @@ class MSHR extends CoreBundle {
   val axiReadDone = Bool()
   val axiWriteDone = Bool()
 
+  // * Counter for AXI R channel
+  val rCnt = UInt(8.W)
+  // * Counter for Cache Written
+  val cacheRCnt = UInt(8.W)
+
   // * data
   val wdata = UInt(XLEN.W)
   val wmask = UInt(4.W)
@@ -65,6 +70,12 @@ class MSHR extends CoreBundle {
     //* when axiReadDone is pulled down, the data is written to cache, how ever, the read op was performed
     //* one cycle before, so the data may not be correct
     //* !axiReadDone
+  }
+
+  def inFlightAddrDataAvailable(cacheId: UInt, addr: UInt) = {
+    loadAddrInFlight(cacheId, addr) &&
+    cacheRCnt > addr(log2Up(CACHE_LINE_B) - 1, log2Up(AXI_DATA_WIDTH / 8)) 
+    // * cacheRCnt = RegNext(rCnt), use this since R port and RW port has no bypass
   }
 
   def cacheLocation() = {
@@ -107,27 +118,43 @@ class MSHR extends CoreBundle {
   }
   
   def axiARaddr() = {
-    val axiOffsetBits = log2Up(AXI_DATA_WIDTH / 8)
+    // * For cached access, the cache offset bits are always 0
+    val cacheOffsetBits = log2Up(CACHE_LINE_B)
     val araddr = Wire(UInt(AXI_ADDR_WIDTH.W))
-    araddr := Cat(memReadAddr(XLEN - 1,  axiOffsetBits), 
+    araddr := Cat(memReadAddr(XLEN - 1,  cacheOffsetBits), 
                   Mux(uncached, 
-                    memReadAddr(axiOffsetBits - 1, 0),
-                    0.U(log2Up(AXI_DATA_WIDTH / 8).W)
+                    memReadAddr(cacheOffsetBits - 1, 0),
+                    0.U(cacheOffsetBits.W)
                   )
     )
     araddr
   }
 
   def axiAWaddr() = {
-    val axiOffsetBits = log2Up(AXI_DATA_WIDTH / 8)
+    val cacheOffsetBits = log2Up(CACHE_LINE_B)
     val awaddr = Wire(UInt(AXI_ADDR_WIDTH.W))
-    awaddr := Cat(memWriteAddr(XLEN - 1,  axiOffsetBits), 
+    awaddr := Cat(memWriteAddr(XLEN - 1,  cacheOffsetBits), 
                   Mux(uncached, 
-                    memWriteAddr(axiOffsetBits - 1, 0),
-                    0.U(log2Up(AXI_DATA_WIDTH / 8).W)
+                    memWriteAddr(cacheOffsetBits - 1, 0),
+                    0.U(cacheOffsetBits.W)
                   )
     )
     awaddr
+  }
+
+  def axiRaddr() = {
+    // * Calculated address (uncached or burst) for R channel
+    val cacheOffsetBits = log2Up(CACHE_LINE_B)
+    Cat(memReadAddr(XLEN - 1, cacheOffsetBits), 
+        Mux(uncached, 
+          memReadAddr(cacheOffsetBits - 1, 0),
+          (rCnt * 4.U)(cacheOffsetBits - 1, 0)
+        )
+    )
+  }
+
+  def axiLen() = {
+    Mux(uncached, 0.U, (CACHE_LINE_B / (AXI_DATA_WIDTH / 8)).U - 1.U)
   }
 }
 
@@ -171,6 +198,10 @@ object MSHRChecker extends HasCoreParameters {
   def isLoadAddrAlreadyInFlight(mshr: Vec[MSHR], OUT_uop: DecoupledIO[CacheCtrlUop], cacheId: UInt, addr: UInt) = {
     mshr.map(_.loadAddrInFlight(cacheId, addr)).reduce(_ || _) ||
     (OUT_uop.valid && OUT_uop.bits.loadAddrAlreadyInFlight(cacheId, addr))
+  }
+
+  def isInFlightAddrDataAvailable(mshr: Vec[MSHR], OUT_uop: DecoupledIO[CacheCtrlUop], cacheId: UInt, addr: UInt) = {
+    mshr.map(_.inFlightAddrDataAvailable(cacheId, addr)).reduce(_ || _)
   }
 
   def conflict(mshr: Vec[MSHR], OUT_uop: DecoupledIO[CacheCtrlUop], uop: CacheCtrlUop) = {
@@ -254,6 +285,9 @@ class CacheController extends CoreModule {
 
     newMSHR.axiReadDone := true.B
     newMSHR.axiWriteDone := true.B
+
+    newMSHR.rCnt := 0.U
+    newMSHR.cacheRCnt := 0.U
     
     newMSHR.wdata := uop.wdata
     newMSHR.wmask := uop.wmask
@@ -310,24 +344,38 @@ class CacheController extends CoreModule {
     when(mshr(i).valid && mshr(i).axiReadDone && mshr(i).axiWriteDone) {
       mshr(i).valid := false.B
     }
+    // * Counter how many R channel data has been written to cache (latch one cycle)
+    mshr(i).cacheRCnt := mshr(i).rCnt
   }
+
+  // ** aw
+  val awValidReg = RegInit(false.B)
+  val awAddrReg = RegInit(0.U(AXI_ADDR_WIDTH.W))
+  val awLenReg = RegInit(0.U(8.W))
+  val awIdReg = Reg(UInt(4.W))
+  val awSizeReg = Reg(UInt(3.W))
 
   // * AXI R/B id
   val axiRId = io.OUT_axi.r.bits.id
   val axiBId = io.OUT_axi.b.bits.id
 
-  val wValidReg = RegInit(false.B)
   val wDataReg = RegInit(0.U(AXI_DATA_WIDTH.W))
   val wStrbReg = Reg(UInt((AXI_DATA_WIDTH / 8).W))
+  val wLenReg = Reg(UInt(8.W)) // * registers the AW len of current W
 
   // * forward load data
   val memLoadFowardValidReg = RegInit(false.B)
   val memLoadFowardReg = Reg(new MemLoadFoward)
   memLoadFowardValidReg := io.OUT_axi.r.valid
-  memLoadFowardReg.addr := mshr(axiRId).memReadAddr
+  memLoadFowardReg.addr := mshr(axiRId).axiRaddr()
   memLoadFowardReg.data := io.OUT_axi.r.bits.data
   memLoadFowardReg.uncached := mshr(axiRId).uncached
 
+  // * The 3 cycle latency is NECESSARY.
+  // * Consider this situation: (1) a Load hit a live MSHR 
+  // *                          (2) put Load into LoadResultBuffer 
+  // *                          (3) R channel returns data
+  // * If there is no latency, the data is forwarded before Load gets into LoadResultBuffer
   io.OUT_memLoadFoward.valid := ShiftRegister(memLoadFowardValidReg, 3)
   io.OUT_memLoadFoward.bits := ShiftRegister(memLoadFowardReg, 3)
 
@@ -355,35 +403,55 @@ class CacheController extends CoreModule {
   io.OUT_DDataRead.bits.write := false.B
   io.OUT_DDataRead.valid := hasNeedReadCache && !mshr(readCacheIndex).uncached
 
-  when(io.OUT_axi.w.fire) {
-    wValidReg := false.B
-  }
-  when(!wValidReg || io.OUT_axi.w.fire) {    
+  // * AXI W channel state machine
+
+  val wCacheLineData = Reg(Vec(CACHE_LINE_B / 4, UInt(32.W)))
+  val wCnt = RegInit(0.U(8.W))
+
+  val sWIdle :: sWLoaded :: sWWrite :: Nil = Enum(3)
+  val wState = RegInit(sWIdle)
+
+  when(wState === sWIdle) {    
     when(dataReadRespValid) {    
       val wMSHR = mshr(dataReadRespMSHRIndex)  
       when(!wMSHR.uncached) {
-        wDataReg := io.IN_DDataResp.data(wMSHR.way).asUInt
-        wStrbReg := Fill(CACHE_LINE_B, 1.U(1.W))
-        wValidReg := wMSHR.needReadCache
+        wCacheLineData := io.IN_DDataResp.data(wMSHR.way)
+        wStrbReg := Fill(AXI_DATA_WIDTH / 8, 1.U(1.W))
         wLockValid := false.B // ! Order matter, see below assignment of wLockValid
         wMSHR.needReadCache := false.B
+        wCnt := 0.U
+        wState := sWLoaded
+        wLenReg := wMSHR.axiLen()
       }.elsewhen(wMSHR.uncached) {
-        wDataReg := wMSHR.uncachedAXIwdata()
+        wCacheLineData(0) := wMSHR.uncachedAXIwdata()
         wStrbReg := wMSHR.uncachedAXIwstrb()
-        wValidReg := wMSHR.needReadCache
         wLockValid := false.B // ! Order matter, see below assignment of wLockValid
         wMSHR.needReadCache := false.B
+        wCnt := 0.U
+        wState := sWLoaded
+        wLenReg := wMSHR.axiLen()
       }      
     }
+  }.elsewhen(wState === sWLoaded) {
+    when(io.OUT_axi.w.fire) {
+      wCnt := wCnt + 1.U
+      when(wCnt === wLenReg) {
+        wState := sWIdle
+      }
+    } 
   }
+
   // ** cache write
   io.OUT_DDataWrite := 0.U.asTypeOf(io.OUT_DDataWrite)
   io.OUT_IDataWrite := 0.U.asTypeOf(io.OUT_IDataWrite)
   when(io.OUT_axi.r.valid) {
     val rMSHRIndex = io.OUT_axi.r.bits.id
     val rMSHR = mshr(rMSHRIndex)
-    val wdata = Wire(Vec(CACHE_LINE_B, UInt(8.W)))
-    wdata := io.OUT_axi.r.bits.data.asTypeOf(wdata)
+    val wdata = Wire(UInt((CACHE_LINE_B * 8).W))
+    wdata := Fill(CACHE_LINE_B / 4, io.OUT_axi.r.bits.data)
+
+    rMSHR.rCnt := rMSHR.rCnt + 1.U
+
     // val inCacheLineOffset = Cat(rMSHR.memReadAddr(log2Up(CACHE_LINE_B) - 1, 2), 0.U(2.W))
     // for (i <- 0 until 4) {
     //   when(rMSHR.wmask(i)) {
@@ -394,22 +462,27 @@ class CacheController extends CoreModule {
       io.OUT_DDataWrite.bits.addr := rMSHR.memReadAddr
       io.OUT_DDataWrite.bits.data := wdata.asUInt
       io.OUT_DDataWrite.bits.way := rMSHR.way
-      io.OUT_DDataWrite.bits.wmask := Fill(CACHE_LINE_B, 1.U(1.W))
+      io.OUT_DDataWrite.bits.wmask := Fill(AXI_DATA_WIDTH / 8, 1.U(1.W)) << (rMSHR.rCnt * 4.U)
       io.OUT_DDataWrite.bits.write := true.B
       io.OUT_DDataWrite.valid := !CacheOpcode.isUnCached(rMSHR.opcode)
     }.elsewhen(rMSHR.cacheId === CacheId.ICACHE) {
       io.OUT_IDataWrite.bits.addr := rMSHR.memReadAddr
       io.OUT_IDataWrite.bits.data := wdata.asTypeOf(io.OUT_IDataWrite.bits.data)
       io.OUT_IDataWrite.bits.way := rMSHR.way
+      io.OUT_IDataWrite.bits.wmask := 1.U << rMSHR.rCnt
       io.OUT_IDataWrite.valid := true.B
     }
-    rMSHR.axiReadDone := true.B
+
+    when(io.OUT_axi.r.bits.last) {
+      rMSHR.axiReadDone := true.B
+    }
   }
 
   // * axi interface
   // ** ar
   val arValidReg = RegInit(false.B)
   val arAddrReg = RegInit(0.U(AXI_ADDR_WIDTH.W))
+  val arLenReg = RegInit(0.U(8.W))
   val arIdReg = Reg(UInt(4.W))
   val arSizeReg = Reg(UInt(3.W))
   // ** Select MSHR to read Mem (AR channel)
@@ -421,6 +494,7 @@ class CacheController extends CoreModule {
       val arMSHR = mshr(arMSHRIndex)
       arValidReg := arMSHR.needReadMem
       arAddrReg := arMSHR.axiARaddr()
+      arLenReg := arMSHR.axiLen()
       arIdReg := arMSHRIndex
       arSizeReg := mshr(arMSHRIndex).AXISize()
       arMSHR.needReadMem := false.B
@@ -430,17 +504,11 @@ class CacheController extends CoreModule {
   }
   io.OUT_axi.ar.valid := arValidReg
   io.OUT_axi.ar.bits.addr := arAddrReg
-  io.OUT_axi.ar.bits.len := 0.U
+  io.OUT_axi.ar.bits.len := arLenReg
   io.OUT_axi.ar.bits.size := arSizeReg
   io.OUT_axi.ar.bits.burst := 1.U
   io.OUT_axi.ar.bits.id := arIdReg
   
-  // ** aw
-  val awValidReg = RegInit(false.B)
-  val awAddrReg = RegInit(0.U(AXI_ADDR_WIDTH.W))
-  val awIdReg = Reg(UInt(4.W))
-  val awSizeReg = Reg(UInt(3.W))
-
   // ** Select MSHR to write Mem (AW channel)
   val awMSHRVec = mshr.map(e => (e.valid && e.needWriteMem))
   val awMSHRIndex = PriorityEncoder(awMSHRVec)
@@ -452,6 +520,7 @@ class CacheController extends CoreModule {
       val awMSHR = mshr(awMSHRIndex)
       awValidReg := awMSHR.needWriteMem
       awAddrReg := awMSHR.axiAWaddr()
+      awLenReg := awMSHR.axiLen()
       awIdReg := awMSHRIndex
       awSizeReg := mshr(awMSHRIndex).AXISize()
       awMSHR.needWriteMem := false.B
@@ -465,17 +534,17 @@ class CacheController extends CoreModule {
   }
   io.OUT_axi.aw.valid := awValidReg
   io.OUT_axi.aw.bits.addr := awAddrReg
-  io.OUT_axi.aw.bits.len := 0.U
+  io.OUT_axi.aw.bits.len := awLenReg
   io.OUT_axi.aw.bits.size := awSizeReg
   io.OUT_axi.aw.bits.burst := 1.U
   io.OUT_axi.aw.bits.id := awIdReg
 
   // ** w
-  io.OUT_axi.w.valid := wValidReg
-  io.OUT_axi.w.bits.data := wDataReg
+  io.OUT_axi.w.valid := wState === sWLoaded
+  io.OUT_axi.w.bits.data := wCacheLineData(wCnt)
   io.OUT_axi.w.bits.strb := wStrbReg
-  io.OUT_axi.w.bits.last := true.B
-
+  io.OUT_axi.w.bits.last := wCnt === wLenReg
+  
   // ** r
   io.OUT_axi.r.ready := true.B
 

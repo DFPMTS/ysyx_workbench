@@ -9,23 +9,27 @@ class SRAM extends CoreModule {
 
   val read_lat  = random.LFSR(2, true.B, Some(3))
   val write_lat = random.LFSR(2, true.B, Some(1))
-  val counter   = RegInit(0.U(5.W))
-
-  val addr_buffer = Reg(UInt(AXI_ADDR_WIDTH.W))
-  val data_buffer = Reg(UInt(AXI_DATA_WIDTH.W))
-  val strb_buffer = Reg(UInt((AXI_ADDR_WIDTH / 8).W))
-
-  val addr = MuxLookup(Cat(io.ar.fire, io.aw.fire), addr_buffer)(
-    Seq("b10".U -> io.ar.bits.addr, "b01".U -> io.aw.bits.addr)
-  )
-  val data = Mux(io.w.fire, io.w.bits.data, data_buffer)
-  val strb = Mux(io.w.fire, io.w.bits.strb, strb_buffer)
+  val counter   = RegInit(0.U(10.W))
 
   val out_data_buffer = Reg(UInt(AXI_DATA_WIDTH.W))
+  val arAddr = Reg(UInt(AXI_ADDR_WIDTH.W))
   val arId = Reg(UInt(4.W))
-  val awId = Reg(UInt(4.W))
+  val arLen = Reg(UInt(8.W))
+  val arSize = Reg(UInt(3.W))
+  val arCnt = RegInit(0.U(8.W))
+  val readReady = RegInit(false.B)
 
-  val s_Idle :: s_Read :: s_Write :: s_Wait_W :: s_WriteUp :: Nil = Enum(5)
+  val awAddr = Reg(UInt(AXI_ADDR_WIDTH.W))
+  val awId = Reg(UInt(4.W))
+  val awLen = Reg(UInt(8.W))
+  val awSize = Reg(UInt(3.W))
+
+  val wData = Reg(UInt(AXI_DATA_WIDTH.W))
+  val wStrb = Reg(UInt((AXI_DATA_WIDTH / 8).W))
+  val writeReady = RegInit(false.B)
+  val wCnt = RegInit(0.U(8.W))  // Track write data count
+
+  val s_Idle :: s_Read :: s_ReadData :: s_WriteAddr :: s_WriteData :: s_WriteResp :: Nil = Enum(6)
 
   val next_state = WireDefault(s_Idle)
   val state      = RegNext(next_state, s_Idle)
@@ -36,102 +40,93 @@ class SRAM extends CoreModule {
       when(io.ar.fire) {
         next_state := s_Read
         arId := io.ar.bits.id
+        arLen := io.ar.bits.len
+        arCnt := 0.U
+        arAddr := io.ar.bits.addr
+        arSize := io.ar.bits.size
       }.elsewhen(io.aw.valid) {
-        next_state := s_WriteUp        
+        next_state := s_WriteAddr        
       }
     }    
     is(s_Read) {
+      // Request memory read and transition to wait for data
+      next_state := s_ReadData
+      counter := read_lat + 170.U
+    }
+    is(s_ReadData) {
+      counter := Mux(counter === 0.U, 0.U, counter - 1.U)
       when(io.r.fire) {
-        next_state := s_Idle
+        when(arCnt === arLen) {
+          next_state := s_Idle
+        }.otherwise {
+          arCnt := arCnt + 1.U
+          arAddr := arAddr + (1.U << arSize)
+          next_state := s_Read  // Go back to request next data
+        }
       }
     }
-    is(s_WriteUp) {
-      when(io.aw.fire && io.w.fire) {
-          next_state := s_Write
-          awId := io.aw.bits.id
-      }.elsewhen(io.aw.fire) {
-          next_state := s_Wait_W
-          awId := io.aw.bits.id
+    is(s_WriteAddr) {
+      when(io.aw.fire) {
+        next_state := s_WriteData
+        awId := io.aw.bits.id
+        awLen := io.aw.bits.len
+        wCnt := 0.U
+        awAddr := io.aw.bits.addr
+        awSize := io.aw.bits.size
       }
     }
-    is(s_Wait_W) {
+    is(s_WriteData) {
       when(io.w.fire) {
-        next_state := s_Write
+        when(wCnt === awLen) {
+          next_state := s_WriteResp
+        }.otherwise {
+          wCnt := wCnt + 1.U
+          awAddr := awAddr + (1.U << awSize)
+        }
       }
     }
-    is(s_Write) {
+    is(s_WriteResp) {
       when(io.b.fire) {
         next_state := s_Idle
       }
     }
   }
 
-  switch(next_state) {
-    is(s_Read) {
-      addr_buffer := io.ar.bits.addr
-    }
-    is(s_Wait_W) {
-      addr_buffer := io.aw.bits.addr
-    }
-    is(s_Write) {
-      addr_buffer := Mux(io.aw.fire, io.aw.bits.addr, addr_buffer)
-      data_buffer := io.w.bits.data
-      strb_buffer := io.w.bits.strb
-    }
-  }
+  val perform_read = state === s_Read
 
-  counter := Mux(counter === 0.U, 0.U, counter - 1.U)
+  // Ready/Valid signals for AXI handshaking
+  io.ar.ready := state === s_Idle
+  io.aw.ready := state === s_WriteAddr
+  io.w.ready  := state === s_WriteData
+  io.r.valid  := state === s_ReadData && counter === 0.U
+  io.b.valid  := state === s_WriteResp
 
-  io.ar.ready := false.B
-  io.aw.ready := false.B
-  io.w.ready  := false.B
-  io.r.valid  := false.B
-  io.b.valid  := false.B
-  switch(state) {
-    is(s_Idle) {
-      io.ar.ready := true.B
-    }
-    is(s_WriteUp){
-      io.aw.ready := true.B
-      io.w.ready  := true.B
-    }
-    is(s_Read) {
-      io.r.valid := counter === 0.U
-    }
-    is(s_Wait_W) {
-      io.w.ready := true.B
-    }
-    is(s_Write) {
-      io.b.valid := counter === 0.U
-    }
-  }
-
+  // Memory read interface
   val mem_read     = Module(new MemRead)
-  val perform_read = state =/= s_Read && next_state === s_Read
-  when(perform_read) {
-    counter := read_lat + 8.U
-  }
   mem_read.io.clk  := clock
-  mem_read.io.addr := addr
+  mem_read.io.addr := arAddr
   mem_read.io.en   := perform_read
-  out_data_buffer  := Mux(perform_read, mem_read.io.data_r, out_data_buffer)
+  
+  // Register the read data with one cycle latency
+  val rdataAvail = RegNext(perform_read) 
+  out_data_buffer := Mux(rdataAvail, mem_read.io.data_r, out_data_buffer)
+  val rdata = Mux(rdataAvail, mem_read.io.data_r, out_data_buffer)
 
+  // Memory write interface
   val mem_write     = Module(new MemWrite)
-  val perform_write = state =/= s_Write && next_state === s_Write
-  when(perform_write) {
-    counter := write_lat + 8.U
-  }
   mem_write.io.clk   := clock
-  mem_write.io.addr  := addr
-  mem_write.io.wdata := data
-  mem_write.io.wmask := strb
-  mem_write.io.en    := perform_write
+  mem_write.io.addr  := awAddr
+  mem_write.io.wdata := io.w.bits.data
+  mem_write.io.wmask := io.w.bits.strb
+  mem_write.io.en    := io.w.fire // Write when handshaking
 
+  // Read response channel
   io.r.bits.resp := 0.U
-  io.r.bits.data := out_data_buffer
-  io.r.bits.last := true.B
+  io.r.bits.data := rdata
+  io.r.bits.last := arCnt === arLen
   io.r.bits.id   := arId
 
+  // Write response channel
   io.b.bits.resp := 0.U
   io.b.bits.id   := awId
 }

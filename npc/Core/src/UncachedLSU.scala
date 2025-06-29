@@ -135,7 +135,7 @@ class UncachedLSU extends CoreModule {
       when(io.IN_memLoadFoward.valid && io.IN_memLoadFoward.bits.uncached) {        
         state := sLoadFin
         loadResultValid := true.B
-        val offset = uop.addr(log2Up(AXI_DATA_WIDTH / 8) - 1, 2)
+        val offset = if (AXI_DATA_WIDTH == XLEN) 0.U else uop.addr(log2Up(AXI_DATA_WIDTH / 8) - 1, 2)
         val dataVec = Wire(Vec(AXI_DATA_WIDTH / 32, UInt(32.W)))
         dataVec := io.IN_memLoadFoward.bits.data.asTypeOf(dataVec)
         loadData := dataVec(offset)

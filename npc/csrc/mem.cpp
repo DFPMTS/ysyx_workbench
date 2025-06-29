@@ -5,10 +5,12 @@
 #include "status.hpp"
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <iostream>
 #include <svdpi.h>
+#include <sys/types.h>
 
 #define DEVICE_BASE 0xa0000000
 
@@ -27,7 +29,7 @@ uint8_t mrom[MROM_SIZE];
 uint8_t flash[FLASH_SIZE];
 uint8_t psram[PSRAM_SIZE];
 uint8_t sdram[SDRAM_SIZE];
-#define ADDR_MASK (~0x1Fu)
+#define ADDR_MASK (~0x3u)
 #define BYTE_MASK (0xFFu)
 
 static bool in_pmem(paddr_t addr) { return addr - MEM_BASE < MEM_SIZE; }
@@ -125,7 +127,7 @@ void host_write(uint8_t *addr, mem_word_t wdata, unsigned char wmask) {
 }
 
 extern "C" {
-void mem_read(uint32_t en, uint32_t addr, svBitVecVal *result) {
+void mem_read(uint32_t en, uint32_t addr, uint32_t *result) {
   if (!en || !running.load()) {
     printf("mem_read: en = %u  running = %u\n", en, running.load());
     return;
@@ -150,7 +152,7 @@ void mem_read(uint32_t en, uint32_t addr, svBitVecVal *result) {
       printf("addr = 0x%08x\n", addr);
     }
 
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 1; ++i) {
       result[i] = *((uint32_t *)guest_to_host(addr) + i);
       if (begin_wave) {
         printf("result[%d] = 0x%08x\n", i, result[i]);
@@ -169,7 +171,7 @@ void mem_read(uint32_t en, uint32_t addr, svBitVecVal *result) {
     // access_device = true;
     valid = true;
     retval = uart_io_handler(raw_addr - UART_BASE, 1, 0, false);
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 1; ++i) {
       result[i] = 0;
     }
     if (raw_addr - addr < 4) {
@@ -194,7 +196,7 @@ void mem_read(uint32_t en, uint32_t addr, svBitVecVal *result) {
     printf("Invalid read to 0x%08x\n", raw_addr);
     running.store(false);
     stop = Stop::DIFFTEST_FAILED;
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 1; ++i) {
       result[i] = 0x57575757;
     }
   }
@@ -217,8 +219,7 @@ void check_memory(paddr_t addr, size_t n) {
   }
 }
 
-void mem_write(uint32_t en, uint32_t addr, const svBitVecVal *wdata,
-               uint32_t wmask) {
+void mem_write(uint32_t en, uint32_t addr, uint32_t wdata, uint32_t wmask) {
   if (!en || !running.load()) {
     printf("mem_write: en = %u  running = %u\n", en, running.load());
     return;
@@ -231,18 +232,19 @@ void mem_write(uint32_t en, uint32_t addr, const svBitVecVal *wdata,
   //               wmask, wdata, wdata);
   //   }
   // #endif
+  auto wdata_ptr = (uint8_t *)&wdata;
   if (in_pmem(addr)) {
     if (begin_wave) {
       printf("addr = 0x%08x\n", addr);
       printf("wmask = 0x%08x\n", wmask);
-      for (int i = 0; i < 8; ++i) {
-        printf("wdata[%d] = 0x%08x\n", i, ((uint32_t *)wdata)[i]);
+      for (int i = 0; i < 1; ++i) {
+        printf("wdata[%d] = 0x%08x\n", i, wdata);
       }
     }
     // host_write(guest_to_host(addr), wdata, wmask);
-    for (int i = 0; i < 32; ++i) {
+    for (int i = 0; i < 4; ++i) {
       if ((wmask >> i) & 1) {
-        *((uint8_t *)guest_to_host(addr) + i) = ((uint8_t *)wdata)[i];
+        *((uint8_t *)guest_to_host(addr) + i) = wdata_ptr[i];
       }
     }
 
@@ -262,8 +264,7 @@ void mem_write(uint32_t en, uint32_t addr, const svBitVecVal *wdata,
   //   }
   if (in_uart(raw_addr)) {
     // access_device = true;
-    uart_io_handler(raw_addr - UART_BASE, 1,
-                    ((uint8_t *)wdata)[raw_addr - addr], true);
+    uart_io_handler(raw_addr - UART_BASE, 1, wdata_ptr[raw_addr - addr], true);
     return;
   }
   Log("Invalid write to 0x%08x\n", raw_addr);

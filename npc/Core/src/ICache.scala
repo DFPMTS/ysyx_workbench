@@ -103,6 +103,7 @@ class IDataRead extends CoreBundle {
 class IDataWrite extends CoreBundle {
   val addr = UInt(XLEN.W)
   val way = UInt(log2Up(ICACHE_WAYS).W)
+  val wmask = UInt((CACHE_LINE_B / 4).W)
   val data = Vec(CACHE_LINE_B/4, UInt(32.W))
 }
 
@@ -128,7 +129,7 @@ class NewICache extends CoreModule {
   val io = IO(new ICacheIO)
 
   val tagArray = Seq.fill(ICACHE_WAYS)(Module(new XilinxBRAM(ICACHE_SETS, ICACHE_TAG + 1, ICACHE_TAG + 1)))
-  val dataArray = Seq.fill(ICACHE_WAYS)(Module(new XilinxBRAM(ICACHE_SETS, CACHE_LINE_B * 8, CACHE_LINE_B * 8)))
+  val dataArray = Seq.fill(ICACHE_WAYS)(Module(new XilinxBRAM(ICACHE_SETS, CACHE_LINE_B * 8, 32)))
 
   // * Tag
   for (i <- 0 until ICACHE_WAYS) {
@@ -141,7 +142,7 @@ class NewICache extends CoreModule {
   // * Data
   for (i <- 0 until ICACHE_WAYS) {
     dataArray(i).io.r(io.IN_dataRead.bits.addr, CACHE_LINE_B, io.IN_dataRead.valid)
-    dataArray(i).io.rw(io.IN_ctrlDataWrite.bits.addr, CACHE_LINE_B, true.B, io.IN_ctrlDataWrite.bits.way, 1.U, io.IN_ctrlDataWrite.bits.data.asUInt, io.IN_ctrlDataWrite.valid && io.IN_ctrlDataWrite.bits.way === i.U)
+    dataArray(i).io.rw(io.IN_ctrlDataWrite.bits.addr, CACHE_LINE_B, true.B, io.IN_ctrlDataWrite.bits.way, io.IN_ctrlDataWrite.bits.wmask, io.IN_ctrlDataWrite.bits.data.asUInt, io.IN_ctrlDataWrite.valid && io.IN_ctrlDataWrite.bits.way === i.U)
 
     io.OUT_dataResp.data(i) := dataArray(i).io.r.rdata.asTypeOf(io.OUT_dataResp.data(i))
   }

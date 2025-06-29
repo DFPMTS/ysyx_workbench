@@ -57,7 +57,8 @@ class LoadResultBuffer extends CoreModule with HasLSUOps {
           io.IN_memLoadFoward.bits.addr(XLEN - 1, log2Up(AXI_DATA_WIDTH / 8)) === entries(i).addr(XLEN - 1, log2Up(AXI_DATA_WIDTH / 8))) {
       val data = Wire(Vec(4, UInt(8.W)))
       data := entries(i).data.asTypeOf(data)
-      val offset = Cat(entries(i).addr(log2Up(AXI_DATA_WIDTH / 8) - 1, 2), 0.U(2.W))
+      val offset = if(AXI_DATA_WIDTH == XLEN) 0.U 
+                   else Cat(entries(i).addr(log2Up(AXI_DATA_WIDTH / 8) - 1, 2), 0.U(2.W))
       val bytes = Wire(Vec(AXI_DATA_WIDTH / 8, UInt(8.W)))
       bytes := io.IN_memLoadFoward.bits.data.asTypeOf(bytes)
       for (j <- 0 until 4) {

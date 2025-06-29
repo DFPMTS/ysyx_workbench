@@ -113,7 +113,7 @@ trait HasCoreParameters {
   def ICACHE_TAG = XLEN - log2Up(ICACHE_SETS) - log2Up(CACHE_LINE_B)
 
   // * AXI Data Width
-  def AXI_DATA_WIDTH = 256
+  def AXI_DATA_WIDTH = 32
 
   // * AXI Addr Width
   def AXI_ADDR_WIDTH = 32

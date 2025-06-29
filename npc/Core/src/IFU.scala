@@ -85,7 +85,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   val instAligner = Module(new InstAligner)
   val instBuffer = Module(new InstBuffer)
 
-  val replaceCounter = RegInit(0.U(2.W))
+  val replaceCounter = RegInit(0.U(4.W))
   replaceCounter := Mux(replaceCounter === ICACHE_WAYS.U - 1.U, 0.U, replaceCounter + 1.U)
 
   val vPC      = RegInit(UInt(XLEN.W), Config.resetPC)
