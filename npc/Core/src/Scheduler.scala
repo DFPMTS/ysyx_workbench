@@ -22,19 +22,17 @@ class Scheduler extends CoreModule {
     io.OUT_renameUop(i).bits := DontCare
   }
 
-  // * Port 0: ALU/MUL/CSR
+  // * Port 0: ALU/CSR
   // * Port 1: ALU/DIV
-  // * Port 2: BRU
+  // * Port 2: BRU/MUL
   // * Port 3: LSU
   def isPort(portIndex: Int, uop: RenameUop) = {
     if (portIndex == 0) {
-      (uop.fuType === FuType.ALU || uop.fuType === FuType.MUL) &&
-      (!(uop.fuType === FuType.ALU) || uop.robPtr.index(0) === 0.U)
+      (uop.fuType === FuType.ALU || uop.fuType === FuType.CSR)
     }else if (portIndex == 1) {
-      (uop.fuType === FuType.ALU || uop.fuType === FuType.DIV) && 
-      (!(uop.fuType === FuType.ALU) || uop.robPtr.index(0) === 1.U)
+      (uop.fuType === FuType.ALU || uop.fuType === FuType.DIV)
     }else if (portIndex == 2) {
-      uop.fuType === FuType.ALU || uop.fuType === FuType.BRU || uop.fuType === FuType.CSR
+      uop.fuType === FuType.ALU || uop.fuType === FuType.BRU || uop.fuType === FuType.MUL
     }else {
       uop.fuType === FuType.LSU || uop.fuType === FuType.AMO
     }

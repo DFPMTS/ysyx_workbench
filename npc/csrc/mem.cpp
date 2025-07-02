@@ -1,4 +1,5 @@
 #include "mem.hpp"
+#include "config.hpp"
 #include "cpu.hpp"
 #include "debug.hpp"
 #include "difftest.hpp"
@@ -32,7 +33,10 @@ uint8_t sdram[SDRAM_SIZE];
 #define ADDR_MASK (~0x3u)
 #define BYTE_MASK (0xFFu)
 
-static bool in_pmem(paddr_t addr) { return addr - MEM_BASE < MEM_SIZE; }
+static bool in_pmem(paddr_t addr) {
+  // return addr - MEM_BASE < MEM_SIZE;
+  return addr >= 0x10000000;
+}
 static bool in_clock(paddr_t addr) {
   return false;
   return addr == RTC_ADDR || addr == RTC_ADDR + 4;
@@ -92,7 +96,7 @@ void load_img(const char *img) {
     printf("Loading %ld bytes to MEM\n", size);
 #ifdef NPC
     // assert(fread(mem, 1, size, fd) == size);
-    auto read_size = fread(mem, 1, size, fd);
+    auto read_size = fread(mem + RESET_VECTOR, 1, size, fd);
     if (read_size != size) {
       printf("Error reading image, read %ld bytes\n", read_size);
       exit(1);

@@ -51,7 +51,7 @@ class SRAM extends CoreModule {
     is(s_Read) {
       // Request memory read and transition to wait for data
       next_state := s_ReadData
-      counter := read_lat + 170.U
+      counter := read_lat + 0.U
     }
     is(s_ReadData) {
       counter := Mux(counter === 0.U, 0.U, counter - 1.U)

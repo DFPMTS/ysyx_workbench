@@ -174,7 +174,7 @@ object FuType extends HasDecodeConfig {
 
 object ALUOp extends HasDecodeConfig {
   def ADD = "b0000".U(OpcodeWidth.W)  
-
+  def NOR   = "b0001".U(OpcodeWidth.W)
   def LEFT  = "b0010".U(OpcodeWidth.W)
   def RIGHT = "b0011".U(OpcodeWidth.W)
   def AND   = "b0100".U(OpcodeWidth.W)
@@ -276,6 +276,12 @@ object CSROp extends HasDecodeConfig {
   def CSRRWI = "b0100".U(OpcodeWidth.W)
   def CSRRSI = "b0101".U(OpcodeWidth.W)
   def CSRRCI = "b0110".U(OpcodeWidth.W)
+
+  def RDCNT_ID_W = "b0111".U(OpcodeWidth.W)
+  def RDCNT_VL_W = "b1000".U(OpcodeWidth.W)
+  def RDCNT_VH_W = "b1001".U(OpcodeWidth.W)
+
+  def CPUCFG  = "b1010".U(OpcodeWidth.W)
 }
 
 object MULOp extends HasDecodeConfig {
@@ -298,6 +304,18 @@ object ImmType extends HasDecodeConfig{
   def S = 2.U(ImmTypeWidth.W)
   def B = 3.U(ImmTypeWidth.W)
   def J = 4.U(ImmTypeWidth.W)
+  def X = BitPat.dontCare(ImmTypeWidth)
+}
+
+object LA32RImmType extends HasDecodeConfig {
+  def UI5 = 0.U(ImmTypeWidth.W) 
+  def UI12 = 1.U(ImmTypeWidth.W)
+  def SI12 = 2.U(ImmTypeWidth.W)
+  def SI14 = 3.U(ImmTypeWidth.W)
+  def SI20 = 4.U(ImmTypeWidth.W)
+  def OFFS16 = 5.U(ImmTypeWidth.W)
+  def OFFS26 = 6.U(ImmTypeWidth.W)
+  def CSR    = 7.U(ImmTypeWidth.W)
   def X = BitPat.dontCare(ImmTypeWidth)
 }
 

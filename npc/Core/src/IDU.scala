@@ -13,8 +13,8 @@ class IDU extends CoreModule with HasPerfCounters {
   val io = IO(new IDUIO)
 
   // * Submodules
-  val immgen = Seq.fill(ISSUE_WIDTH)(Module(new ImmGen))
-  val decode = Seq.fill(ISSUE_WIDTH)(Module(new Decode))
+  val immgen = Seq.fill(ISSUE_WIDTH)(Module(new LA32RImmGen))
+  val decode = Seq.fill(ISSUE_WIDTH)(Module(new LA32RDecode))
 
   // * Main Signals
   val uopsValid = RegInit(VecInit(Seq.fill(ISSUE_WIDTH)(false.B)))
@@ -27,9 +27,9 @@ class IDU extends CoreModule with HasPerfCounters {
     val instSignal = io.IN_inst(i).bits
     val inst = instSignal.inst
     val pc = instSignal.pc
-    val rd = inst(11, 7)
-    val rs1 = inst(19, 15)
-    val rs2 = inst(24, 20)
+    val rd = inst(4, 0)
+    val rs1 = inst(9, 5)
+    val rs2 = inst(14, 10)
     // ** Output
     val uopNext = Wire(new DecodeUop)
 
@@ -43,10 +43,13 @@ class IDU extends CoreModule with HasPerfCounters {
     immgen(i).io.inst_type := decodeSignal.immType
     val imm = immgen(i).io.imm
 
+    val isBL = decodeSignal.fuType === FuType.BRU && decodeSignal.opcode === BRUOp.CALL
+    val isBranch = decodeSignal.fuType === FuType.BRU && BRUOp.isBranch(decodeSignal.opcode)
+    val isStore = decodeSignal.fuType === FuType.LSU && LSUOp.isStore(decodeSignal.opcode)
     // *** Filling uopNext
-    uopNext.rd        := Mux(decodeSignal.regWe, rd, ZERO)
+    uopNext.rd        := Mux(decodeSignal.regWe, Mux(isBL, 1.U, rd), ZERO)
     uopNext.rs1       := Mux(decodeSignal.src1Type === SrcType.REG, rs1, 0.U)
-    uopNext.rs2       := Mux(decodeSignal.src2Type === SrcType.REG, rs2, 0.U)
+    uopNext.rs2       := Mux(decodeSignal.src2Type === SrcType.REG, Mux(isBranch || isStore, rd, rs2), 0.U)
 
     uopNext.src1Type  := decodeSignal.src1Type
     uopNext.src2Type  := decodeSignal.src2Type
@@ -55,22 +58,22 @@ class IDU extends CoreModule with HasPerfCounters {
     uopNext.opcode    := decodeSignal.opcode
     uopNext.lockBackend := decodeSignal.lockBackend
     
-    when (decodeSignal.fuType === FuType.CSR && (decodeSignal.opcode === CSROp.CSRRS || decodeSignal.opcode === CSROp.CSRRC || 
-    decodeSignal.opcode === CSROp.CSRRSI || decodeSignal.opcode === CSROp.CSRRCI) && rs1 === 0.U) {
-      uopNext.opcode := CSROp.CSRR
-    }
+    // when (decodeSignal.fuType === FuType.CSR && (decodeSignal.opcode === CSROp.CSRRS || decodeSignal.opcode === CSROp.CSRRC || 
+    // decodeSignal.opcode === CSROp.CSRRSI || decodeSignal.opcode === CSROp.CSRRCI) && rs1 === 0.U) {
+    //   uopNext.opcode := CSROp.CSRR
+    // }
 
     uopNext.predTarget := instSignal.predTarget
     uopNext.pc        := pc
 
     uopNext.imm       := imm
-    when (decodeSignal.fuType === FuType.CSR && (decodeSignal.opcode === CSROp.CSRRWI || 
-    decodeSignal.opcode === CSROp.CSRRSI || decodeSignal.opcode === CSROp.CSRRCI)) {
-      uopNext.imm := Cat(rs1, imm(11, 0))
-    }
-    when(decodeSignal.fuType === FuType.AMO) {
-      uopNext.imm := 0.U
-    }
+    // when (decodeSignal.fuType === FuType.CSR && (decodeSignal.opcode === CSROp.CSRRWI || 
+    // decodeSignal.opcode === CSROp.CSRRSI || decodeSignal.opcode === CSROp.CSRRCI)) {
+    //   uopNext.imm := Cat(rs1, imm(11, 0))
+    // }
+    // when(decodeSignal.fuType === FuType.AMO) {
+    //   uopNext.imm := 0.U
+    // }
 
     uopNext.compressed := false.B
 
@@ -103,10 +106,7 @@ class IDU extends CoreModule with HasPerfCounters {
       val rawBRUOp = decodeSignal.opcode
       val bruOp = WireDefault(rawBRUOp)
       def isLinkReg(regNum: UInt): Bool = {
-        regNum === 1.U || regNum === 5.U
-      }
-      when(rawBRUOp === BRUOp.JAL && isLinkReg(rd)) {
-        bruOp := BRUOp.CALL
+        regNum === 1.U
       }
       when(rawBRUOp === BRUOp.JALR) {
         val rdLink = isLinkReg(rd)
@@ -152,9 +152,4 @@ class IDU extends CoreModule with HasPerfCounters {
     out.valid := uopsValid(i)
     out.bits := uopsReg(i)
   }
-
-  // monitorEvent(iduAluInst, io.out.fire && ctrl.fuType === ALU)
-  // monitorEvent(iduMemInst, io.out.fire && ctrl.fuType === MEM)
-  // monitorEvent(iduBruInst, io.out.fire && ctrl.fuType === BRU)
-  // monitorEvent(iduCsrInst, io.out.fire && ctrl.fuType === CSR)
 }

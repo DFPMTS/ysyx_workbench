@@ -45,6 +45,35 @@ struct difftest_context_t {
   word_t mip;
 };
 
+using rtlreg_t = word_t;
+using vaddr_t = word_t;
+
+struct LA32R_CPU_State {
+  struct {
+    rtlreg_t _32;
+  } gpr[32];
+
+  rtlreg_t crmd, prmd, euen, ecfg;
+  rtlreg_t era, badv, eentry;
+  rtlreg_t tlbidx, tlbehi, tlbelo0, tlbelo1;
+  rtlreg_t asid, pgdl, pgdh;
+  rtlreg_t save0, save1, save2, save3;
+  rtlreg_t tid, tcfg, tval; //, ticlr;
+  rtlreg_t llbctl, tlbrentry, dmw0, dmw1;
+  rtlreg_t estat;
+  vaddr_t idle_pc;
+
+  rtlreg_t stable_counter_id;
+  rtlreg_t stable_counter_lo;
+  rtlreg_t stable_counter_hi;
+
+  rtlreg_t ll_bit;
+  bool inst_idle;
+
+  vaddr_t pc;
+  bool INTR;
+};
+
 extern std::function<uint32_t(int)> gpr;
 extern std::function<uint32_t(void)> PC;
 

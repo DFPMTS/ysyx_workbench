@@ -76,9 +76,12 @@ class PHT extends CoreModule {
     }
   }
 
-  val phtIndex = io.IN_pc(PHT_INDEX_LEN - 1 + log2Up(FETCH_WIDTH * 4), log2Up(FETCH_WIDTH * 4)) ^ (foldedSpecGHRNext << (PHT_INDEX_LEN - FOLDED_GHR_LEN))
+  // val phtIndex = io.IN_pc(PHT_INDEX_LEN - 1 + log2Up(FETCH_WIDTH * 4), log2Up(FETCH_WIDTH * 4)) ^ (foldedSpecGHRNext << (PHT_INDEX_LEN - FOLDED_GHR_LEN))
+  // upper GHR, lower PC
+  val phtIndex= Cat(foldedSpecGHRNext, io.IN_pc(PHT_INDEX_LEN - FOLDED_GHR_LEN - 1 + log2Up(FETCH_WIDTH * 4), log2Up(FETCH_WIDTH * 4)))
   val phtUpdateBank = if (FETCH_WIDTH == 1) 0.U else io.IN_phtUpdate.bits.pc(log2Up(FETCH_WIDTH) - 1 + 2, 2)
-  val phtUpdateIndex = io.IN_phtUpdate.bits.pc(PHT_INDEX_LEN - 1 + log2Up(FETCH_WIDTH * 4), log2Up(FETCH_WIDTH * 4)) ^ (foldedArchGHR << (PHT_INDEX_LEN - FOLDED_GHR_LEN))
+  // val phtUpdateIndex = io.IN_phtUpdate.bits.pc(PHT_INDEX_LEN - 1 + log2Up(FETCH_WIDTH * 4), log2Up(FETCH_WIDTH * 4)) ^ (foldedArchGHR << (PHT_INDEX_LEN - FOLDED_GHR_LEN))
+  val phtUpdateIndex = Cat(foldedArchGHR, io.IN_phtUpdate.bits.pc(PHT_INDEX_LEN - FOLDED_GHR_LEN - 1 + log2Up(FETCH_WIDTH * 4), log2Up(FETCH_WIDTH * 4)))
   val phtUpdateTaken = io.IN_phtUpdate.bits.taken
 
   for (i <- 0 until FETCH_WIDTH) {

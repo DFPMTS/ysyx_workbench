@@ -149,7 +149,7 @@ typedef cs_err (*cs_option_t)(csh handle, cs_opt_type type, size_t value);
 void init_disasm() {
   void *dl_handle;
   std::string dl_path = std::getenv("NEMU_HOME") +
-                        std::string("/tools/capstone/repo/libcapstone.so.5");
+                        std::string("/tools/capstone/repo/libcapstone.so.6");
   dl_handle = dlopen(dl_path.c_str(), RTLD_LAZY);
   assert(dl_handle);
 
@@ -163,8 +163,8 @@ void init_disasm() {
   cs_free_dl = (cs_free_dl_t)dlsym(dl_handle, "cs_free");
   assert(cs_free_dl);
 
-  cs_arch arch = CS_ARCH_RISCV;
-  cs_mode mode = CS_MODE_RISCV32;
+  cs_arch arch = CS_ARCH_LOONGARCH;
+  cs_mode mode = CS_MODE_LOONGARCH32;
   int ret = cs_open_dl(arch, mode, &handle);
   assert(ret == CS_ERR_OK);
 }

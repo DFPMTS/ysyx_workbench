@@ -78,6 +78,7 @@ class ALU(hasBru: Boolean) extends Module with HasALUFuncs {
   // ** ALU's default out should be add
   out := MuxLookup(aluFunc, addRes)(
     Seq(
+      ALUOp.NOR -> ~(op1 | op2),
       ALUOp.LEFT -> (op1 << shamt),
       ALUOp.RIGHT -> (op1 >> shamt),
       ALUOp.EQ -> eqRes,

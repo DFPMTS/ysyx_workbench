@@ -5,8 +5,9 @@
 #include <cstddef>
 #include <cstdint>
 
-constexpr size_t MEM_BASE = 0x10000000;
-constexpr size_t MEM_SIZE = 0x10000000;
+constexpr size_t MEM_BASE = 0;
+constexpr size_t MEM_SIZE = 0xF0000000;
+constexpr size_t RESET_VECTOR = 0x1C000000;
 
 constexpr size_t SRAM_SIZE = 0x00008000;
 constexpr size_t SRAM_BASE = 0x08000000;
@@ -38,8 +39,6 @@ constexpr size_t ROB_SIZE = 32;
 
 constexpr size_t CLINT_BASE = 0x0b000000;
 constexpr size_t UART_BASE = 0x0a000000;
-
-#define RESET_VECTOR 0x10000000
 
 using word_t = uint32_t;
 

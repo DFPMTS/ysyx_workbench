@@ -3,6 +3,7 @@
 
 #include "CSR.hpp"
 #include "Uop.hpp"
+#include "config.hpp"
 #include "cpu.hpp"
 #include "debug.hpp"
 #include "difftest.hpp"
@@ -36,7 +37,8 @@ public:
   InstInfo insts[ROB_SIZE];
   uint32_t archTable[32] = {};
   uint32_t pReg[NUM_PREG] = {};
-  uint32_t pc = 0;
+  uint32_t pc = RESET_VECTOR;
+  uint32_t lastPC = RESET_VECTOR;
 
   uint64_t lastCommit;
   uint64_t instRetired = 0;
@@ -61,7 +63,7 @@ public:
 
   FILE *customFile = nullptr;
 
-  // #define KONATA
+#define KONATA
 
   void konataLogStage(uint64_t instId, const char *stage) {
 #ifdef KONATA
@@ -229,7 +231,7 @@ public:
 
   void log(uint64_t cycle) {
 
-    if (cycle % 100 == 0) {
+    if (cycle % 1000 == 0) {
       fprintf(customFile, "%lu %lu\n", cycle, instRetired);
     }
 
@@ -355,6 +357,7 @@ public:
             if (inst.flag == FlagOp::MISPREDICT_TAKEN ||
                 inst.flag == FlagOp::MISPREDICT_NOT_TAKEN) {
               totalBranchMispred++;
+              mispredPenalty += cycle - inst.resultValidCycle;
             }
           }
         }
@@ -415,6 +418,7 @@ public:
           commitedIndex = 0;
         }
 
+        lastPC = inst.pc;
         konataLogCommit(&inst);
 
 #ifdef DIFFTEST
@@ -516,6 +520,7 @@ public:
         if (decodeInstValid[i]) {
           konataLogFlush(decodeInstIds[i]);
         }
+        decodeInstValid[i] = false;
       }
       pc = V_REDIRECT_PC;
       for (int i = 0; i < ROB_SIZE; ++i) {
@@ -525,6 +530,7 @@ public:
       // * rename -> ROB
       for (int i = 0; i < ISSUE_WIDTH; ++i) {
         if (*renameROBUop[i].valid && *renameROBUop[i].ready) {
+          decodeInstValid[i] = false;
           auto &inst = insts[*renameROBUop[i].robPtr_index];
           auto &uop = renameROBUop[i];
           robHeadPtr.inc();
@@ -570,8 +576,6 @@ public:
           decodeInstIds[i] = konataInstId++;
           decodeInstValid[i] = true;
           konataLogDecode(decodeInstIds[i], *uop.pc, *uop.inst);
-        } else {
-          decodeInstValid[i] = false;
         }
       }
     }

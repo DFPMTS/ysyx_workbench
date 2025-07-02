@@ -188,3 +188,178 @@ amomaxu_w  -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.AMO,  AMOOp.MAXU_W, 
   val table = TruthTable(transformLUT(lut), listToBitPat(defaultCtrl))
   io.signals := decoder(io.inst, table).asTypeOf(new DecodeSignal)
 }
+
+
+class LA32RDecode extends CoreModule {
+  val io = IO(new Bundle {
+    val inst    = Input(UInt(32.W))
+    val signals = Output(new DecodeSignal)
+  })
+
+  implicit def uintToBitPat(x: UInt): BitPat = BitPat(x)
+  def rdcnt_w    = BitPat("b00000000000000000  11000 ????? ?????") // rd = 0 -> rdcntid.w, rj = 0 -> rdcntvl.w
+  def rdcntvh_w  = BitPat("b00000000000000000  11001 00000 ?????")
+  def add_w      = BitPat("b00000000000100000  ????? ????? ?????") // ADD.W rd, rj, rk
+  def sub_w      = BitPat("b00000000000100010  ????? ????? ?????") // SUB.W rd, rj, rk
+  def slt        = BitPat("b00000000000100100  ????? ????? ?????") // SLT rd, rj, rk
+  def sltu       = BitPat("b00000000000100101  ????? ????? ?????") // SLTU rd, rj, rk
+  def nor        = BitPat("b00000000000101000  ????? ????? ?????") // NOR rd, rj, rk
+  def and        = BitPat("b00000000000101001  ????? ????? ?????") // AND rd, rj, rk
+  def or         = BitPat("b00000000000101010  ????? ????? ?????") // OR rd, rj, rk
+  def xor        = BitPat("b00000000000101011  ????? ????? ?????") // XOR rd, rj, rk
+  def sll_w      = BitPat("b00000000000101110  ????? ????? ?????") // SLL.W rd, rj, rk
+  def srl_w      = BitPat("b00000000000101111  ????? ????? ?????") // SRL.W rd, rj, rk
+  def sra_w      = BitPat("b00000000000110000  ????? ????? ?????") // SRA.W rd, rj, rk
+  def mul_w      = BitPat("b00000000000111000  ????? ????? ?????") // MUL.W rd, rj, rk
+  def mulh_w     = BitPat("b00000000000111001  ????? ????? ?????") // MULH.W rd, rj, rk
+  def mulh_wu    = BitPat("b00000000000111010  ????? ????? ?????") // MULH.WU rd, rj, rk
+  def div_w      = BitPat("b00000000001000000  ????? ????? ?????") // DIV.W rd, rj, rk
+  def mod_w      = BitPat("b00000000001000001  ????? ????? ?????") // MOD.W rd, rj, rk
+  def div_wu     = BitPat("b00000000001000010  ????? ????? ?????") // DIV.WU rd, rj, rk
+  def mod_wu     = BitPat("b00000000001000011  ????? ????? ?????") // MOD.WU rd, rj, rk
+  def break      = BitPat("b00000000001010100  ????? ????? ?????") // BREAK code
+  def syscall    = BitPat("b00000000001010110  ????? ????? ?????") // SYSCALL code
+  def slli_w     = BitPat("b00000000010000 001 ????? ????? ?????") // SLLI.W rd, rj, ui5
+  def srli_w     = BitPat("b00000000010001 001 ????? ????? ?????") // SRLI.W rd, rj, ui5
+  def srai_w     = BitPat("b00000000010010 001 ????? ????? ?????") // SRAI.W rd, rj, ui5
+
+  // Immediate arithmetic/logical instructions
+  def slti       = BitPat("b00000001000 ??????? ????? ????? ?????") // SLTI rd, rj, si12
+  def sltui      = BitPat("b00000001001 ??????? ????? ????? ?????") // SLTUI rd, rj, si12
+  def addi_w     = BitPat("b00000001010 ??????? ????? ????? ?????") // ADDI.W rd, rj, si12
+  def andi       = BitPat("b00000001101 ??????? ????? ????? ?????") // ANDI rd, rj, ui12
+  def ori        = BitPat("b00000001110 ??????? ????? ????? ?????") // ORI rd, rj, ui12
+  def xori       = BitPat("b00000001111 ??????? ????? ????? ?????") // XORI rd, rj, ui12
+
+  // CSR instructions
+  def csrop      = BitPat("b00000100 ?????????????? ????? ?????") // rj=0 -> CSRRD, rj=1 -> CSRWR, rj!=0,1 -> CSRXCHG
+
+  // Cache and TLB instructions
+  def cacop      = BitPat("b0000011000 ??????? ????? ????? ?????") // CACOP code, rj, si12
+  def tlbsrch    = BitPat("b0000011001 0010000 01010 00000 00000") // TLBSRCH
+  def tlbrd      = BitPat("b0000011001 0010000 01011 00000 00000") // TLBRD
+  def tlbwr      = BitPat("b0000011001 0010000 01100 00000 00000") // TLBWR
+  def tlbfill    = BitPat("b0000011001 0010000 01101 00000 00000") // TLBFILL
+  def ertn       = BitPat("b0000011001 0010000 01110 00000 00000") // ERTN
+  def idle       = BitPat("b0000011001 0010001 ????? ????? ?????") // IDLE level
+  def invtlb     = BitPat("b0000011001 0010011 ????? ????? ?????") // INVTLB op, rj, rk
+
+  // Upper immediate instructions
+  def lu12i_w    = BitPat("b0001010 ?????????? ????? ????? ?????") // LU12I.W rd, si20
+  def pcaddu12i  = BitPat("b0001110 ?????????? ????? ????? ?????") // PCADDU12I rd, si20
+
+  // Load-link/Store-conditional
+  def ll_w       = BitPat("b00100000 ????????? ????? ????? ?????") // LL.W rd, rj, si14
+  def sc_w       = BitPat("b00100001 ????????? ????? ????? ?????") // SC.W rd, rj, si14
+
+  // Load instructions
+  def ld_b       = BitPat("b00101000 00 ??????? ????? ????? ?????") // LD.B rd, rj, si12
+  def ld_h       = BitPat("b00101000 01 ??????? ????? ????? ?????") // LD.H rd, rj, si12
+  def ld_w       = BitPat("b00101000 10 ??????? ????? ????? ?????") // LD.W rd, rj, si12
+  def ld_bu      = BitPat("b00101010 00 ??????? ????? ????? ?????") // LD.BU rd, rj, si12
+  def ld_hu      = BitPat("b00101010 01 ??????? ????? ????? ?????") // LD.HU rd, rj, si12
+
+  // Store instructions
+  def st_b       = BitPat("b00101001 00 ??????? ????? ????? ?????") // ST.B rd, rj, si12
+  def st_h       = BitPat("b00101001 01 ??????? ????? ????? ?????") // ST.H rd, rj, si12
+  def st_w       = BitPat("b00101001 10 ??????? ????? ????? ?????") // ST.W rd, rj, si12
+
+  // Prefetch and barrier instructions
+  def preld      = BitPat("b00101010 11 ??????? ????? ????? ?????") // PRELD hint, rj, si12
+  def dbar       = BitPat("b00111000011100100   ????? ????? ?????") // DBAR hint
+  def ibar       = BitPat("b00111000011100101   ????? ????? ?????") // IBAR hint
+
+  // Jump and branch instructions
+  def jirl       = BitPat("b010011 ??????????? ????? ????? ?????") // JIRL rd, rj, offs
+  def b          = BitPat("b010100 ??????????? ????? ????? ?????") // B offs
+  def bl         = BitPat("b010101 ??????????? ????? ????? ?????") // BL offs
+  def beq        = BitPat("b010110 ??????????? ????? ????? ?????") // BEQ rj, rd, offs
+  def bne        = BitPat("b010111 ??????????? ????? ????? ?????") // BNE rj, rd, offs
+  def blt        = BitPat("b011000 ??????????? ????? ????? ?????") // BLT rj, rd, offs
+  def bge        = BitPat("b011001 ??????????? ????? ????? ?????") // BGE rj, rd, offs
+  def bltu       = BitPat("b011010 ??????????? ????? ????? ?????") // BLTU rj, rd, offs
+  def bgeu       = BitPat("b011011 ??????????? ????? ????? ?????") // BGEU rj, rd, offs
+
+  val defaultCtrl: List[BitPat] = List(Y, N, BitPat.dontCare(2), BitPat.dontCare(2), BitPat.dontCare(FuTypeWidth), BitPat.dontCare(OpcodeWidth), ImmType.X, N)
+  val lut: List[(BitPat, List[BitPat])] = List(
+rdcnt_w    -> List(N, Y, SrcType.ZERO, SrcType.IMM,  FuType.CSR,  CSROp.RDCNT_ID_W,      LA32RImmType.X,      N),
+rdcntvh_w  -> List(N, Y, SrcType.ZERO, SrcType.IMM,  FuType.CSR,  CSROp.RDCNT_VH_W,      LA32RImmType.X,      N),
+add_w      -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.ADD,             LA32RImmType.X,      N),
+sub_w      -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.SUB,             LA32RImmType.X,      N),
+slt        -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.LT,              LA32RImmType.X,      N),
+sltu       -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.LTU,             LA32RImmType.X,      N),
+nor        -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.NOR,             LA32RImmType.X,      N),
+and        -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.AND,             LA32RImmType.X,      N),
+or         -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.OR,              LA32RImmType.X,      N),
+xor        -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.XOR,             LA32RImmType.X,      N),
+sll_w      -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.LEFT,            LA32RImmType.X,      N),
+srl_w      -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.RIGHT,           LA32RImmType.X,      N),
+sra_w      -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.ALU,  ALUOp.ARITH,           LA32RImmType.X,      N),
+mul_w      -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.MUL,  MULOp.MUL,             LA32RImmType.X,      N),
+mulh_w     -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.MUL,  MULOp.MULH,            LA32RImmType.X,      N),
+mulh_wu    -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.MUL,  MULOp.MULHU,           LA32RImmType.X,      N),
+div_w      -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.DIV,  DIVOp.DIV,             LA32RImmType.X,      N),
+mod_w      -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.DIV,  DIVOp.REM,             LA32RImmType.X,      N),
+div_wu     -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.DIV,  DIVOp.DIVU,            LA32RImmType.X,      N),
+mod_wu     -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.DIV,  DIVOp.REMU,            LA32RImmType.X,      N),
+break      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.EBREAK,   LA32RImmType.X,      N),
+syscall    -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.ECALL,    LA32RImmType.X,      N),
+slli_w     -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.LEFT,            LA32RImmType.UI5,    N),
+srli_w     -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.RIGHT,           LA32RImmType.UI5,    N),
+srai_w     -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.ARITH,           LA32RImmType.UI5,    N),
+slti       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.LT,              LA32RImmType.SI12,   N),
+sltui      -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.LTU,             LA32RImmType.SI12,   N),
+addi_w     -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.ADD,             LA32RImmType.SI12,   N),
+andi       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.AND,             LA32RImmType.UI12,   N),
+ori        -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.OR,              LA32RImmType.UI12,   N),
+xori       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.XOR,             LA32RImmType.UI12,   N),
+csrop      -> List(N, Y, SrcType.REG,  SrcType.ZERO, FuType.CSR,  CSROp.CSRRW,           LA32RImmType.CSR,    N),
+cacop      -> List(N, N, SrcType.REG,  SrcType.IMM,  FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.SI12,   N), // TODO
+tlbsrch    -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.X,      N), // TODO
+tlbrd      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.X,      N), // TODO
+tlbwr      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.X,      N), // TODO
+tlbfill    -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.X,      N), // TODO
+ertn       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.MRET,     LA32RImmType.X,      N),
+idle       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.WFI,      LA32RImmType.X,      N),
+invtlb     -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.X,      N), // TODO
+lu12i_w    -> List(N, Y, SrcType.ZERO, SrcType.IMM,  FuType.ALU,  ALUOp.ADD,             LA32RImmType.SI20,   N),
+pcaddu12i  -> List(N, Y, SrcType.PC,   SrcType.IMM,  FuType.BRU,  BRUOp.AUIPC,           LA32RImmType.SI20,   N),
+ll_w       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.AMO,  AMOOp.LR_W,            LA32RImmType.SI14,   Y),
+sc_w       -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.AMO,  AMOOp.SC_W,            LA32RImmType.SI14,   Y),
+ld_b       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.LSU,  LSUOp.LB,              LA32RImmType.SI12,   N),
+ld_h       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.LSU,  LSUOp.LH,              LA32RImmType.SI12,   N),
+ld_w       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.LSU,  LSUOp.LW,              LA32RImmType.SI12,   N),
+ld_bu      -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.LSU,  LSUOp.LBU,             LA32RImmType.SI12,   N),
+ld_hu      -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.LSU,  LSUOp.LHU,             LA32RImmType.SI12,   N),
+st_b       -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.LSU,  LSUOp.SB,              LA32RImmType.SI12,   N),
+st_h       -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.LSU,  LSUOp.SH,              LA32RImmType.SI12,   N),
+st_w       -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.LSU,  LSUOp.SW,              LA32RImmType.SI12,   N),
+preld      -> List(N, N, SrcType.REG,  SrcType.IMM,  FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.SI12,   N), // TODO
+dbar       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.FENCE,    LA32RImmType.X,      N),
+ibar       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.FENCE_I,  LA32RImmType.X,      N),
+jirl       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.BRU,  BRUOp.JALR,            LA32RImmType.OFFS16, N),
+b          -> List(N, N, SrcType.PC,   SrcType.IMM,  FuType.BRU,  BRUOp.JAL,             LA32RImmType.OFFS26, N),
+bl         -> List(N, Y, SrcType.PC,   SrcType.IMM,  FuType.BRU,  BRUOp.CALL,            LA32RImmType.OFFS26, N),
+beq        -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.BRU,  BRUOp.BEQ,             LA32RImmType.OFFS16, N),
+bne        -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.BRU,  BRUOp.BNE,             LA32RImmType.OFFS16, N),
+blt        -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.BRU,  BRUOp.BLT,             LA32RImmType.OFFS16, N),
+bge        -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.BRU,  BRUOp.BGE,             LA32RImmType.OFFS16, N),
+bltu       -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.BRU,  BRUOp.BLTU,            LA32RImmType.OFFS16, N),
+bgeu       -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.BRU,  BRUOp.BGEU,            LA32RImmType.OFFS16, N)
+)
+
+  def listToBitPat(l: List[BitPat]) = {
+    l.reduceLeft(_ ## _)
+  }
+
+  def transformLUT(lut: List[(BitPat, List[BitPat])]): List[(BitPat, BitPat)] = {
+    lut.map {
+      case (key, value) =>
+        (key, listToBitPat(value))
+    }
+  }
+
+  val table = TruthTable(transformLUT(lut), listToBitPat(defaultCtrl))
+  io.signals := decoder(io.inst, table).asTypeOf(new DecodeSignal)
+}
+// *

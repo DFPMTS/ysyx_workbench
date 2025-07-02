@@ -68,7 +68,7 @@ clean:
 
 .PHONY: test verilog help compile bsp reformat checkformat clean gen_verilog vivado
 
-override MAINARGS += --diff=$(NEMU_HOME)/build/riscv32-nemu-interpreter-so
+override MAINARGS += --diff=/home/dfpmts/Documents/la32r/nemu/NEMU/build/la32r-nemu-interpreter-so
 
 # sim: $(BIN)
 #   $(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!

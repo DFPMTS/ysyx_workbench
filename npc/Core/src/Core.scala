@@ -49,20 +49,20 @@ class Core extends CoreModule {
   val rob = Module(new ROB)
   val scheduler = Module(new Scheduler)
   val iq = Seq(
-    Module(new IssueQueue(Seq(FuType.ALU, FuType.MUL))),
-    Module(new IssueQueue(Seq(FuType.ALU, FuType.DIV))),
     Module(new IssueQueue(Seq(FuType.ALU, FuType.CSR))),
+    Module(new IssueQueue(Seq(FuType.ALU, FuType.DIV))),
+    Module(new IssueQueue(Seq(FuType.ALU, FuType.MUL))),
     Module(new IssueQueue(Seq(FuType.LSU))),
   )
   val dispatcher = Seq(
     Module(new Dispatcher(
-      Seq(Seq(FuType.ALU), Seq(FuType.MUL))
+      Seq(Seq(FuType.ALU), Seq(FuType.CSR))
     )),
     Module(new Dispatcher(
       Seq(Seq(FuType.ALU), Seq(FuType.DIV))
     )),
     Module(new Dispatcher(
-      Seq(Seq(FuType.ALU, FuType.BRU), Seq(FuType.CSR))
+      Seq(Seq(FuType.ALU, FuType.BRU), Seq(FuType.MUL))
     )),
   )
 
@@ -70,13 +70,13 @@ class Core extends CoreModule {
   val pReg = Module(new PReg)
   // * Port 0
   val alu0 = Module(new ALU(hasBru = false))
-  val mul  = Module(new MUL)
+  val csr  = Module(new CSR)
   // * Port 1
   val alu1 = Module(new ALU(hasBru = false))
   val div  = Module(new DIV)
   // * Port 2
   val alu2 = Module(new ALU(hasBru = true))
-  val csr  = Module(new CSR)
+  val mul  = Module(new MUL)
   // * Port 3
   val agu  = Module(new AGU)
   val loadQueue = Module(new LoadQueue)
@@ -292,18 +292,22 @@ class Core extends CoreModule {
   pReg.io.IN_writebackUop := writebackUop
 
   // * Execute
-  // ** Port 0: ALU / MUL
+  // ** Port 0: ALU / CSR
   dispatcher(0).io.IN_uop <> readRegUop(0)
 
   alu0.io.IN_flush := flush
-  mul.io.IN_flush := flush
 
   alu0.io.IN_readRegUop <> dispatcher(0).io.OUT_uop(0)
-  mul.io.IN_readRegUop  <> dispatcher(0).io.OUT_uop(1)
+  csr.io.IN_readRegUop  <> dispatcher(0).io.OUT_uop(1)
+
+  csr.io.IN_mtime := internalMMIO.io.OUT_mtime
+  csr.io.IN_MTIP := internalMMIO.io.OUT_MTIP
+  csr.io.IN_xtvalRec <> xtvalRecorder.io.OUT_tval
+  csr.io.IN_CSRCtrl <> CSRCtrl
 
   val port0wbsel = Module(new WritebackSel(2))
   port0wbsel.io.IN_uop(0) := alu0.io.OUT_writebackUop
-  port0wbsel.io.IN_uop(1) := mul.io.OUT_writebackUop
+  port0wbsel.io.IN_uop(1) := csr.io.OUT_writebackUop
   writebackUop(0) := port0wbsel.io.OUT_uop
 
   // ** Port 1: ALU / DIV
@@ -320,22 +324,18 @@ class Core extends CoreModule {
   port1wbsel.io.IN_uop(1) := div.io.OUT_writebackUop
   writebackUop(1) := port1wbsel.io.OUT_uop
 
-  // ** Port 2: ALU / BRU / CSR
+  // ** Port 2: ALU / BRU / MUL
   dispatcher(2).io.IN_uop <> readRegUop(2)
 
   alu2.io.IN_flush := flush
+  mul.io.IN_flush := flush
 
   alu2.io.IN_readRegUop <> dispatcher(2).io.OUT_uop(0)
-  csr.io.IN_readRegUop  <> dispatcher(2).io.OUT_uop(1)
-
-  csr.io.IN_mtime := internalMMIO.io.OUT_mtime
-  csr.io.IN_MTIP := internalMMIO.io.OUT_MTIP
-  csr.io.IN_xtvalRec <> xtvalRecorder.io.OUT_tval
-  csr.io.IN_CSRCtrl <> CSRCtrl
+  mul.io.IN_readRegUop  <> dispatcher(2).io.OUT_uop(1)
 
   val port2wbsel = Module(new WritebackSel(2))
   port2wbsel.io.IN_uop(0) := alu2.io.OUT_writebackUop
-  port2wbsel.io.IN_uop(1) := csr.io.OUT_writebackUop
+  port2wbsel.io.IN_uop(1) := mul.io.OUT_writebackUop
   writebackUop(2) := port2wbsel.io.OUT_uop
 
   // ** Port 3: LSU
