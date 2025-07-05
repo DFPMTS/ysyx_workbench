@@ -69,29 +69,44 @@ object PTE {
 // * "With the addition of the C extension, no instructions can 
 // *  raise instruction-address-misaligned exceptions."
 // * So we are safe to use its encoding space for NONE exception.
+/* al PIL    = 0x1.U(FlagWidth.W)
+  val PIS    = 0x2.U(FlagWidth.W)
+  val PIF    = 0x3.U(FlagWidth.W)
+  val PME    = 0x4.U(FlagWidth.W)
+  val PPI    = 0x7.U(FlagWidth.W)
+  val ADEFM  = 0x8.U(FlagWidth.W)
+  val ALE    = 0x9.U(FlagWidth.W)
+  val SYS    = 0xB.U(FlagWidth.W)
+  val BRK    = 0xC.U(FlagWidth.W)
+  val INE    = 0xD.U(FlagWidth.W)
+  val IPE    = 0xE.U(FlagWidth.W)
+  val FPD    = 0xF.U(FlagWidth.W)
+  val FPE    = 0x12.U(FlagWidth.W)
+  val TLBR   = 0x3F.U(FlagWidth.W) */
 object FlagOp extends HasDecodeConfig {
-  val NONE                  = 0.U(FlagWidth.W)
-  val INST_ACCESS_FAULT     = 1.U(FlagWidth.W)
-  val ILLEGAL_INST          = 2.U(FlagWidth.W)
-  // val BREAKPOINT            = 3.U(FlagWidth.W)
-  
-  val LOAD_ADDR_MISALIGNED  = 4.U(FlagWidth.W)
-  val LOAD_ACCESS_FAULT     = 5.U(FlagWidth.W)
-  val STORE_ADDR_MISALIGNED = 6.U(FlagWidth.W)
-  val STORE_ACCESS_FAULT    = 7.U(FlagWidth.W)
+  val NONE                  = 0x0.U(FlagWidth.W)
+  val PIL                   = 0x1.U(FlagWidth.W)
+  val PIS                   = 0x2.U(FlagWidth.W)
+  val PIF                   = 0x3.U(FlagWidth.W)
+  val PME                   = 0x4.U(FlagWidth.W)
+  // 0x5
+  // 0x6
+  val PPI                   = 0x7.U(FlagWidth.W)
+  val ADEF                  = 0x8.U(FlagWidth.W)
+  val ALE                   = 0x9.U(FlagWidth.W)
+  val DECODE_FLAG           = 0xA.U(FlagWidth.W) // * rd field stores DecodeFlagOp
+  val SYS                   = 0xB.U(FlagWidth.W)
+  val BRK                   = 0xC.U(FlagWidth.W)
+  val INE                   = 0xD.U(FlagWidth.W)
+  val IPE                   = 0xE.U(FlagWidth.W)
+  val TLBR                  = 0xF.U(FlagWidth.W)
+
   // * custom begin
-  val DECODE_FLAG           = 8.U(FlagWidth.W) // * rd field stores DecodeFlagOp
-  // val INTERRUPT             = 9.U(FlagWidth.W)
-  val BRANCH_TAKEN          = 9.U(FlagWidth.W)
-  val BRANCH_NOT_TAKEN      = 10.U(FlagWidth.W)
-  val MISPREDICT_TAKEN      = 11.U(FlagWidth.W) // ! Temp
-  // val INST_PAGE_FAULT       = 12.U(FlagWidth.W)
-  val MISPREDICT_NOT_TAKEN  = 12.U(FlagWidth.W) // ! Temp
-  // * custom end
-  val LOAD_PAGE_FAULT       = 13.U(FlagWidth.W)
-  // * temporary jump
-  val MISPREDICT_JUMP       = 14.U(FlagWidth.W) // ! Temp
-  val STORE_PAGE_FAULT      = 15.U(FlagWidth.W)
+  val BRANCH_TAKEN          = 0x10.U(FlagWidth.W)
+  val BRANCH_NOT_TAKEN      = 0x11.U(FlagWidth.W)
+  val MISPREDICT_TAKEN      = 0x12.U(FlagWidth.W)
+  val MISPREDICT_NOT_TAKEN  = 0x13.U(FlagWidth.W)
+  val MISPREDICT_JUMP       = 0x14.U(FlagWidth.W)
 
   val isBranchTaken = (flag: UInt) => {
     flag === BRANCH_TAKEN || flag === MISPREDICT_TAKEN
@@ -118,38 +133,41 @@ object FlagOp extends HasDecodeConfig {
 }
 
 object Exception extends HasDecodeConfig {
-  val INST_ADDR_MISALIGNED  = 0.U(FlagWidth.W)
-  val INST_ACCESS_FAULT     = 1.U(FlagWidth.W)
-  val ILLEGAL_INST          = 2.U(FlagWidth.W)
-  val BREAKPOINT            = 3.U(FlagWidth.W)
-  val LOAD_ADDR_MISALIGNED  = 4.U(FlagWidth.W)
-  val LOAD_ACCESS_FAULT     = 5.U(FlagWidth.W)
-  val STORE_ADDR_MISALIGNED = 6.U(FlagWidth.W)
-  val STORE_ACCESS_FAULT    = 7.U(FlagWidth.W)
-  val ECALL_FROM_U          = 8.U(FlagWidth.W)
-  val ECALL_FROM_S          = 9.U(FlagWidth.W)
-  val RESERVED_0            = 10.U(FlagWidth.W)
-  val ECALL_FROM_M          = 11.U(FlagWidth.W)
-  val INST_PAGE_FAULT       = 12.U(FlagWidth.W)
-  val LOAD_PAGE_FAULT       = 13.U(FlagWidth.W)
-  val RESERVED_1            = 14.U(FlagWidth.W)
-  val STORE_PAGE_FAULT      = 15.U(FlagWidth.W)
+  val INT    = 0x0.U
+  val PIL    = 0x1.U
+  val PIS    = 0x2.U
+  val PIF    = 0x3.U
+  val PME    = 0x4.U
+  val PPI    = 0x7.U
+  val ADEF   = 0x8.U // ADEM does not exist, for now
+  val ALE    = 0x9.U
+  val SYS    = 0xB.U
+  val BRK    = 0xC.U
+  val INE    = 0xD.U
+  val IPE    = 0xE.U
+  val FPD    = 0xF.U
+  val FPE    = 0x12.U
+  val TLBR   = 0x3F.U
+
+  def isAddrException (cause: UInt) = {
+    (cause >= PIL && cause <= ALE) || cause === TLBR
+  }
 }
 
 object DecodeFlagOp extends HasDecodeConfig {
-  val ECALL      = 0.U(FlagWidth.W)
-  val EBREAK     = 1.U(FlagWidth.W)
-  val MRET       = 2.U(FlagWidth.W)
-  val SRET       = 3.U(FlagWidth.W)
-  val FENCE      = 4.U(FlagWidth.W)
-  val FENCE_I    = 5.U(FlagWidth.W)
-  val WFI        = 6.U(FlagWidth.W)
-  val SFENCE_VMA = 7.U(FlagWidth.W)
-  val INTERRUPT  = 8.U(FlagWidth.W)
-  val INST_PAGE_FAULT = 9.U(FlagWidth.W)
+  val SYS        = 0.U(OpcodeWidth.W)
+  val BRK        = 1.U(OpcodeWidth.W)
+  val ERTN       = 2.U(OpcodeWidth.W)
+  // 3
+  val FENCE      = 4.U(OpcodeWidth.W)
+  val FENCE_I    = 5.U(OpcodeWidth.W)
+  val WFI        = 6.U(OpcodeWidth.W)
+  val SFENCE_VMA = 7.U(OpcodeWidth.W)
+  val INTERRUPT  = 8.U(OpcodeWidth.W)
+  val INST_PAGE_FAULT = 9.U(OpcodeWidth.W)
 
 
-  val NONE    = 15.U(FlagWidth.W)
+  val NONE    = 15.U(OpcodeWidth.W)
 }
 
 object Dest extends HasDecodeConfig {
@@ -268,14 +286,9 @@ object AMOOp extends HasDecodeConfig {
 }
 
 object CSROp extends HasDecodeConfig {
-  def CSRR  = "b0000".U(OpcodeWidth.W)
-  def CSRRW = "b0001".U(OpcodeWidth.W)
-  def CSRRS = "b0010".U(OpcodeWidth.W)
-  def CSRRC = "b0011".U(OpcodeWidth.W)
-
-  def CSRRWI = "b0100".U(OpcodeWidth.W)
-  def CSRRSI = "b0101".U(OpcodeWidth.W)
-  def CSRRCI = "b0110".U(OpcodeWidth.W)
+  def CSRRD   = "b0000".U(OpcodeWidth.W)
+  def CSRWR   = "b0001".U(OpcodeWidth.W)
+  def CSRXCHG = "b0010".U(OpcodeWidth.W)
 
   def RDCNT_ID_W = "b0111".U(OpcodeWidth.W)
   def RDCNT_VL_W = "b1000".U(OpcodeWidth.W)

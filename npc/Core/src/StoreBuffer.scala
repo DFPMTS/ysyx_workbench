@@ -15,6 +15,8 @@ class StoreBufferIO extends CoreBundle {
 
   val IN_storeBypassReq = Flipped(new StoreBypassReq)
   val OUT_storeBypassResp = new StoreBypassResp
+
+  val OUT_retireStqPtr = RingBufferPtr(STQ_SIZE)
 }
 
 class StoreBuffer extends CoreModule {
@@ -36,11 +38,6 @@ class StoreBuffer extends CoreModule {
     }
   }
 
-  def getShiftedData(aguUop: AGUUop): UInt = {
-    val addrOffset = aguUop.addr(log2Up(XLEN/8) - 1, 0)
-    (aguUop.wdata << (addrOffset << 3))(XLEN - 1, 0)
-  }
-
   def addrMatch (addr1: UInt, addr2: UInt): Bool = {
     addr1(XLEN - 1, 2) === addr2(XLEN - 1, 2)
   }
@@ -57,11 +54,11 @@ class StoreBuffer extends CoreModule {
   io.OUT_storeBypassResp.data := bypassData.asTypeOf(UInt(32.W))
   io.OUT_storeBypassResp.mask := bypassDataMask.asUInt
   val wmask = uop.mask
-  val shiftedData = getShiftedData(uop)
+  val shiftedData = uop.wdata
   
   when(addrMatch(io.IN_storeBypassReq.addr, uop.addr) && uopValid) {
     val uopWmask = uop.mask
-    val uopShiftedData = getShiftedData(uop)
+    val uopShiftedData = uop.wdata
     for (i <- 0 until 4) {
       when(uopWmask(i)) {
         bypassDataNext(i) := uopShiftedData((i + 1) * 8 - 1, i * 8)
@@ -75,10 +72,14 @@ class StoreBuffer extends CoreModule {
   io.OUT_storeUop.bits := uop
   io.OUT_storeBufferEmpty := !uopValid
 
+  val retireStqPtr = RegInit(RingBufferPtr(STQ_SIZE, 0.U, 0.U))
+  io.OUT_retireStqPtr := retireStqPtr
+
   when(io.IN_storeAck.valid) {
     // * success
     when(io.IN_storeAck.bits.resp === 0.U) {
       uopValid := false.B
+      retireStqPtr := retireStqPtr + 1.U
     }.otherwise {
       uopIssued := false.B
     }

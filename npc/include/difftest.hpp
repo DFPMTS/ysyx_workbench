@@ -20,7 +20,6 @@ extern ref_difftest_regcpy_t ref_difftest_regcpy;
 extern ref_difftest_exec_t ref_difftest_exec;
 extern ref_difftest_raise_intr_t ref_difftest_raise_intr;
 
-extern LA32R_CPU_State ref;
 extern difftest_context_t dut;
 
 void init_difftest(const char *diff_so_file);

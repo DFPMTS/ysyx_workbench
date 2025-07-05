@@ -80,7 +80,8 @@ class PTW extends CoreModule {
   when(io.IN_loadNegAck.valid && io.IN_loadNegAck.bits.dest === Dest.PTW) {
     PTWUopValid := true.B
   }
-  io.OUT_PTWUop.bits.addr := Mux(state === sL1, Cat(io.IN_VMCSR.rootPPN, vpn1, 0.U(2.W)), Cat(pte.ppn1, pte.ppn0, vpn0, 0.U(2.W)))
+  // io.OUT_PTWUop.bits.addr := Mux(state === sL1, Cat(io.IN_VMCSR.rootPPN, vpn1, 0.U(2.W)), Cat(pte.ppn1, pte.ppn0, vpn0, 0.U(2.W)))
+  io.OUT_PTWUop.bits.addr := 0.U
   io.OUT_PTWUop.bits.stqPtr := stqPtr
   io.OUT_PTWUop.valid := PTWUopValid
 
@@ -99,9 +100,11 @@ class PTW extends CoreModule {
   val finOnL0 = state === sL0 && hasLoadRepl
   translateFin := finOnL1 || finOnL0
   
-  io.OUT_PTWResp.valid := translateFin
-  io.OUT_PTWResp.bits.isSuper := finOnL1
-  io.OUT_PTWResp.bits.pte := io.IN_writebackUop.bits.data.asTypeOf(new PTE)
-  io.OUT_PTWResp.bits.vpn := vpn
-  io.OUT_PTWResp.bits.id := id
+  io.OUT_PTWResp := 0.U.asTypeOf(Valid(new PTWResp))
+  // io.OUT_PTWResp.valid := translateFin
+  // io.OUT_PTWResp.bits.isSuper := finOnL1
+  // io.OUT_PTWResp.bits.pte := io.IN_writebackUop.bits.data.asTypeOf(new PTE)
+  // io.OUT_PTWResp.bits.pte := 0.U.asTypeOf(new TLBPPN)
+  // io.OUT_PTWResp.bits.vpn := vpn
+  // io.OUT_PTWResp.bits.id := id
 }

@@ -1,6 +1,7 @@
 import chisel3._
 import chisel3.util._
 import utils._
+import FlagOp.DECODE_FLAG
 
 class IDUIO extends CoreBundle {
   val IN_inst       = Flipped(Vec(ISSUE_WIDTH, Valid(new InstSignal)))
@@ -41,13 +42,14 @@ class IDU extends CoreModule with HasPerfCounters {
     // *** Immediate Generation  
     immgen(i).io.inst      := inst
     immgen(i).io.inst_type := decodeSignal.immType
-    val imm = immgen(i).io.imm
+    val imm = WireInit(immgen(i).io.imm)
 
     val isBL = decodeSignal.fuType === FuType.BRU && decodeSignal.opcode === BRUOp.CALL
+    val isRdcntID = decodeSignal.fuType === FuType.CSR && decodeSignal.opcode === CSROp.RDCNT_ID_W && rd === 0.U
     val isBranch = decodeSignal.fuType === FuType.BRU && BRUOp.isBranch(decodeSignal.opcode)
     val isStore = decodeSignal.fuType === FuType.LSU && LSUOp.isStore(decodeSignal.opcode)
     // *** Filling uopNext
-    uopNext.rd        := Mux(decodeSignal.regWe, Mux(isBL, 1.U, rd), ZERO)
+    uopNext.rd        := Mux(decodeSignal.regWe, Mux(isBL, 1.U, Mux(isRdcntID, rs1, rd)), ZERO)
     uopNext.rs1       := Mux(decodeSignal.src1Type === SrcType.REG, rs1, 0.U)
     uopNext.rs2       := Mux(decodeSignal.src2Type === SrcType.REG, Mux(isBranch || isStore, rd, rs2), 0.U)
 
@@ -86,21 +88,33 @@ class IDU extends CoreModule with HasPerfCounters {
       uopNext.fuType := FuType.FLAG
       uopNext.opcode := FlagOp.DECODE_FLAG
       uopNext.rd     := DecodeFlagOp.INTERRUPT
+    }.elsewhen(instSignal.access_fault) {
+      uopNext.fuType := FuType.FLAG
+      uopNext.opcode := FlagOp.ADEF
+    }.elsewhen(instSignal.tlbMiss){
+      uopNext.fuType := FuType.FLAG
+      uopNext.opcode := FlagOp.TLBR
     }.elsewhen(instSignal.pageFault) {
       uopNext.fuType := FuType.FLAG
-      uopNext.opcode := FlagOp.DECODE_FLAG
-      uopNext.rd     := DecodeFlagOp.INST_PAGE_FAULT
+      uopNext.opcode := FlagOp.PIF
+    }.elsewhen(instSignal.pagePrivFail){
+      uopNext.fuType := FuType.FLAG
+      uopNext.opcode := FlagOp.PPI
     }.elsewhen(illegalInst) {
       uopNext.fuType := FuType.FLAG
-      uopNext.opcode := FlagOp.ILLEGAL_INST
+      uopNext.opcode := FlagOp.INE
     }.elsewhen(decodeSignal.fuType === FuType.FLAG) {
       uopNext.fuType := FuType.FLAG
       when(decodeSignal.opcode === DecodeFlagOp.NONE) {
         uopNext.opcode := FlagOp.NONE
         uopNext.rd     := ZERO
-      }.otherwise{
-        uopNext.opcode := FlagOp.DECODE_FLAG
-        uopNext.rd     := decodeSignal.opcode      
+      }.elsewhen(decodeSignal.opcode === DecodeFlagOp.BRK) {
+        uopNext.opcode := FlagOp.BRK
+      }.elsewhen(decodeSignal.opcode === DecodeFlagOp.SYS) {
+        uopNext.opcode := FlagOp.SYS
+      }.otherwise {
+        uopNext.opcode := DECODE_FLAG
+        uopNext.rd := decodeSignal.opcode
       }
     }.elsewhen(decodeSignal.fuType === FuType.BRU) {
       val rawBRUOp = decodeSignal.opcode
@@ -124,6 +138,24 @@ class IDU extends CoreModule with HasPerfCounters {
         }
       }
       uopNext.opcode := bruOp
+    }.elsewhen(decodeSignal.fuType === FuType.CSR) {
+      when(decodeSignal.opcode === CSROp.CSRXCHG) {
+        when(rs1 === 0.U) {
+          uopNext.opcode := CSROp.CSRRD
+        }.elsewhen(rs1 === 1.U) {
+          uopNext.opcode := CSROp.CSRWR
+          uopNext.rs1 := rd
+        }.otherwise {
+          uopNext.rs1 := rd
+          uopNext.rs2 := rs1
+        }
+      }.elsewhen(decodeSignal.opcode === CSROp.RDCNT_ID_W) {
+        when(rd === 0.U) {
+          uopNext.opcode := CSROp.RDCNT_ID_W
+        }.elsewhen(rs1 === 0.U) {
+          uopNext.opcode := CSROp.RDCNT_VL_W
+        }
+      }
     }
 
     uopsNext(i) := uopNext

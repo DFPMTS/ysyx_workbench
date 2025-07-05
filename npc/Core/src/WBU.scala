@@ -32,7 +32,7 @@ class WBU extends Module with HasDecodeConstants {
   val csrPCValid = Wire(Bool())
 
   // -------------------------- CSR --------------------------
-  val csr       = Module(new CSR)
+  // val csr       = Module(new CSR)
   val rd        = ctrlBuffer.rd
   val rs1       = ctrlBuffer.rs1
   val isCSR     = ctrlBuffer.fuType === CSR

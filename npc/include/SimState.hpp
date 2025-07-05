@@ -273,9 +273,9 @@ public:
         //   access_device = true;
         // }
 
-        if (flag == FlagOp::DECODE_FLAG && decodeFlag == DecodeFlagOp::EBREAK) {
-          running.store(false);
-        }
+        // if (flag == FlagOp::DECODE_FLAG && decodeFlag == DecodeFlagOp::BRK) {
+        //   running.store(false);
+        // }
 
         // if (flag != FlagOp::MISPREDICT) {
         //   if (flag == FlagOp::DECODE_FLAG) {
@@ -304,9 +304,7 @@ public:
       auto pc = *csrCtrl[0].pc;
       auto trap = *csrCtrl[0].trap;
       auto intr = *csrCtrl[0].intr;
-      auto mret = *csrCtrl[0].mret;
-      auto sret = *csrCtrl[0].sret;
-      auto deleg = *csrCtrl[0].delegate;
+      auto ertn = *csrCtrl[0].ertn;
       // if (trap || mret || sret) {
       //   fprintf(stderr, "\033[33m");
       //   if (trap) {
@@ -366,28 +364,33 @@ public:
                        (inst.flag != FlagOp::BRANCH_NOT_TAKEN);
         if (inst.fuType == FuType::LSU) {
           auto addr = inst.paddr;
-          if (addr >= CLINT_BASE + 0xbff8 && addr < CLINT_BASE + 0xc000 ||
-              addr >= CLINT_BASE + 0x4000 && addr < CLINT_BASE + 0x4008 ||
-              addr >= CLINT_BASE + 0x0000 && addr < CLINT_BASE + 0x0004 ||
-              addr >= UART_BASE && addr < UART_BASE + 32) {
+          if (in_confreg(addr)) {
             // fprintf(stderr, "LSU MMIO: %x\n", addr);
             access_device = true;
           }
         }
         if (inst.fuType == FuType::CSR) {
-          // TODO: skip mip register
-          auto csrAddr = inst.imm & ((1 << 12) - 1);
-          if (csrAddr == 0xC01 || csrAddr == 0xC81) {
-            // fprintf(stderr, "CSR MMIO: %x\n", csrAddr);
+          auto opcode = (CSROp)inst.opcode;
+          if (opcode == CSROp::RDCNT_VL_W || opcode == CSROp::RDCNT_VH_W) {
             access_device = true;
+          }
+          // TODO: skip mip register
+          auto csrAddr = inst.imm & ((1 << 14) - 1);
+          if (csrAddr == 0x41) {
+            // fprintf(stderr, "CSR MMIO: %x\n", csrAddr);
+            // access_device = true;
+            printf("tcfg accessed\n");
+            printf("pc = %x\n", inst.pc);
+            printf("opcode = %d\n", (int)inst.opcode);
+            printf("wdata = %08x\n", inst.src1);
           }
         }
         if (inst.flag == FlagOp::DECODE_FLAG &&
             (DecodeFlagOp)inst.rd == DecodeFlagOp::INTERRUPT) {
           // * override the difftest ref
-          if (begin_wave || begin_log) {
-            fprintf(stderr, "INTERRUPT on PC: %x:\n", *flagUop[i].pc);
-          }
+          // if (begin_wave || begin_log) {
+          fprintf(stderr, "INTERRUPT on PC: %x:\n", *flagUop[i].pc);
+          // }
           access_device = true;
         }
         if (begin_wave || begin_log) {

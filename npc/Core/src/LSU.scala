@@ -607,7 +607,7 @@ class NewLSU extends CoreModule with HasLSUOps {
         io.OUT_dataWrite.bits.write := true.B
         io.OUT_dataWrite.bits.way := tagHitWay
         io.OUT_dataWrite.bits.wmask := mask << (offset * 4.U)
-        io.OUT_dataWrite.bits.data := stage(0).wdata << (stage(0).addr(log2Up(CACHE_LINE_B) - 1, 0) << 3)
+        io.OUT_dataWrite.bits.data := stage(0).wdata << (stage(0).addr(log2Up(CACHE_LINE_B) - 1, 2) * 32.U)
         storeWriteData := true.B
         when (io.OUT_dataWrite.ready) {     
           storeAck.resp := 0.U 

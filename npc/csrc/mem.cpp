@@ -35,7 +35,7 @@ uint8_t sdram[SDRAM_SIZE];
 
 static bool in_pmem(paddr_t addr) {
   // return addr - MEM_BASE < MEM_SIZE;
-  return addr >= 0x10000000;
+  return addr <= 0x80000000;
 }
 static bool in_clock(paddr_t addr) {
   return false;
@@ -44,6 +44,10 @@ static bool in_clock(paddr_t addr) {
 static bool in_serial(paddr_t addr) {
   return false;
   return addr == SERIAL_PORT;
+}
+
+bool in_confreg(uint32_t addr) {
+  return addr >= CONFGREG_BASE && addr < CONFGREG_BASE + 0x100000;
 }
 
 uint8_t uart_io_handler(uint32_t offset, int len, uint8_t wdata, bool is_write);
@@ -171,19 +175,21 @@ void mem_read(uint32_t en, uint32_t addr, uint32_t *result) {
     valid = true;
     retval = clock_read(addr - RTC_ADDR);
   }
-  if (in_uart(raw_addr)) {
-    // access_device = true;
+  if (in_confreg(raw_addr)) {
     valid = true;
-    retval = uart_io_handler(raw_addr - UART_BASE, 1, 0, false);
-    for (int i = 0; i < 1; ++i) {
-      result[i] = 0;
-    }
-    if (raw_addr - addr < 4) {
-      result[0] = retval << (8 * (raw_addr - addr));
-    } else if (raw_addr - addr < 8) {
-      result[1] = retval << (8 * (raw_addr - addr - 4));
-    } else {
-      result[2] = retval << (8 * (raw_addr - addr - 8));
+    if (in_uart(raw_addr)) {
+      // access_device = true;
+      retval = uart_io_handler(raw_addr - UART_BASE, 1, 0, false);
+      for (int i = 0; i < 1; ++i) {
+        result[i] = 0;
+      }
+      if (raw_addr - addr < 4) {
+        result[0] = retval << (8 * (raw_addr - addr));
+      } else if (raw_addr - addr < 8) {
+        result[1] = retval << (8 * (raw_addr - addr - 4));
+      } else {
+        result[2] = retval << (8 * (raw_addr - addr - 8));
+      }
     }
   }
   // #ifdef MTRACE
@@ -266,9 +272,12 @@ void mem_write(uint32_t en, uint32_t addr, uint32_t wdata, uint32_t wmask) {
   //     serial_write(addr - SERIAL_PORT, wdata);
   //     return;
   //   }
-  if (in_uart(raw_addr)) {
-    // access_device = true;
-    uart_io_handler(raw_addr - UART_BASE, 1, wdata_ptr[raw_addr - addr], true);
+  if (in_confreg(raw_addr)) {
+    if (in_uart(raw_addr)) {
+      // access_device = true;
+      uart_io_handler(raw_addr - UART_BASE, 1, wdata_ptr[raw_addr - addr],
+                      true);
+    }
     return;
   }
   Log("Invalid write to 0x%08x\n", raw_addr);

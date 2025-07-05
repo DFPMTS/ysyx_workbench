@@ -32,11 +32,15 @@ class InstAligner extends CoreModule {
     for (i <- 0 until FETCH_WIDTH) {
       valid(i) := instValidMap(fetchOffset + i.U)
       insts(i).inst := inFetchGroup.insts(fetchOffset + i.U)
-      val instPC = if (FETCH_WIDTH == 1) inFetchGroup.pc else Cat(inFetchGroup.pc(XLEN - 1, log2Ceil(FETCH_WIDTH * 4)), (fetchOffset + i.U), 0.U(2.W))
+      val realOffset = Wire(UInt(log2Ceil(FETCH_WIDTH * 4).W))
+      realOffset := inFetchGroup.pc(log2Ceil(FETCH_WIDTH * 4) - 1, 0) + (i.U * 4.U)
+      val instPC = if (FETCH_WIDTH == 1) inFetchGroup.pc else Cat(inFetchGroup.pc(XLEN - 1, log2Ceil(FETCH_WIDTH * 4)), realOffset)
       insts(i).pc := instPC
       insts(i).predTarget := Mux(inFetchGroup.brTaken && inFetchGroup.brOffset === fetchOffset + i.U, inFetchGroup.brTarget, instPC + 4.U)
       insts(i).pageFault := inFetchGroup.pageFault
       insts(i).interrupt := inFetchGroup.interrupt
+      insts(i).tlbMiss := inFetchGroup.tlbMiss
+      insts(i).pagePrivFail := inFetchGroup.pagePrivFail
       insts(i).access_fault := inFetchGroup.access_fault
       insts(i).phtState := inFetchGroup.phtState(fetchOffset + i.U)
       insts(i).lastBranch := inFetchGroup.lastBranchMap(fetchOffset + i.U)

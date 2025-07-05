@@ -7,14 +7,14 @@ trait HasDecodeConfig {
   def FuTypeWidth  = 4
   def OpcodeWidth  = 4
   def ImmTypeWidth = 4
-  def FlagWidth    = 4
+  def FlagWidth    = 5
 
   def Y = 1.U(1.W)
   def N = 0.U(1.W)
 
 }
 
-trait HasCoreParameters {
+trait HasCoreParameters extends HasDecodeConfig {
   def XLEN = 32
   def IDLEN = 4  
 
@@ -60,7 +60,7 @@ trait HasCoreParameters {
   def STQ_IDX_W = log2Up(STQ_SIZE).W
 
   // * Flag
-  def FLAG_W = 4.W
+  def FLAG_W = FlagWidth.W
 
   // * Page Number Length
   def PAGE_NR_LEN = 20

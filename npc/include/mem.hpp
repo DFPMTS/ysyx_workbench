@@ -24,5 +24,6 @@ extern uint8_t sdram[SDRAM_SIZE];
 extern bool access_device;
 
 void load_img(const char *img);
+bool in_confreg(uint32_t addr);
 
 #endif

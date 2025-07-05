@@ -19,11 +19,9 @@ class CSRCtrl extends CoreBundle {
   val trap  = Bool()
   val intr  = Bool()
   val pc    = UInt(XLEN.W)
-  val cause = UInt(4.W)
-  val delegate = Bool()
-  // * mret/sret
-  val mret  = Bool()
-  val sret  = Bool()
+  val cause = UInt(6.W)
+  // * ertn
+  val ertn  = Bool()
 }
 // 
 class FlagHandler extends CoreModule {
@@ -48,14 +46,7 @@ class FlagHandler extends CoreModule {
   redirect.valid := false.B
   CSRCtrl := CSRCtrlNext
   val priv = io.IN_trapCSR.priv
-  val medeleg = io.IN_trapCSR.medeleg
-  val mideleg = io.IN_trapCSR.mideleg
-  val exceptionDelegate = priv < Priv.M && medeleg(CSRCtrlNext.cause)
-  val interruptDelegate = priv < Priv.M && mideleg(CSRCtrlNext.cause)
-  val delegate = Mux(CSRCtrlNext.intr, interruptDelegate, exceptionDelegate)
-  val xtvec = Mux(delegate, io.IN_trapCSR.stvec, io.IN_trapCSR.mtvec)
-  
-  CSRCtrlNext.delegate := delegate
+  val xtvec = io.IN_trapCSR.eentry
 
   when (io.IN_flagUop.valid) {
     when (FlagOp.isRedirect(flag)) {
@@ -73,7 +64,7 @@ class FlagHandler extends CoreModule {
           
           CSRCtrlNext.trap := true.B
           CSRCtrlNext.intr := true.B
-          CSRCtrlNext.cause := io.IN_trapCSR.interruptCause
+          CSRCtrlNext.cause := Exception.INT
           CSRCtrlNext.pc := io.IN_flagUop.bits.pc
         }.otherwise {
           redirect.valid := true.B
@@ -82,38 +73,13 @@ class FlagHandler extends CoreModule {
           flush := true.B
         }
       }
-      when(decodeFlag === DecodeFlagOp.EBREAK) {
+      when(decodeFlag === DecodeFlagOp.ERTN) {
         redirect.valid := true.B
-        redirect.pc := xtvec
-        flush := true.B
-        CSRCtrlNext.trap := true.B
-        CSRCtrlNext.cause := Exception.BREAKPOINT
-        CSRCtrlNext.pc := io.IN_flagUop.bits.pc
-      }
-      when(decodeFlag === DecodeFlagOp.ECALL) {
-        redirect.valid := true.B
-        redirect.pc := xtvec
-        flush := true.B
-        CSRCtrlNext.trap := true.B
-        CSRCtrlNext.cause := 8.U + io.IN_trapCSR.priv
-        CSRCtrlNext.pc := io.IN_flagUop.bits.pc
-      }
-
-      when(decodeFlag === DecodeFlagOp.MRET) {
-        redirect.valid := true.B
-        redirect.pc := io.IN_trapCSR.mepc
+        redirect.pc := io.IN_trapCSR.era
         flush := true.B
         
         CSRCtrlNext.pc := io.IN_flagUop.bits.pc
-        CSRCtrlNext.mret := true.B
-      }
-      when(decodeFlag === DecodeFlagOp.SRET) {
-        redirect.valid := true.B
-        redirect.pc := io.IN_trapCSR.sepc
-        flush := true.B
-        
-        CSRCtrlNext.pc := io.IN_flagUop.bits.pc
-        CSRCtrlNext.sret := true.B
+        CSRCtrlNext.ertn := true.B
       }
       when(decodeFlag === DecodeFlagOp.SFENCE_VMA) {
         redirect.valid := true.B
@@ -137,19 +103,27 @@ class FlagHandler extends CoreModule {
         flush := true.B
 
         CSRCtrlNext.trap := true.B
-        CSRCtrlNext.cause := Exception.INST_PAGE_FAULT
+        CSRCtrlNext.cause := Exception.PIF
         CSRCtrlNext.pc := io.IN_flagUop.bits.pc
       }
     }
-    when(flag === FlagOp.ILLEGAL_INST ||
-         (flag >= FlagOp.LOAD_ADDR_MISALIGNED && flag <= FlagOp.STORE_ACCESS_FAULT) ||
-         flag === FlagOp.LOAD_PAGE_FAULT || flag === FlagOp.STORE_PAGE_FAULT) {
+    when((flag >= FlagOp.PIL && flag <= FlagOp.ALE) || 
+         (flag >= FlagOp.SYS && flag <= FlagOp.IPE)) {
       redirect.valid := true.B
       redirect.pc := xtvec
       flush := true.B
       
       CSRCtrlNext.trap := true.B
       CSRCtrlNext.cause := flag
+      CSRCtrlNext.pc := io.IN_flagUop.bits.pc
+    }
+    when(flag === FlagOp.TLBR) {
+      redirect.valid := true.B
+      redirect.pc := io.IN_trapCSR.tlbrentry
+      flush := true.B
+
+      CSRCtrlNext.trap := true.B
+      CSRCtrlNext.cause := Exception.TLBR
       CSRCtrlNext.pc := io.IN_flagUop.bits.pc
     }
   }

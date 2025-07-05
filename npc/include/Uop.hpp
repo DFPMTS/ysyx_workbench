@@ -68,17 +68,15 @@ enum class LSUOp : CData {
 };
 
 enum class CSROp : CData {
-  CSRR = 0b0000,
-  CSRRW = 0b0001,
-  CSRRS = 0b0010,
-  CSRRC = 0b0011,
-  CSRRWI = 0b0100,
-  CSRRSI = 0b0101,
-  CSRRCI = 0b0110,
-  SRET = 0b1000,
-  MRET = 0b1001,
-  ECALL = 0b1010,
-  EBREAK = 0b1011
+  CSRRD = 0b0000,
+  CSRWR = 0b0001,
+  CSRXCHG = 0b0010,
+
+  RDCNT_ID_W = 0b0111,
+  RDCNT_VL_W = 0b1000,
+  RDCNT_VH_W = 0b1001,
+
+  CPUCFG = 0b1010,
 };
 
 enum class ImmType : CData { I = 0, U = 1, S = 2, B = 3, J = 4, X = 0xFF };
@@ -103,67 +101,82 @@ enum class CImmType : CData {
 };
 
 /*
-object FlagOp extends HasDecodeConfig {
-  val NONE                  = 0.U(FlagWidth.W)
-  val INST_ACCESS_FAULT     = 1.U(FlagWidth.W)
-  val ILLEGAL_INST          = 2.U(FlagWidth.W)
+val NONE                  = 0x0.U(FlagWidth.W)
+  val PIL                   = 0x1.U(FlagWidth.W)
+  val PIS                   = 0x2.U(FlagWidth.W)
+  val PIF                   = 0x3.U(FlagWidth.W)
+  val PME                   = 0x4.U(FlagWidth.W)
+  // 0x5
+  // 0x6
+  val PPI                   = 0x7.U(FlagWidth.W)
+  val ADEF                  = 0x8.U(FlagWidth.W)
+  val ALE                   = 0x9.U(FlagWidth.W)
+  val DECODE_FLAG           = 0xA.U(FlagWidth.W) // * rd field stores
+DecodeFlagOp val SYS                   = 0xB.U(FlagWidth.W) val BRK =
+0xC.U(FlagWidth.W) val INE                   = 0xD.U(FlagWidth.W) val IPE =
+0xE.U(FlagWidth.W) val TLBR                  = 0xF.U(FlagWidth.W)
 
-  val LOAD_ADDR_MISALIGNED  = 4.U(FlagWidth.W)
-  val LOAD_ACCESS_FAULT     = 5.U(FlagWidth.W)
-  val STORE_ADDR_MISALIGNED = 6.U(FlagWidth.W)
-  val STORE_ACCESS_FAULT    = 7.U(FlagWidth.W)
   // * custom begin
-  val DECODE_FLAG           = 8.U(FlagWidth.W) // * rd field stores DecodeFlagOp
-  val BRANCH_TAKEN          = 9.U(FlagWidth.W)
-  val BRANCH_NOT_TAKEN      = 10.U(FlagWidth.W)
-  val MISPREDICT_TAKEN      = 11.U(FlagWidth.W) // ! Temp
-  val MISPREDICT_NOT_TAKEN  = 12.U(FlagWidth.W) // ! Temp
-  // * custom end
-  val LOAD_PAGE_FAULT       = 13.U(FlagWidth.W)
-  // * temporary jump
-  val MISPREDICT_JUMP       = 14.U(FlagWidth.W) // ! Temp
-  val STORE_PAGE_FAULT      = 15.U(FlagWidth.W)
+  val BRANCH_TAKEN          = 0x10.U(FlagWidth.W)
+  val BRANCH_NOT_TAKEN      = 0x11.U(FlagWidth.W)
+  val MISPREDICT_TAKEN      = 0x12.U(FlagWidth.W)
+  val MISPREDICT_NOT_TAKEN  = 0x13.U(FlagWidth.W)
+  val MISPREDICT_JUMP       = 0x14.U(FlagWidth.W)
 */
 
 enum class FlagOp : CData {
-  NONE = 0,
-  INST_ACCESS_FAULT = 1,
-  ILLEGAL_INST = 2,
-
-  LOAD_ADDR_MISALIGNED = 4,
-  LOAD_ACCESS_FAULT = 5,
-  STORE_ADDR_MISALIGNED = 6,
-  STORE_ACCESS_FAULT = 7,
-  DECODE_FLAG = 8,
-  BRANCH_TAKEN = 9,
-  BRANCH_NOT_TAKEN = 10,
-  MISPREDICT_TAKEN = 11,
-  MISPREDICT_NOT_TAKEN = 12,
-  LOAD_PAGE_FAULT = 13,
-  MISPREDICT_JUMP = 14,
-  STORE_PAGE_FAULT = 15
+  NONE = 0x0,
+  PIL = 0x1,
+  PIS = 0x2,
+  PIF = 0x3,
+  PME = 0x4,
+  // 0x5
+  // 0x6
+  PPI = 0x7,
+  ADEF = 0x8,
+  ALE = 0x9,
+  DECODE_FLAG = 0xA,
+  SYS = 0xB,
+  BRK = 0xC,
+  INE = 0xD,
+  IPE = 0xE,
+  TLBR = 0xF,
+  // * custom begin
+  BRANCH_TAKEN = 0x10,
+  BRANCH_NOT_TAKEN = 0x11,
+  MISPREDICT_TAKEN = 0x12,
+  MISPREDICT_NOT_TAKEN = 0x13,
+  MISPREDICT_JUMP = 0x14,
 };
 
 inline const char *getFlagOpName(FlagOp flag) {
   switch (flag) {
   case FlagOp::NONE:
     return "NONE";
-  case FlagOp::INST_ACCESS_FAULT:
-    return "INST_ACCESS_FAULT";
-  case FlagOp::ILLEGAL_INST:
-    return "ILLEGAL_INST";
+  case FlagOp::PIL:
+    return "PAGE ILLEGAL LOAD";
+  case FlagOp::PIS:
+    return "PAGE ILLEGAL STORE";
   // case FlagOp::BREAKPOINT:
   //   return "BREAKPOINT";
-  case FlagOp::LOAD_ADDR_MISALIGNED:
-    return "LOAD_ADDR_MISALIGNED";
-  case FlagOp::LOAD_ACCESS_FAULT:
-    return "LOAD_ACCESS_FAULT";
-  case FlagOp::STORE_ADDR_MISALIGNED:
-    return "STORE_ADDR_MISALIGNED";
-  case FlagOp::STORE_ACCESS_FAULT:
-    return "STORE_ACCESS_FAULT";
+  case FlagOp::PIF:
+    return "PAGE ILLEGAL FETCH";
+  case FlagOp::PME:
+    return "PAGE MODIFY EXCEPTION";
+  case FlagOp::PPI:
+    return "PAGE PRIV EXCEPTION";
+  case FlagOp::ADEF:
+    return "ADDRESS DECODE EXCEPTION FETCH";
   case FlagOp::DECODE_FLAG:
     return "DECODE_FLAG";
+  case FlagOp::SYS:
+    return "SYSTEM CALL";
+  case FlagOp::BRK:
+    return "BREAK";
+  case FlagOp::INE:
+    return "INST NOT EXIST";
+  case FlagOp::IPE:
+    return "INST PRIV EXCEPTION";
   case FlagOp::BRANCH_TAKEN:
     return "BRANCH_TAKEN";
   case FlagOp::BRANCH_NOT_TAKEN:
@@ -172,22 +185,18 @@ inline const char *getFlagOpName(FlagOp flag) {
     return "MISPREDICT_TAKEN";
   case FlagOp::MISPREDICT_NOT_TAKEN:
     return "MISPREDICT_NOT_TAKEN";
-  case FlagOp::LOAD_PAGE_FAULT:
-    return "LOAD_PAGE_FAULT";
   case FlagOp::MISPREDICT_JUMP:
     return "MISPREDICT_JUMP";
-  case FlagOp::STORE_PAGE_FAULT:
-    return "STORE_PAGE_FAULT";
   default:
     return "UNKNOWN";
   }
 }
 
 enum class DecodeFlagOp : CData {
-  ECALL = 0,
-  EBREAK = 1,
-  MRET = 2,
-  SRET = 3,
+  SYS = 0,
+  BRK = 1,
+  ERTN = 2,
+  // 3
   FENCE = 4,
   FENCE_I = 5,
   WFI = 6,
@@ -202,14 +211,12 @@ enum class DecodeFlagOp : CData {
 
 inline const char *getDecodeFlagOpName(DecodeFlagOp flag) {
   switch (flag) {
-  case DecodeFlagOp::ECALL:
-    return "ECALL";
-  case DecodeFlagOp::EBREAK:
-    return "EBREAK";
-  case DecodeFlagOp::MRET:
-    return "MRET";
-  case DecodeFlagOp::SRET:
-    return "SRET";
+  case DecodeFlagOp::SYS:
+    return "SYS";
+  case DecodeFlagOp::BRK:
+    return "BRK";
+  case DecodeFlagOp::ERTN:
+    return "ERTN";
   case DecodeFlagOp::FENCE:
     return "FENCE";
   case DecodeFlagOp::FENCE_I:
@@ -395,9 +402,7 @@ struct CSRCtrl : Uop {
   CData *intr;
   IData *pc;
   CData *cause;
-  CData *delegate;
-  CData *mret;
-  CData *sret;
+  CData *ertn;
 };
 
 struct AGUUop : Uop {
@@ -592,9 +597,7 @@ struct Ptr {
   X(i, intr)                                                                   \
   X(i, pc)                                                                     \
   X(i, cause)                                                                  \
-  X(i, delegate)                                                               \
-  X(i, mret)                                                                   \
-  X(i, sret)
+  X(i, ertn)
 
 #define AGU_FIELDS(X, i)                                                       \
   X(i, addr)                                                                   \

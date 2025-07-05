@@ -27,7 +27,7 @@ constexpr size_t SDRAM_SIZE = 0x02000000;
 constexpr size_t WAIT_INTERVAL = 1;
 constexpr size_t SLOT_SIZE = 2;
 
-constexpr size_t FORK_CYCLE = 50000;
+constexpr size_t FORK_CYCLE = 10000;
 
 constexpr size_t ISSUE_WIDTH = 3;
 constexpr size_t MACHINE_WIDTH = 4;
@@ -38,7 +38,9 @@ constexpr size_t NUM_PREG = 64;
 constexpr size_t ROB_SIZE = 32;
 
 constexpr size_t CLINT_BASE = 0x0b000000;
-constexpr size_t UART_BASE = 0x0a000000;
+constexpr size_t UART_BASE = 0xbfafff10;
+
+constexpr size_t CONFGREG_BASE = 0xbfa00000;
 
 using word_t = uint32_t;
 

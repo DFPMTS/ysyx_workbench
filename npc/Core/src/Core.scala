@@ -43,7 +43,7 @@ class Core extends CoreModule {
   val cacheController = Module(new CacheController)
 
   val ifu = Module(new IFU)
-  val itlb = Module(new TLB(size = 1, id = 0))
+  val itlb = Module(new TLB(id = 0))
   val idu = Module(new IDU)
   val rename = Module(new Rename)
   val rob = Module(new ROB)
@@ -70,7 +70,7 @@ class Core extends CoreModule {
   val pReg = Module(new PReg)
   // * Port 0
   val alu0 = Module(new ALU(hasBru = false))
-  val csr  = Module(new CSR)
+  val csr  = Module(new LA32RCSR)
   // * Port 1
   val alu1 = Module(new ALU(hasBru = false))
   val div  = Module(new DIV)
@@ -84,7 +84,7 @@ class Core extends CoreModule {
   val storeBuffer = Module(new StoreBuffer)
   val amoUnit = Module(new AmoUnit)
   val lsu  = Module(new NewLSU)
-  val dtlb = Module(new TLB(size = 1, id = 1))
+  val dtlb = Module(new TLB(id = 1))
   val ptw  = Module(new PTW)
   val loadArb = Module(new LoadArbiter)
 
@@ -200,6 +200,7 @@ class Core extends CoreModule {
 
   icache.io.IN_ctrlDataWrite <> cacheController.io.OUT_IDataWrite  
 
+  itlb.io.IN_VMCSR <> csr.io.OUT_VMCSR
   itlb.io.IN_PTWResp <> ptw.io.OUT_PTWResp
   itlb.io.IN_TLBFlush := TLBFlush
 
@@ -344,6 +345,7 @@ class Core extends CoreModule {
   agu.io.OUT_TLBReq <> dtlb.io.IN_TLBReq
   agu.io.IN_TLBResp <> dtlb.io.OUT_TLBResp
 
+  dtlb.io.IN_VMCSR := csr.io.OUT_VMCSR
   dtlb.io.IN_PTWResp <> ptw.io.OUT_PTWResp
   dtlb.io.IN_TLBFlush := TLBFlush
   ptw.io.IN_VMCSR := csr.io.OUT_VMCSR
@@ -381,6 +383,7 @@ class Core extends CoreModule {
   loadQueue.io.IN_robTailPtr := rob.io.OUT_robTailPtr
   loadQueue.io.IN_commitLdqPtr := rob.io.OUT_ldqTailPtr
   loadQueue.io.IN_commitStqPtr := rob.io.OUT_stqTailPtr
+  loadQueue.io.IN_retireStqPtr := storeBuffer.io.OUT_retireStqPtr
   loadQueue.io.IN_flush := flush
 
   storeQueue.io.IN_AGUUop <> aguUop

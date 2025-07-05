@@ -22,33 +22,10 @@ extern bool begin_log;
 #define concat_temp(x, y) x##y
 static uint32_t dummy = 0;
 
-struct difftest_context_t {
-  word_t gpr[32];
-  word_t pc;
-  word_t priv;
-  word_t stvec;
-  word_t sscratch;
-  word_t sepc;
-  word_t scause;
-  word_t stval;
-  word_t satp;
-  word_t mstatus;
-  word_t medeleg;
-  word_t mideleg;
-  word_t mie;
-  word_t mtvec;
-  word_t menvcfg;
-  word_t mscratch;
-  word_t mepc;
-  word_t mcause;
-  word_t mtval;
-  word_t mip;
-};
-
 using rtlreg_t = word_t;
 using vaddr_t = word_t;
 
-struct LA32R_CPU_State {
+struct difftest_context_t {
   struct {
     rtlreg_t _32;
   } gpr[32];

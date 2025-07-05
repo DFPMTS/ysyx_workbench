@@ -25,19 +25,6 @@ class UncachedLSUIO extends CoreBundle {
 class UncachedLSU extends CoreModule {
   val io = IO(new UncachedLSUIO)
 
-  def getWmask(aguUop: AGUUop): UInt = {
-    val memLen = aguUop.opcode(2, 1)
-    val addrOffset = aguUop.addr(log2Up(XLEN/8) - 1, 0)
-    val wmask = MuxLookup(memLen, 0.U(4.W))(
-      Seq(
-        0.U(2.W) -> "b0001".U,
-        1.U(2.W) -> "b0011".U,
-        2.U(2.W) -> "b1111".U
-      )
-    ) << addrOffset
-    wmask
-  }
-
   val sIdle :: sLoadReq :: sStoreReq :: sWaitLoadResp :: sWaitStoreResp :: sLoadFin :: Nil = Enum(6)
   val state = RegInit(sIdle)
   val cacheCtrlUop = Reg(new CacheCtrlUop)
@@ -103,7 +90,7 @@ class UncachedLSU extends CoreModule {
             LSUOp.SW -> CacheOpcode.UNCACHED_SW
           ))
           cacheCtrlUop.wdata := io.IN_storeUop.bits.wdata
-          cacheCtrlUop.wmask := getWmask(io.IN_storeUop.bits)
+          cacheCtrlUop.wmask := io.IN_storeUop.bits.mask
         }
       }
     }

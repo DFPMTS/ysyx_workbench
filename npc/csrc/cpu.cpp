@@ -34,24 +34,34 @@ void isa_reg_display(difftest_context_t *ctx) {
     printf("%s\t%08X\t%d\n", reg_name(i), ctx->gpr[i], ctx->gpr[i]);
   }
   printf("------------------------\n");
-  printf("priv: %d\n", ctx->priv);
-  printf("stvec: %08X\n", ctx->stvec);
-  printf("sscratch: %08X\n", ctx->sscratch);
-  printf("sepc: %08X\n", ctx->sepc);
-  printf("scause: %08X\n", ctx->scause);
-  printf("stval: %08X\n", ctx->stval);
-  printf("satp: %08X\n", ctx->satp);
-  printf("mstatus: %08X\n", ctx->mstatus);
-  printf("medeleg: %08X\n", ctx->medeleg);
-  printf("mideleg: %08X\n", ctx->mideleg);
-  printf("mie: %08X\n", ctx->mie);
-  printf("mtvec: %08X\n", ctx->mtvec);
-  printf("menvcfg: %08X\n", ctx->menvcfg);
-  printf("mscratch: %08X\n", ctx->mscratch);
-  printf("mepc: %08X\n", ctx->mepc);
-  printf("mcause: %08X\n", ctx->mcause);
-  printf("mtval: %08X\n", ctx->mtval);
-  printf("mip: %08X\n", ctx->mip);
+  printf("crmd: %08X\n", ctx->crmd);
+  printf("prmd: %08X\n", ctx->prmd);
+  printf("euen: %08X\n", ctx->euen);
+  printf("ecfg: %08X\n", ctx->ecfg);
+  printf("era:  %08X\n", ctx->era);
+  printf("badv: %08X\n", ctx->badv);
+  printf("eentry: %08X\n", ctx->eentry);
+  printf("tlbidx: %08X\n", ctx->tlbidx);
+  printf("tlbehi: %08X\n", ctx->tlbehi);
+  printf("tlbelo0: %08X\n", ctx->tlbelo0);
+  printf("tlbelo1: %08X\n", ctx->tlbelo1);
+  printf("asid: %08X\n", ctx->asid);
+  printf("pgdl: %08X\n", ctx->pgdl);
+  printf("pgdh: %08X\n", ctx->pgdh);
+  printf("save0: %08X\n", ctx->save0);
+  printf("save1: %08X\n", ctx->save1);
+  printf("save2: %08X\n", ctx->save2);
+  printf("save3: %08X\n", ctx->save3);
+  printf("tid: %08X\n", ctx->tid);
+  printf("tcfg: %08X\n", ctx->tcfg);
+  printf("tval: %08X\n", ctx->tval);
+  printf("llbctl: %08X\n", ctx->llbctl);
+  printf("tlbrentry: %08X\n", ctx->tlbrentry);
+  printf("dmw0: %08X\n", ctx->dmw0);
+  printf("dmw1: %08X\n", ctx->dmw1);
+  printf("estat: %08X\n", ctx->estat);
+  printf("tid: %08X\n", ctx->tid);
+  printf("tval: %08X\n", ctx->tval);
   printf("========================\n");
 }
 const char *reg_name(int id) {
@@ -87,27 +97,42 @@ std::function<uint32_t(void)> PC;
 
 void get_context(difftest_context_t *dut) {
   for (int i = 0; i < 32; ++i) {
-    dut->gpr[i] = gpr(i);
+    dut->gpr[i]._32 = gpr(i);
   }
   dut->pc = PC();
-  dut->priv = *state.csr.priv;
-  dut->stvec = *state.csr.stvec;
-  dut->sscratch = *state.csr.sscratch;
-  dut->sepc = *state.csr.sepc;
-  dut->scause = *state.csr.scause;
-  dut->stval = *state.csr.stval;
-  dut->satp = *state.csr.satp;
-  dut->mstatus = *state.csr.mstatus;
-  dut->medeleg = *state.csr.medeleg;
-  dut->mideleg = *state.csr.mideleg;
-  dut->mie = *state.csr.mie;
-  dut->mtvec = *state.csr.mtvec;
-  dut->menvcfg = *state.csr.menvcfg;
-  dut->mscratch = *state.csr.mscratch;
-  dut->mepc = *state.csr.mepc;
-  dut->mcause = *state.csr.mcause;
-  dut->mtval = *state.csr.mtval;
-  dut->mip = *state.csr.mip;
+  dut->crmd = *state.csr.crmd;
+  dut->prmd = *state.csr.prmd;
+  dut->euen = *state.csr.euen;
+  dut->ecfg = *state.csr.ecfg;
+
+  dut->era = *state.csr.era;
+  dut->badv = *state.csr.badv;
+  dut->eentry = *state.csr.eentry;
+
+  dut->tlbidx = *state.csr.tlbidx;
+  dut->tlbehi = *state.csr.tlbehi;
+  dut->tlbelo0 = *state.csr.tlbelo0;
+  dut->tlbelo1 = *state.csr.tlbelo1;
+
+  dut->asid = *state.csr.asid;
+  dut->pgdl = *state.csr.pgdl;
+  dut->pgdh = *state.csr.pgdh;
+
+  dut->save0 = *state.csr.save0;
+  dut->save1 = *state.csr.save1;
+  dut->save2 = *state.csr.save2;
+  dut->save3 = *state.csr.save3;
+
+  dut->tid = *state.csr.tid;
+  dut->tcfg = *state.csr.tcfg;
+  dut->tval = *state.csr.tval;
+
+  dut->llbctl = *state.csr.llbctl;
+  dut->tlbrentry = *state.csr.tlbrentry;
+  dut->dmw0 = *state.csr.dmw0;
+  dut->dmw1 = *state.csr.dmw1;
+
+  dut->estat = *state.csr.estat;
 }
 
 void cpu_step() {

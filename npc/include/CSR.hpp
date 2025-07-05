@@ -4,88 +4,121 @@
 #include "cpu.hpp"
 
 using IData = uint32_t;
-/*
 
-  object CSRList {
-    val sstatus        = 0x100.U
-    val sie            = 0x104.U
-    val stvec          = 0x105.U
-    val scounteren     = 0x106.U
+/*object LA32RCSRList {
+  val csrMap: Map[String, UInt] = Map(
+    // Basic CSRs
+    "CRMD"      -> 0x0.U,    // 当前模式信息
+    "PRMD"      -> 0x1.U,    // 例外前模式信息
+    "EUEN"      -> 0x2.U,    // 扩展部件使能
+    "ECFG"      -> 0x4.U,    // 例外配置
+    "ESTAT"     -> 0x5.U,    // 例外状态
+    "ERA"       -> 0x6.U,    // 例外返回地址
+    "BADV"      -> 0x7.U,    // 出错虚地址
+    "EENTRY"    -> 0xC.U,    // 例外入口地址
 
-    val sscratch       = 0x140.U
-    val sepc           = 0x141.U
-    val scause         = 0x142.U
-    val stval          = 0x143.U
-    val sip            = 0x144.U
-    val satp           = 0x180.U
+    // TLB related CSRs
+    "TLBIDX"    -> 0x10.U,   // TLB 索引
+    "TLBEHI"    -> 0x11.U,   // TLB 表项高位
+    "TLBELO0"   -> 0x12.U,   // TLB 表项低位 0
+    "TLBELO1"   -> 0x13.U,   // TLB 表项低位 1
+    "ASID"      -> 0x18.U,   // 地址空间标识符
+    "PGDL"      -> 0x19.U,   // 低半地址空间全局目录基址
+    "PGDH"      -> 0x1A.U,   // 高半地址空间全局目录基址
+    "PGD"       -> 0x1B.U,   // 全局目录基址
 
-    val mstatus        = 0x300.U
-    val misa           = 0x301.U
-    val medeleg        = 0x302.U
-    val mideleg        = 0x303.U
-    val mie            = 0x304.U
-    val mtvec          = 0x305.U
-    val mcounteren     = 0x306.U
-    val menvcfg        = 0x30A.U
-    val mstatush       = 0x310.U
-    val menvcfgh       = 0x31A.U
-    val mscratch       = 0x340.U
-    val mepc           = 0x341.U
-    val mcause         = 0x342.U
-    val mtval          = 0x343.U
-    val mip            = 0x344.U
+    // Processor identification
+    "CPUID"     -> 0x20.U,   // 处理器编号
 
-    val time           = 0xC01.U
-    val timeh          = 0xC81.U
+    // Data save registers
+    "SAVE0"     -> 0x30.U,   // 数据保存0
+    "SAVE1"     -> 0x31.U,   // 数据保存1
+    "SAVE2"     -> 0x32.U,   // 数据保存2
+    "SAVE3"     -> 0x33.U,   // 数据保存3
 
-    val mvendorid      = 0xF11.U
-    val marchid        = 0xF12.U
-    val mipid          = 0xF13.U
-    val mhartid        = 0xF14.U
-  }
-*/
+    // Timer related CSRs
+    "TID"       -> 0x40.U,   // 定时器编号
+    "TCFG"      -> 0x41.U,   // 定时器配置
+    "TVAL"      -> 0x42.U,   // 定时器值
+    "TICLR"     -> 0x44.U,   // 定时中断清除
+
+    // LLBit control
+    "LLBCTL"    -> 0x60.U,   // LLBit 控制
+
+    // TLB refill exception entry
+    "TLBRENTRY" -> 0x88.U,   // TLB 重填例外入口地址
+
+    // Cache tag
+    "CTAG"      -> 0x98.U,   // 高速缓存标签
+
+    // Direct mapping windows
+    "DMW0"      -> 0x180.U,  // 直接映射配置窗口0
+    "DMW1"      -> 0x181.U   // 直接映射配置窗口1
+  )
+
+  def apply(name: String): UInt = csrMap(name)
+  def exists(value: UInt): Bool = csrMap.map(_._2 === value).reduce(_ || _)
+}*/
 
 class CSR {
 public:
-  CData *priv;
-  IData *stvec;
-  IData *sscratch;
-  IData *sepc;
-  IData *scause;
-  IData *stval;
-  IData *satp;
-  IData *mstatus;
-  IData *medeleg;
-  IData *mideleg;
-  IData *mie;
-  IData *mtvec;
-  IData *menvcfg;
-  IData *mscratch;
-  IData *mepc;
-  IData *mcause;
-  IData *mtval;
-  IData *mip;
+  IData *crmd;
+  IData *prmd;
+  IData *euen;
+  IData *ecfg;
+  IData *estat;
+  IData *era;
+  IData *badv;
+  IData *eentry;
+  IData *tlbidx;
+  IData *tlbehi;
+  IData *tlbelo0;
+  IData *tlbelo1;
+  IData *asid;
+  IData *pgdl;
+  IData *pgdh;
+  IData *save0;
+  IData *save1;
+  IData *save2;
+  IData *save3;
+  IData *tid;
+  IData *tcfg;
+  IData *tval;
+  IData *ticlr;
+  IData *llbctl;
+  IData *tlbrentry;
+  IData *dmw0;
+  IData *dmw1;
 };
 
 #define CSR_FIELDS(X)                                                          \
-  X(priv, )                                                                    \
-  X(stvec, )                                                                   \
-  X(sscratch, )                                                                \
-  X(sepc, )                                                                    \
-  X(scause, )                                                                  \
-  X(stval, )                                                                   \
-  X(satp, )                                                                    \
-  X(mstatus, U)                                                                \
-  X(medeleg, )                                                                 \
-  X(mideleg, )                                                                 \
-  X(mie, U)                                                                    \
-  X(mtvec, )                                                                   \
-  X(menvcfg, U)                                                                \
-  X(mscratch, )                                                                \
-  X(mepc, )                                                                    \
-  X(mcause, )                                                                  \
-  X(mtval, )                                                                   \
-  X(mip, U)
+  X(crmd, U)                                                                   \
+  X(prmd, U)                                                                   \
+  X(euen, U)                                                                   \
+  X(ecfg, U)                                                                   \
+  X(estat, U)                                                                  \
+  X(era, )                                                                     \
+  X(badv, )                                                                    \
+  X(eentry, U)                                                                 \
+  X(tlbidx, U)                                                                 \
+  X(tlbehi, U)                                                                 \
+  X(tlbelo0, U)                                                                \
+  X(tlbelo1, U)                                                                \
+  X(asid, U)                                                                   \
+  X(pgdl, U)                                                                   \
+  X(pgdh, U)                                                                   \
+  X(save0, )                                                                   \
+  X(save1, )                                                                   \
+  X(save2, )                                                                   \
+  X(save3, )                                                                   \
+  X(tid, )                                                                     \
+  X(tcfg, U)                                                                   \
+  X(tval, )                                                                    \
+  X(ticlr, U)                                                                  \
+  X(llbctl, U)                                                                 \
+  X(tlbrentry, U)                                                              \
+  X(dmw0, U)                                                                   \
+  X(dmw1, U)
 
 #define V_CSRS(field, suffix)                                                  \
   top->rootp->npc_top__DOT__npc__DOT__csr__DOT__##field##suffix

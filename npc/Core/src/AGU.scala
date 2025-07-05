@@ -2,34 +2,51 @@ import chisel3._
 import chisel3.util._
 import utils._
 
-class MMUResp extends CoreBundle {
-  val isSuper = Bool()
-  val pte = PTE()
-  def vaddrToPaddr(vaddr: UInt) = {
-    Mux(isSuper, Cat(pte.ppn1, vaddr(21, 0)), Cat(pte.ppn1, pte.ppn0, vaddr(11, 0)))
+class MMUException extends CoreBundle {
+  val ALE = Bool() // Mem Only
+  val TLBR = Bool()
+  val PIL = Bool() // Load Only
+  val PIS = Bool() // Store Only
+  val PIF = Bool() // Fetch Only
+  val PPI = Bool()
+  val PME = Bool() // Store Only
+  val ADEF = Bool() // Fetch Only
+
+  def hasFault: Bool = {
+    ALE || TLBR || PIL || PIS || PIF || PPI || PME || ADEF
   }
-  def loadStorePermFail(write: Bool, vmCSR: VMCSR) = {
-    !pte.v || // * Invalid
-    !pte.a || // * svadu
-    Mux(write, !pte.r || !pte.w || !pte.d, 
-               !pte.r && !(vmCSR.mxr && pte.x)) || // * r/w perm fail
-    (!pte.u && vmCSR.epm === Priv.U) || // * User program can only access page with U bit set
-    (pte.u && !vmCSR.sum && vmCSR.epm === Priv.S) || // * SUM
-    (isSuper && pte.ppn0 =/= 0.U) // * Super page must align to 4MB
-  }
-  def executePermFail(vmCSR: VMCSR) = {
-    !pte.v || // * Invalid
-    !pte.a || // * svadu
-    !pte.x || // * Execute perm fail
-    (!pte.r && pte.w) || // * illegal combination
-    (!pte.u && vmCSR.priv === Priv.U) || // * User program can only access page with U bit set
-    (pte.u && vmCSR.priv === Priv.S) || // * Supervisor cannot execute user page
-    (isSuper && pte.ppn0 =/= 0.U)
+
+  def toLoadStoreFlag: UInt = {
+    val flag = WireInit(FlagOp.NONE)
+
+    when(ALE) {
+      flag := FlagOp.ALE
+    }.elsewhen(TLBR) {
+      flag := FlagOp.TLBR
+    }.elsewhen(PIL) {
+      flag := FlagOp.PIL
+    }.elsewhen(PIS) {
+      flag := FlagOp.PIS
+    }.elsewhen(PPI) {
+      flag := FlagOp.PPI
+    }.elsewhen(PME) {
+      flag := FlagOp.PME
+    }
+    flag 
   }
 }
 
+class MMUResp extends CoreBundle {
+  val paddr = UInt(XLEN.W)
+  val mat = UInt(2.W)
+  val exception = new MMUException
+}
+
 class TLBReq extends CoreBundle {
-  val vpn = UInt(PAGE_NR_LEN.W)
+  val vaddr = UInt(XLEN.W)
+  val memLen = UInt(2.W)
+  val isWrite = Bool()
+  val isFetch = Bool()
 }
 
 class TLBResp extends MMUResp {  
@@ -105,6 +122,10 @@ class AGU extends CoreModule {
     ) << addrOffset
     mask(3, 0)
   }
+  def getShiftedData(aguUop: AGUUop): UInt = {
+    val addrOffset = aguUop.addr(log2Up(XLEN/8) - 1, 0)
+    (aguUop.wdata << (addrOffset << 3))(XLEN - 1, 0)
+  }
 
   val tlbMissQueue = Module(new TLBMissQueue(4))
   tlbMissQueue.io.IN_flush := io.IN_flush
@@ -124,23 +145,27 @@ class AGU extends CoreModule {
   val inValid = io.IN_readRegUop.fire
 
   val memLen = Mux(inUop.fuType === FuType.AMO, 2.U, uopNext.opcode(2, 1))
-  val addrMisalign = MuxLookup(memLen, false.B)(Seq(
-                            "b00".U -> false.B,
-                            "b01".U -> uopNext.addr(0,0).orR,
-                            "b10".U -> uopNext.addr(1,0).orR,
-                            "b11".U -> false.B))
-  val doTranslate = io.IN_VMCSR.mode === 1.U && io.IN_VMCSR.epm < Priv.M  
+  
+  val doTranslate = io.IN_VMCSR.doTranslate()
   // * calculate addr
   val addr = uopNext.addr;
 
+  val isStore = (uopNext.fuType === FuType.LSU && LSUOp.isStore(uopNext.opcode)) || 
+                (uopNext.fuType === FuType.AMO && uopNext.opcode =/= AMOOp.LR_W)
+
+
   // * TLB access    
   io.OUT_TLBReq.valid := uopNextValid && doTranslate
-  io.OUT_TLBReq.bits.vpn := addr(XLEN - 1, 12)
+  io.OUT_TLBReq.bits.vaddr := addr
+  io.OUT_TLBReq.bits.memLen := memLen
+  io.OUT_TLBReq.bits.isWrite := isStore
+  io.OUT_TLBReq.bits.isFetch := false.B
 
-  val tlbHit = !doTranslate || io.IN_TLBResp.valid
+  val translateDone = true.B
 
   // * Need translate && TLB miss
-  tlbMissQueue.io.IN_uop.valid := inValid && !addrMisalign && !tlbHit
+  // tlbMissQueue.io.IN_uop.valid := inValid && !addrMisalign && !tlbHit
+  tlbMissQueue.io.IN_uop.valid := false.B
   tlbMissQueue.io.IN_uop.bits := uopNext
   tlbMissQueue.io.IN_flush := io.IN_flush
 
@@ -181,27 +206,6 @@ class AGU extends CoreModule {
   ptwReqNext.vpn := uopNext.addr(XLEN - 1, 12)
   ptwReqNext.stqPtr := uopNext.stqPtr
 
-  val misalignFault = WireInit(0.U(FLAG_W))
-  val pageFault = WireInit(0.U(FLAG_W))
-
-  when(uopNext.fuType === FuType.AMO) {
-    when(uopNext.opcode === AMOOp.LR_W) {
-      misalignFault := FlagOp.LOAD_ADDR_MISALIGNED
-      pageFault := FlagOp.LOAD_PAGE_FAULT
-    }.otherwise {
-      misalignFault := FlagOp.STORE_ADDR_MISALIGNED
-      pageFault := FlagOp.STORE_PAGE_FAULT
-    }
-  }.elsewhen(uopNext.fuType === FuType.LSU) {
-    when(uopNext.opcode(3)) {
-      misalignFault := FlagOp.STORE_ADDR_MISALIGNED
-      pageFault := FlagOp.STORE_PAGE_FAULT
-    }.otherwise {
-      misalignFault := FlagOp.LOAD_ADDR_MISALIGNED
-      pageFault := FlagOp.LOAD_PAGE_FAULT
-    }
-  }
-
   val storeWbUopValid = io.OUT_AGUUop.valid && io.OUT_AGUUop.bits.fuType === FuType.LSU && LSUOp.isStore(io.OUT_AGUUop.bits.opcode)
   val storeWbUop = WireInit(0.U.asTypeOf(new WritebackUop))
   storeWbUop.data := 0.U
@@ -210,11 +214,14 @@ class AGU extends CoreModule {
   storeWbUop.flag := FlagOp.NONE
   storeWbUop.prd  := ZERO
 
+  val flag = io.IN_TLBResp.bits.exception.toLoadStoreFlag
+  val translateFail = io.IN_TLBResp.bits.exception.hasFault
+
   wbUop.data := 0.U
   wbUopValid := false.B
   wbUop.dest := Dest.ROB
   wbUop.robPtr := uopNext.robPtr
-  wbUop.flag := Mux(addrMisalign, misalignFault, pageFault)
+  wbUop.flag := flag
   wbUop.prd  := ZERO
   
   xtvalRec.tval := uopNext.addr
@@ -224,22 +231,18 @@ class AGU extends CoreModule {
   wbUopValid := false.B
   tlbMissQueue.io.OUT_uop.ready := false.B
   when(uopNextValid) {
-    when(addrMisalign) {
-      wbUopValid := true.B
-      uopValid := false.B
-    }.elsewhen(tlbHit) {
-      val isWrite = (uopNext.fuType === FuType.LSU && uopNext.opcode(3)) || (uopNext.fuType === FuType.AMO && uopNext.opcode =/= AMOOp.LR_W)
-      val permFail = io.IN_TLBResp.bits.loadStorePermFail(isWrite, io.IN_VMCSR)
+    when(translateDone) {
       when(true.B) {
         uop := uopNext
-        val paddr = Mux(doTranslate, io.IN_TLBResp.bits.vaddrToPaddr(uopNext.addr), uopNext.addr)
+        val paddr = Mux(doTranslate, io.IN_TLBResp.bits.paddr, uopNext.addr)
         uop.addr := paddr
-        uop.isInternalMMIO := Addr.isInternalMMIO(paddr)
-        uop.isUncached := Addr.isUncached(paddr)
+        uop.isInternalMMIO := false.B
+        uop.isUncached := Mux(doTranslate, io.IN_TLBResp.bits.mat, io.IN_VMCSR.datm) === 0.U
         uop.mask := getWmask(uopNext)
+        uop.wdata := getShiftedData(uopNext)
 
-        uopValid := Mux(doTranslate, !permFail, true.B)
-        when(doTranslate && permFail) {
+        uopValid := Mux(doTranslate, !translateFail, true.B)
+        when((doTranslate && translateFail) || io.IN_TLBResp.bits.exception.ALE) {
           wbUopValid := true.B
         }
         when(!inValid) {
