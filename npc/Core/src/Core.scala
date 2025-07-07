@@ -200,6 +200,9 @@ class Core extends CoreModule {
 
   icache.io.IN_ctrlDataWrite <> cacheController.io.OUT_IDataWrite  
 
+  itlb.io.IN_InvTLBOp := csr.io.OUT_InvTLBOp
+  itlb.io.IN_TLBCtrl := flagHandler.io.OUT_TLBCtrl
+  itlb.io.IN_TLBCSR := csr.io.OUT_TLBCSR
   itlb.io.IN_VMCSR <> csr.io.OUT_VMCSR
   itlb.io.IN_PTWResp <> ptw.io.OUT_PTWResp
   itlb.io.IN_TLBFlush := TLBFlush
@@ -246,6 +249,7 @@ class Core extends CoreModule {
   flagHandler.io.OUT_CSRCtrl <> CSRCtrl
   flagHandler.io.IN_trapCSR <> csr.io.OUT_trapCSR
   flagHandler.io.IN_flagUop <> flagUop
+  flagHandler.io.IN_TLBOpResult := itlb.io.OUT_TLBOpResult
   flush := flagHandler.io.OUT_flush
   redirect := flagHandler.io.OUT_redirect
   TLBFlush := flagHandler.io.OUT_TLBFlush
@@ -345,6 +349,9 @@ class Core extends CoreModule {
   agu.io.OUT_TLBReq <> dtlb.io.IN_TLBReq
   agu.io.IN_TLBResp <> dtlb.io.OUT_TLBResp
 
+  dtlb.io.IN_InvTLBOp := csr.io.OUT_InvTLBOp
+  dtlb.io.IN_TLBCtrl := flagHandler.io.OUT_TLBCtrl
+  dtlb.io.IN_TLBCSR := csr.io.OUT_TLBCSR
   dtlb.io.IN_VMCSR := csr.io.OUT_VMCSR
   dtlb.io.IN_PTWResp <> ptw.io.OUT_PTWResp
   dtlb.io.IN_TLBFlush := TLBFlush

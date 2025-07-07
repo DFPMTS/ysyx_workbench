@@ -315,15 +315,15 @@ addi_w     -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.ADD,    
 andi       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.AND,             LA32RImmType.UI12,   N),
 ori        -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.OR,              LA32RImmType.UI12,   N),
 xori       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.XOR,             LA32RImmType.UI12,   N),
-csrop      -> List(N, Y, SrcType.REG,  SrcType.ZERO, FuType.CSR,  CSROp.CSRXCHG,         LA32RImmType.CSR,    N),
+csrop      -> List(N, Y, SrcType.REG,  SrcType.ZERO, FuType.CSR,  CSROp.CSRXCHG,         LA32RImmType.CSR,    Y),
 cacop      -> List(N, N, SrcType.REG,  SrcType.IMM,  FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.SI12,   N), // TODO
-tlbsrch    -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.X,      N), // TODO
-tlbrd      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.X,      N), // TODO
-tlbwr      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.X,      N), // TODO
-tlbfill    -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.X,      N), // TODO
-ertn       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.ERTN,     LA32RImmType.X,      N),
+tlbsrch    -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.TLBSRCH,  LA32RImmType.X,      Y), // TODO
+tlbrd      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.TLBRD,    LA32RImmType.X,      Y), // TODO
+tlbwr      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.TLBWR,    LA32RImmType.X,      Y), // TODO
+tlbfill    -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.TLBFILL,  LA32RImmType.X,      Y), // TODO
+ertn       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.ERTN,     LA32RImmType.X,      Y),
 idle       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.WFI,      LA32RImmType.X,      N),
-invtlb     -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.X,      N), // TODO
+invtlb     -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.CSR,  CSROp.INVTLB,          LA32RImmType.INVTLB, Y), // TODO
 lu12i_w    -> List(N, Y, SrcType.ZERO, SrcType.IMM,  FuType.ALU,  ALUOp.ADD,             LA32RImmType.SI20,   N),
 pcaddu12i  -> List(N, Y, SrcType.PC,   SrcType.IMM,  FuType.BRU,  BRUOp.AUIPC,           LA32RImmType.SI20,   N),
 ll_w       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.AMO,  AMOOp.LR_W,            LA32RImmType.SI14,   Y),
@@ -337,8 +337,8 @@ st_b       -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.LSU,  LSUOp.SB,     
 st_h       -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.LSU,  LSUOp.SH,              LA32RImmType.SI12,   N),
 st_w       -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.LSU,  LSUOp.SW,              LA32RImmType.SI12,   N),
 preld      -> List(N, N, SrcType.REG,  SrcType.IMM,  FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.SI12,   N), // TODO
-dbar       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.FENCE,    LA32RImmType.X,      N),
-ibar       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.FENCE_I,  LA32RImmType.X,      N),
+dbar       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.FENCE,    LA32RImmType.X,      Y),
+ibar       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.FENCE_I,  LA32RImmType.X,      Y),
 jirl       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.BRU,  BRUOp.JALR,            LA32RImmType.OFFS16, N),
 b          -> List(N, N, SrcType.PC,   SrcType.IMM,  FuType.BRU,  BRUOp.JAL,             LA32RImmType.OFFS26, N),
 bl         -> List(N, Y, SrcType.PC,   SrcType.IMM,  FuType.BRU,  BRUOp.CALL,            LA32RImmType.OFFS26, N),

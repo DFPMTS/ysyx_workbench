@@ -15,6 +15,7 @@ class FetchGroup extends CoreBundle {
   val interrupt = Bool()
   val tlbMiss   = Bool()
   val pagePrivFail = Bool()
+  val addrMisalign = Bool()
   val access_fault = Bool()
 }
 
@@ -102,6 +103,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   val phyPCValid  = RegInit(false.B)
   val vPC1        = Reg(UInt(XLEN.W))  
   val prediction  = Reg(new Prediction)
+  val addrMisalign = Reg(Bool())
   val translateFail = Reg(Bool())
   val pagePrivFail = Reg(Bool())
   val tlbMiss     = Reg(Bool())
@@ -109,8 +111,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   val interrupt   = Reg(Bool())
   val flushBuffer = RegInit(false.B)
 
-  val vPCMisalign = vPC(1, 0) =/= 0.U
-  val accessFault = !Addr.isMainMem(phyPC) || vPC1(1, 0) =/= 0.U
+  val accessFault = !Addr.isMainMem(phyPC)
 
   // !
   io.OUT_vPC := vPC
@@ -223,7 +224,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   io.OUT_TLBReq.bits.isWrite := false.B
   io.OUT_TLBReq.bits.isFetch := true.B
 
-  phyPCValidNext := (vPCMisalign || (!doTranslate || io.IN_TLBResp.valid)) && 
+  phyPCValidNext := (!doTranslate || io.IN_TLBResp.valid) && // Always True, since TLB miss is an exception now
                     fetchBuffer.io.fetchCanContinue && 
                     flushState === sFlushIdle && io.IN_fetchEnable
   phyPCNext := Mux(doTranslate, io.IN_TLBResp.bits.paddr, vPC)    
@@ -247,7 +248,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   when(phyPCValid) {
     val alreadyInFlight = MSHRChecker.isLoadAddrAlreadyInFlight(io.IN_mshrs, io.OUT_cacheCtrlUop, CacheId.ICACHE, phyPC)
     cacheMiss := !tagHit || alreadyInFlight
-    when(cacheMiss && !alreadyInFlight && !accessFault && !translateFail) {
+    when(cacheMiss && !alreadyInFlight && !accessFault && !translateFail && !addrMisalign) {
       needCacheOp := true.B
       cacheCtrlUopNext.cacheId := CacheId.ICACHE
       cacheCtrlUopNext.rtag := phyPC(XLEN - 1, XLEN - ICACHE_TAG)
@@ -264,6 +265,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   // * redirect / vPC generation
   when(redirect.valid) {
     phyPCValid := false.B
+    addrMisalign := false.B
     tlbMiss := false.B
     pageFault := false.B
     pagePrivFail := false.B
@@ -271,6 +273,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
     interrupt := false.B
   }.otherwise {
     phyPCValid := phyPCValidNext
+    addrMisalign := io.IN_TLBResp.bits.exception.ADEF
     tlbMiss := doTranslate && io.IN_TLBResp.bits.exception.TLBR
     pageFault := doTranslate && io.IN_TLBResp.bits.exception.PIF
     pagePrivFail  := doTranslate && io.IN_TLBResp.bits.exception.PPI
@@ -292,7 +295,7 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   when(io.redirect.valid || fixRedirect.valid || fixRedirectReg.valid) {
     fetchValid := false.B
   }.otherwise {   
-    fetchValid := phyPCValid && (!cacheMiss || pageFault || accessFault)
+    fetchValid := phyPCValid && (!cacheMiss || translateFail || accessFault || addrMisalign)
   }
   val fetchGroupIndex = if(FETCH_WIDTH == CACHE_LINE_B / 4) 0.U else phyPC(log2Up(CACHE_LINE_B) - 1, log2Ceil(FETCH_WIDTH) + 2)
   val fetchGroups = Wire(Vec((CACHE_LINE_B / 4) /FETCH_WIDTH, Vec(FETCH_WIDTH, UInt(32.W))))
@@ -308,7 +311,8 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   fetchGroup.pageFault := pageFault
   fetchGroup.tlbMiss := tlbMiss
   fetchGroup.pagePrivFail := pagePrivFail
-  fetchGroup.access_fault := accessFault
+  fetchGroup.access_fault := accessFault || addrMisalign
+  fetchGroup.addrMisalign := addrMisalign
 
   fetchGroupPrediction := prediction
 

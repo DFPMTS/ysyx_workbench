@@ -1,13 +1,17 @@
 import chisel3._
 import chisel3.util._
 import utils._
+import Priv.U
+import CImmType.CS
 
 class FlagHandlerIO extends CoreBundle {
   val IN_flagUop = Flipped(Valid(new FlagUop))
   val IN_trapCSR = Flipped(new TrapCSR)
+  val IN_TLBOpResult = Flipped(new TLBOpResult)
 
   val OUT_flush = Bool()
   val OUT_CSRCtrl = new CSRCtrl
+  val OUT_TLBCtrl = new TLBCtrl
   val OUT_redirect = new RedirectSignal
   val OUT_TLBFlush = Bool()
   val OUT_flushICache = Bool()
@@ -15,13 +19,24 @@ class FlagHandlerIO extends CoreBundle {
 }
 
 class CSRCtrl extends CoreBundle {
-  // * trap
+  // * is trap?
   val trap  = Bool()
+  // * is interrupt?
   val intr  = Bool()
+  // * pc of exception
   val pc    = UInt(XLEN.W)
+  // * is exception from fetch?
+  val fetch = Bool()
+  // * exception cause (Ecode)
   val cause = UInt(6.W)
   // * ertn
   val ertn  = Bool()
+  // * tlb
+  val tlbsrch = Bool()
+  val tlbrd   = Bool()
+  val hit     = Bool()
+  val tlbidx  = UInt(5.W)
+  val tlbEntry = new TLBEntry
 }
 // 
 class FlagHandler extends CoreModule {
@@ -37,6 +52,12 @@ class FlagHandler extends CoreModule {
   val redirect = Reg(new RedirectSignal)
   val CSRCtrl = Reg(new CSRCtrl)
   val CSRCtrlNext = WireInit(0.U.asTypeOf(new CSRCtrl))
+  val TLBCtrl = Reg(new TLBCtrl)
+  val TLBCtrlNext = WireInit(0.U.asTypeOf(new TLBCtrl))
+
+  CSRCtrlNext.hit := io.IN_TLBOpResult.hit
+  CSRCtrlNext.tlbidx := io.IN_TLBOpResult.index
+  CSRCtrlNext.tlbEntry := io.IN_TLBOpResult.readEntry
 
   flush := false.B
   TLBFlush := false.B
@@ -45,6 +66,7 @@ class FlagHandler extends CoreModule {
   redirect.pc := 0.U
   redirect.valid := false.B
   CSRCtrl := CSRCtrlNext
+  TLBCtrl := TLBCtrlNext
   val priv = io.IN_trapCSR.priv
   val xtvec = io.IN_trapCSR.eentry
 
@@ -81,6 +103,13 @@ class FlagHandler extends CoreModule {
         CSRCtrlNext.pc := io.IN_flagUop.bits.pc
         CSRCtrlNext.ertn := true.B
       }
+      when(decodeFlag === DecodeFlagOp.TLBSRCH) {
+        redirect.valid := true.B
+        redirect.pc := io.IN_flagUop.bits.pc + 4.U
+        flush := true.B
+
+        CSRCtrlNext.tlbsrch := true.B
+      }
       when(decodeFlag === DecodeFlagOp.SFENCE_VMA) {
         redirect.valid := true.B
         redirect.pc := io.IN_flagUop.bits.pc + 4.U
@@ -97,13 +126,36 @@ class FlagHandler extends CoreModule {
         flushICache := true.B
         flushDCache := true.B
       }
-      when(decodeFlag === DecodeFlagOp.INST_PAGE_FAULT) {
+      when(decodeFlag === DecodeFlagOp.TLBRD) {
+        redirect.valid := true.B
+        redirect.pc := io.IN_flagUop.bits.pc + 4.U
+        flush := true.B
+
+        CSRCtrlNext.tlbrd := true.B
+        CSRCtrlNext.tlbsrch := false.B
+      }
+      when(decodeFlag === DecodeFlagOp.TLBWR) {
+        redirect.valid := true.B
+        redirect.pc := io.IN_flagUop.bits.pc + 4.U
+        flush := true.B
+
+        TLBCtrlNext.wr := true.B
+      }
+      when(decodeFlag === DecodeFlagOp.TLBFILL) {
+        redirect.valid := true.B
+        redirect.pc := io.IN_flagUop.bits.pc + 4.U
+        flush := true.B
+
+        TLBCtrlNext.fill := true.B
+      }
+      when(decodeFlag === DecodeFlagOp.PPI) {
+        // * Fetch PPI
         redirect.valid := true.B
         redirect.pc := xtvec
         flush := true.B
 
-        CSRCtrlNext.trap := true.B
-        CSRCtrlNext.cause := Exception.PIF
+        CSRCtrlNext.fetch := true.B
+        CSRCtrlNext.cause := Exception.PPI
         CSRCtrlNext.pc := io.IN_flagUop.bits.pc
       }
     }
@@ -131,6 +183,7 @@ class FlagHandler extends CoreModule {
   io.OUT_flush := flush
   io.OUT_redirect := redirect  
   io.OUT_CSRCtrl := CSRCtrl
+  io.OUT_TLBCtrl := TLBCtrl
   io.OUT_TLBFlush := TLBFlush
   io.OUT_flushICache := flushICache
   io.OUT_flushDCache := flushDCache

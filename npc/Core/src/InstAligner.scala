@@ -41,6 +41,7 @@ class InstAligner extends CoreModule {
       insts(i).interrupt := inFetchGroup.interrupt
       insts(i).tlbMiss := inFetchGroup.tlbMiss
       insts(i).pagePrivFail := inFetchGroup.pagePrivFail
+      insts(i).addrMisalign := inFetchGroup.addrMisalign
       insts(i).access_fault := inFetchGroup.access_fault
       insts(i).phtState := inFetchGroup.phtState(fetchOffset + i.U)
       insts(i).lastBranch := inFetchGroup.lastBranchMap(fetchOffset + i.U)

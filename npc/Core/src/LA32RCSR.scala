@@ -118,11 +118,11 @@ class LLBCTL extends CoreBundle {
 }
 
 class TLBIDX extends CoreBundle {
-  val TLBIDX = UInt(5.W) // RW
-  val _R0_0  = UInt(19.W)
-  val PS     = UInt(6.W)
-  val _R0_1  = UInt(1.W)
   val NE     = UInt(1.W)
+  val _R0_1  = UInt(1.W)
+  val PS     = UInt(6.W)
+  val _R0_0  = UInt(19.W)
+  val TLBIDX = UInt(5.W)
 }
 
 class TLBEHI extends CoreBundle {
@@ -216,11 +216,20 @@ class CPUCFG0x11 extends CoreBundle {
   val Way      = UInt(16.W)
 }
 
+class TLBCSR extends CoreBundle {
+  val tlbidx = new TLBIDX
+  val tlbehi = new TLBEHI
+  val tlbelo = Vec(2, new TLBELO)
+  val estat  = new ESTAT
+}
+
 class LA32RCSRIO extends CoreBundle {
   val IN_readRegUop  = Flipped(Decoupled(new ReadRegUop))
+  val OUT_InvTLBOp = Valid(new InvTLBOp)
   val OUT_writebackUop  = Valid(new WritebackUop)
   val IN_CSRCtrl = Flipped(new CSRCtrl)
   val OUT_VMCSR = new VMCSR
+  val OUT_TLBCSR = new TLBCSR
   val OUT_trapCSR = new TrapCSR
   val IN_mtime = Input(UInt(64.W))
   val IN_MTIP = Flipped(Bool())
@@ -326,6 +335,7 @@ class LA32RCSR extends CoreModule {
   val inUop = io.IN_readRegUop.bits
   val cpucfgIndex = inUop.src1
   val addr = inUop.imm(13, 0)
+  val isInvTLB = inUop.opcode === CSROp.INVTLB
   val isCpucfg = inUop.opcode === CSROp.CPUCFG
   val isRdcntID = inUop.opcode === CSROp.RDCNT_ID_W
   val isRdcntVL = inUop.opcode === CSROp.RDCNT_VL_W
@@ -664,10 +674,19 @@ class LA32RCSR extends CoreModule {
     estat.Ecode := io.IN_CSRCtrl.cause
     estat.EsubCode := 0.U
     // TODO badv/ tlbhi
-    when(io.IN_CSRCtrl.cause === Exception.ADEF) {
+    // Fetch
+    when(io.IN_CSRCtrl.cause === Exception.ADEF || 
+         io.IN_CSRCtrl.cause === Exception.PIF ||
+         io.IN_CSRCtrl.fetch) {
       badv := io.IN_CSRCtrl.pc
+      when(io.IN_CSRCtrl.cause =/= Exception.ADEF) {
+        tlbehi.VPPN := io.IN_CSRCtrl.pc(31, 13)
+      }
     }.elsewhen(io.IN_xtvalRec.valid) {
       badv := io.IN_xtvalRec.bits.tval
+      when(io.IN_CSRCtrl.cause =/= Exception.ALE) {
+        tlbehi.VPPN := io.IN_xtvalRec.bits.tval(31, 13)
+      }
     }
     
   }
@@ -675,7 +694,41 @@ class LA32RCSR extends CoreModule {
   when(io.IN_CSRCtrl.ertn) {
     crmd.PLV := prmd.PPLV
     crmd.IE := prmd.PIE
+    when(estat.Ecode === Exception.TLBR) {
+      crmd.DA := 0.U
+      crmd.PG := 1.U
+    }
     // TODO llbit
+  }
+
+
+  when(io.IN_CSRCtrl.tlbrd) {
+    when(!io.IN_CSRCtrl.tlbEntry.E) {
+      // * Invalid TLB entry
+      tlbidx.NE := 1.U
+      tlbidx.PS := 0.U
+      asid.ASID := 0.U
+      tlbehi := 0.U.asTypeOf(new TLBEHI)
+      tlbelo0 := 0.U.asTypeOf(new TLBELO)
+      tlbelo1 := 0.U.asTypeOf(new TLBELO)
+    }.otherwise {
+      // * Valid TLB entry
+      tlbidx.NE := 0.U
+      tlbidx.PS := io.IN_CSRCtrl.tlbEntry.PS
+      asid.ASID := io.IN_CSRCtrl.tlbEntry.ASID
+      tlbehi.VPPN := io.IN_CSRCtrl.tlbEntry.VPPN
+      val G = io.IN_CSRCtrl.tlbEntry.G
+      tlbelo0 := io.IN_CSRCtrl.tlbEntry.PPN(0).toTLBELO(G)
+      tlbelo1 := io.IN_CSRCtrl.tlbEntry.PPN(1).toTLBELO(G)
+    }
+  }.elsewhen(io.IN_CSRCtrl.tlbsrch) {
+    when(io.IN_CSRCtrl.hit) {
+      // * Hit
+      tlbidx.NE := 0.U
+      tlbidx.TLBIDX := io.IN_CSRCtrl.tlbidx
+    }.otherwise {
+      tlbidx.NE := 1.U
+    }
   }
 
   val hasInterrupt = crmd.IE.asBool && 
@@ -691,6 +744,12 @@ class LA32RCSR extends CoreModule {
 
   io.IN_readRegUop.ready := true.B
 
+  // * Invalidate TLB
+  io.OUT_InvTLBOp.valid := isInvTLB && inUopValid
+  io.OUT_InvTLBOp.bits.op := io.IN_readRegUop.bits.imm(4, 0)
+  io.OUT_InvTLBOp.bits.asid := io.IN_readRegUop.bits.src1(9, 0)
+  io.OUT_InvTLBOp.bits.vppn := io.IN_readRegUop.bits.src2(31, 13)
+
   io.OUT_writebackUop.valid := uopValid
   io.OUT_writebackUop.bits := uop
 
@@ -702,6 +761,10 @@ class LA32RCSR extends CoreModule {
   io.OUT_VMCSR.dmw0 := dmw0
   io.OUT_VMCSR.dmw1 := dmw1
 
+  io.OUT_TLBCSR.tlbidx := tlbidx
+  io.OUT_TLBCSR.tlbehi := tlbehi
+  io.OUT_TLBCSR.tlbelo := VecInit(tlbelo0, tlbelo1)
+  io.OUT_TLBCSR.estat := estat
 
   io.OUT_trapCSR.priv := crmd.PLV
   io.OUT_trapCSR.eentry := eentryU

@@ -25,6 +25,9 @@ trait HasCoreParameters extends HasDecodeConfig {
   def WRITEBACK_WIDTH = 5
   def COMMIT_WIDTH = 3
 
+  // * TLB Entries
+  val NUM_TLB = 32
+
   def USE_DUMMY_MUL_DIV = false
   // def USE_DUMMY_MUL_DIV = true
 

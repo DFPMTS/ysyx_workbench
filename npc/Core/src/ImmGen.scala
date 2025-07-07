@@ -51,7 +51,7 @@ class ImmGen extends Module with HasInstType {
  */
 class LA32RImmGen extends CoreModule {
   val io = IO(new Bundle {
-    val inst_type = Input(UInt(3.W));
+    val inst_type = Input(UInt(ImmTypeWidth.W));
     val inst      = Input(UInt(32.W));
     val imm       = Output(UInt(32.W))
   })
@@ -66,6 +66,7 @@ class LA32RImmGen extends CoreModule {
   val offs16 = Wire(SInt(32.W))
   val offs26 = Wire(SInt(32.W))
   val csr = Wire(UInt(32.W))
+  val invtlb = Wire(UInt(32.W))
   ui5 := inst(14, 10)
   si5 := inst(14, 10).asSInt
   si12 := inst(21, 10).asSInt
@@ -75,6 +76,7 @@ class LA32RImmGen extends CoreModule {
   offs16 := Cat(inst(25, 10), 0.U(2.W)).asSInt
   offs26 := Cat(inst(9, 0), inst(25, 10), 0.U(2.W)).asSInt
   csr := inst(23, 10)
+  invtlb := inst(4, 0)
 
   io.imm := MuxLookup(io.inst_type, ui5)(
     Seq(
@@ -85,7 +87,8 @@ class LA32RImmGen extends CoreModule {
       LA32RImmType.SI20 -> si20.asUInt,
       LA32RImmType.OFFS16 -> offs16.asUInt,
       LA32RImmType.OFFS26 -> offs26.asUInt,
-      LA32RImmType.CSR -> csr
+      LA32RImmType.CSR -> csr,
+      LA32RImmType.INVTLB -> invtlb
     )
   )
 }

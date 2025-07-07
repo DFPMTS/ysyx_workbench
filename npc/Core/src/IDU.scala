@@ -88,7 +88,7 @@ class IDU extends CoreModule with HasPerfCounters {
       uopNext.fuType := FuType.FLAG
       uopNext.opcode := FlagOp.DECODE_FLAG
       uopNext.rd     := DecodeFlagOp.INTERRUPT
-    }.elsewhen(instSignal.access_fault) {
+    }.elsewhen(instSignal.addrMisalign) {
       uopNext.fuType := FuType.FLAG
       uopNext.opcode := FlagOp.ADEF
     }.elsewhen(instSignal.tlbMiss){
@@ -98,8 +98,14 @@ class IDU extends CoreModule with HasPerfCounters {
       uopNext.fuType := FuType.FLAG
       uopNext.opcode := FlagOp.PIF
     }.elsewhen(instSignal.pagePrivFail){
+      // * Fetch PPI
       uopNext.fuType := FuType.FLAG
-      uopNext.opcode := FlagOp.PPI
+      uopNext.opcode := FlagOp.DECODE_FLAG
+      uopNext.rd     := DecodeFlagOp.PPI
+    }.elsewhen(instSignal.access_fault) {
+      // * Fetch ADEF
+      uopNext.fuType := FuType.FLAG
+      uopNext.opcode := FlagOp.ADEF
     }.elsewhen(illegalInst) {
       uopNext.fuType := FuType.FLAG
       uopNext.opcode := FlagOp.INE
@@ -154,6 +160,11 @@ class IDU extends CoreModule with HasPerfCounters {
           uopNext.opcode := CSROp.RDCNT_ID_W
         }.elsewhen(rs1 === 0.U) {
           uopNext.opcode := CSROp.RDCNT_VL_W
+        }
+      }.elsewhen(decodeSignal.opcode === CSROp.INVTLB) {
+        when(imm(4, 0) > 0x6.U){
+          uopNext.fuType := FuType.FLAG
+          uopNext.opcode := FlagOp.INE
         }
       }
     }

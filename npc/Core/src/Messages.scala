@@ -70,6 +70,7 @@ class InstSignal extends Bundle {
   val pc           = UInt(32.W)
   val predTarget   = UInt(32.W)
   val inst         = UInt(32.W)
+  val addrMisalign = Bool()
   val access_fault = Bool()
   val pageFault    = Bool()
   val interrupt    = Bool()

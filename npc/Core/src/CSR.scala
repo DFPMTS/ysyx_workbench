@@ -100,7 +100,7 @@ class VMCSR extends CoreBundle {
 
     val hitDMW = Mux1H(hitVec, dmws)
 
-    (hit, Cat(hitDMW.PSEG, vaddr(29, 0)), hitDMW.MAT)
+    (hit, Cat(hitDMW.PSEG, vaddr(28, 0)), hitDMW.MAT)
   }
 }
 
