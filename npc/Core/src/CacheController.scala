@@ -266,6 +266,12 @@ class CacheController extends CoreModule {
   
   io.OUT_MSHR := mshr
 
+  for (i <- 0 until NUM_MSHR) {
+  // * Counter how many R channel data has been written to cache (latch one cycle)
+    mshr(i).cacheRCnt := mshr(i).rCnt
+    // ! Must be assign before the MSHR is allocated, or new MSHR will have rCnt =/= 0
+  }
+
   when(canAllocateMSHR && uopValid) {
     val newMSHR = Wire(new MSHR)
     mshr(mshrFreeIndex) := newMSHR
@@ -344,8 +350,6 @@ class CacheController extends CoreModule {
     when(mshr(i).valid && mshr(i).axiReadDone && mshr(i).axiWriteDone) {
       mshr(i).valid := false.B
     }
-    // * Counter how many R channel data has been written to cache (latch one cycle)
-    mshr(i).cacheRCnt := mshr(i).rCnt
   }
 
   // ** aw
