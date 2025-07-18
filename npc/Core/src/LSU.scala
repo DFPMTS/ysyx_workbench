@@ -296,6 +296,9 @@ class NewLSUIO extends CoreBundle {
   
   // * Is there LSUOp in the pipeline?
   val OUT_busy = Bool()
+  // * LLB Control
+  val IN_clearLLB = Flipped(Bool())
+  val OUT_LLB = Bool()
 
   val IN_flush = Flipped(Bool())
 }
@@ -362,6 +365,10 @@ class NewLSU extends CoreModule with HasLSUOps {
   // * Reservation 
   val reservation = Reg(UInt(XLEN.W))
   val reservationValid = RegInit(false.B)
+  io.OUT_LLB := reservationValid
+  when(io.IN_clearLLB) {
+    reservationValid := false.B
+  }
 
   // * Cache Control Request 
   val cacheCtrlUop = Reg(new CacheCtrlUop)
@@ -716,7 +723,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   val amoCanWriteback = WireInit(false.B)
 
   when(amoIsSc) {
-    amoWriteback.data := scFail
+    amoWriteback.data := !scFail
   }.otherwise {
     amoWriteback.data := amoLoadData    
   }

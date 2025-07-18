@@ -71,7 +71,7 @@ class LA32RImmGen extends CoreModule {
   si5 := inst(14, 10).asSInt
   si12 := inst(21, 10).asSInt
   ui12 := inst(21, 10)
-  si14 := inst(23, 10).asSInt
+  si14 := Cat(inst(23, 10), 0.U(2.W)).asSInt
   si20 := Cat(inst(24, 5), 0.U(12.W)).asSInt
   offs16 := Cat(inst(25, 10), 0.U(2.W)).asSInt
   offs26 := Cat(inst(9, 0), inst(25, 10), 0.U(2.W)).asSInt

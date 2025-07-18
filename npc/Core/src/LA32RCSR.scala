@@ -131,8 +131,9 @@ class TLBEHI extends CoreBundle {
 }
 
 class TLBELO extends CoreBundle {
-  val PPN   = UInt(24.W)
-  val _R0   = UInt(1.W)
+  val _R0_1 = UInt(4.W)
+  val PPN   = UInt(20.W)
+  val _R0_0 = UInt(1.W)
   val G     = UInt(1.W)
   val MAT   = UInt(2.W)  
   val PLV   = UInt(2.W)
@@ -234,6 +235,11 @@ class LA32RCSRIO extends CoreBundle {
   val IN_mtime = Input(UInt(64.W))
   val IN_MTIP = Flipped(Bool())
   val IN_xtvalRec = Flipped(Valid(new XtvalRec))
+
+  val IN_LLB = Flipped(Bool())
+  val OUT_clearLLB = Bool()
+
+  val IN_hwIntr = Flipped(UInt(8.W))
 }
 
 class LA32RCSR extends CoreModule {
@@ -353,6 +359,15 @@ class LA32RCSR extends CoreModule {
 
   val uop = Reg(new WritebackUop)
   val uopValid = RegInit(false.B)
+
+  // * LLB Control
+  llbctl.ROLLB := io.IN_LLB
+  val clearLLB = RegInit(false.B)
+  clearLLB := false.B
+  io.OUT_clearLLB := clearLLB
+
+  // * Sample ESTAT HW interrupt
+  estat.IS_HW := RegNext(io.IN_hwIntr)
 
   // wdata for every bit, Mux(wmask[i], data, rdata)
   wdata := (data & wmask) | (rdata & ~wmask)
@@ -618,8 +633,9 @@ class LA32RCSR extends CoreModule {
       when(doWrite) {
         val llbctlNext = WireInit(wdata.asTypeOf(new LLBCTL))
         llbctl.KLO := llbctlNext.KLO
-        llbctl.WCLLB := llbctlNext.WCLLB
-        llbctl.ROLLB := llbctlNext.ROLLB
+        when(llbctlNext.WCLLB.asBool) {
+          clearLLB := true.B
+        }
       }
     }
     when(addr === LA32RCSRList("TLBRENTRY")) { // * 0x88
@@ -698,7 +714,11 @@ class LA32RCSR extends CoreModule {
       crmd.DA := 0.U
       crmd.PG := 1.U
     }
-    // TODO llbit
+    llbctl.KLO := 0.U
+    when(!llbctl.KLO.asBool) {
+      // * Clear LLB
+      clearLLB := true.B
+    }
   }
 
 

@@ -3,6 +3,7 @@ import chisel3.util._
 import utils._
 import Priv.U
 import CImmType.CS
+import FuType.CSR
 
 class FlagHandlerIO extends CoreBundle {
   val IN_flagUop = Flipped(Valid(new FlagUop))
@@ -69,6 +70,7 @@ class FlagHandler extends CoreModule {
   TLBCtrl := TLBCtrlNext
   val priv = io.IN_trapCSR.priv
   val xtvec = io.IN_trapCSR.eentry
+  val idle = RegInit(false.B)
 
   when (io.IN_flagUop.valid) {
     when (FlagOp.isRedirect(flag)) {
@@ -83,11 +85,12 @@ class FlagHandler extends CoreModule {
           redirect.pc := xtvec
           
           flush := true.B
+          idle := false.B
           
           CSRCtrlNext.trap := true.B
           CSRCtrlNext.intr := true.B
           CSRCtrlNext.cause := Exception.INT
-          CSRCtrlNext.pc := io.IN_flagUop.bits.pc
+          CSRCtrlNext.pc := Mux(idle, io.IN_flagUop.bits.pc + 4.U, io.IN_flagUop.bits.pc)
         }.otherwise {
           redirect.valid := true.B
           redirect.pc := io.IN_flagUop.bits.pc
@@ -126,6 +129,14 @@ class FlagHandler extends CoreModule {
         flushICache := true.B
         flushDCache := true.B
       }
+      when(decodeFlag === DecodeFlagOp.WFI) {
+        // * idle, implemented as a jump to itself
+        redirect.valid := true.B
+        redirect.pc := io.IN_flagUop.bits.pc
+        flush := true.B
+
+        idle := true.B
+      }
       when(decodeFlag === DecodeFlagOp.TLBRD) {
         redirect.valid := true.B
         redirect.pc := io.IN_flagUop.bits.pc + 4.U
@@ -148,14 +159,26 @@ class FlagHandler extends CoreModule {
 
         TLBCtrlNext.fill := true.B
       }
-      when(decodeFlag === DecodeFlagOp.PPI) {
+      when(decodeFlag === DecodeFlagOp.FETCH_PPI) {
         // * Fetch PPI
         redirect.valid := true.B
         redirect.pc := xtvec
         flush := true.B
 
+        CSRCtrlNext.trap := true.B
         CSRCtrlNext.fetch := true.B
         CSRCtrlNext.cause := Exception.PPI
+        CSRCtrlNext.pc := io.IN_flagUop.bits.pc
+      }
+      when(decodeFlag === DecodeFlagOp.FETCH_TLBR) {
+        // * Fetch TLBR
+        redirect.valid := true.B
+        redirect.pc := io.IN_trapCSR.tlbrentry
+        flush := true.B
+
+        CSRCtrlNext.trap := true.B
+        CSRCtrlNext.fetch := true.B
+        CSRCtrlNext.cause := Exception.TLBR
         CSRCtrlNext.pc := io.IN_flagUop.bits.pc
       }
     }

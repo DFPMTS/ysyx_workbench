@@ -6,6 +6,7 @@ import chisel3.experimental.dataview._
 class Core extends CoreModule {
   val io = IO(new Bundle {
     val master    = new AXI4ysyxSoC(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
+    val hwIntr    = Flipped(UInt(8.W))
     // val vPC = Output(UInt(XLEN.W))
     // val phyPC = Output(UInt(XLEN.W))
     // val fixRedirect = Output(new RedirectSignal)
@@ -438,6 +439,13 @@ class Core extends CoreModule {
   lsu.io.OUT_uncacheUop <> cacheController.io.IN_cacheCtrlUop(1)
   lsu.io.IN_memLoadFoward <> cacheController.io.OUT_memLoadFoward
   lsu.io.IN_uncacheStoreResp := cacheController.io.OUT_uncacheStoreResp
+
+  // ** LLB
+  lsu.io.IN_clearLLB := csr.io.OUT_clearLLB
+  csr.io.IN_LLB := lsu.io.OUT_LLB
+
+  // ** ESTAT IS_HW
+  csr.io.IN_hwIntr := io.hwIntr
 
   dcache.io.IN_ctrlDataRead <> cacheController.io.OUT_DDataRead
   dcache.io.IN_ctrlDataWrite <> cacheController.io.OUT_DDataWrite

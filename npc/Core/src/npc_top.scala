@@ -2,10 +2,17 @@ import chisel3._
 import chisel3.util._
 import chisel3.experimental.dataview._
 
+class npc_top_io extends Bundle {
+  val hwIntr = Input(UInt(8.W))
+}
+
 class npc_top extends Module {
+  val io = IO(new npc_top_io)
+
   val npc  = Module(new Core)
   val sram = Module(new SRAM)
 
+  npc.io.hwIntr := io.hwIntr
   npc.io.master.viewAs[AXI4] <> sram.io
   dontTouch(npc.io.master)
   // npc.io.interrupt     := false.B

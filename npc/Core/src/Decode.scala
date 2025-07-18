@@ -322,7 +322,7 @@ tlbrd      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.T
 tlbwr      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.TLBWR,    LA32RImmType.X,      Y), // TODO
 tlbfill    -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.TLBFILL,  LA32RImmType.X,      Y), // TODO
 ertn       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.ERTN,     LA32RImmType.X,      Y),
-idle       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.WFI,      LA32RImmType.X,      N),
+idle       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.WFI,      LA32RImmType.X,      Y),
 invtlb     -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.CSR,  CSROp.INVTLB,          LA32RImmType.INVTLB, Y), // TODO
 lu12i_w    -> List(N, Y, SrcType.ZERO, SrcType.IMM,  FuType.ALU,  ALUOp.ADD,             LA32RImmType.SI20,   N),
 pcaddu12i  -> List(N, Y, SrcType.PC,   SrcType.IMM,  FuType.BRU,  BRUOp.AUIPC,           LA32RImmType.SI20,   N),
@@ -337,7 +337,7 @@ st_b       -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.LSU,  LSUOp.SB,     
 st_h       -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.LSU,  LSUOp.SH,              LA32RImmType.SI12,   N),
 st_w       -> List(N, N, SrcType.REG,  SrcType.REG,  FuType.LSU,  LSUOp.SW,              LA32RImmType.SI12,   N),
 preld      -> List(N, N, SrcType.REG,  SrcType.IMM,  FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.SI12,   N), // TODO
-dbar       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.FENCE,    LA32RImmType.X,      Y),
+dbar       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.X,      Y),
 ibar       -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.FENCE_I,  LA32RImmType.X,      Y),
 jirl       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.BRU,  BRUOp.JALR,            LA32RImmType.OFFS16, N),
 b          -> List(N, N, SrcType.PC,   SrcType.IMM,  FuType.BRU,  BRUOp.JAL,             LA32RImmType.OFFS26, N),

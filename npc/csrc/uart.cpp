@@ -23,6 +23,11 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
 /* http://en.wikibooks.org/wiki/Serial_Programming/8250_UART_Programming */
 // NOTE: this is compatible to 16550
 
@@ -31,7 +36,8 @@ static uint8_t uart_base[9];
 #define UART_TX 0
 #define UART_RX 0
 #define UART_DL1 0
-#define UART_DL2 1
+#define UART_IER 1
+#define UART_ISR 2
 #define UART_LC 3
 #define UART_LC_DL_FLAG (1 << 7)
 #define UART_LS 5
@@ -39,6 +45,8 @@ static uint8_t uart_base[9];
 #define UART_LS_DR_FLAG (1 << 0)
 #define UART_LS_TFE_FLAG (1 << 5)
 #define UART_LS_TE_FLAG (1 << 6)
+
+#define LSR_RX_READY 0x01
 
 #define UART_DL_ACCESS (uart_base[UART_LC] & UART_LC_DL_FLAG)
 
@@ -76,6 +84,60 @@ static void send_key_uart(char keycode) {
   }
 }
 
+#define QUEUE_SIZE 1024
+static char queue[QUEUE_SIZE] = {};
+static int f = 0, r = 0;
+#define FIFO_PATH "/tmp/npc-serial"
+static int fifo_fd = 0;
+
+static void serial_enqueue(char ch) {
+  puts("UART enqueue");
+  fflush(stdout);
+  int next = (r + 1) % QUEUE_SIZE;
+  if (next != f) {
+    // not full
+    queue[r] = ch;
+    r = next;
+  }
+}
+
+static char serial_dequeue() {
+  char ch = 0xff;
+  if (f != r) {
+    ch = queue[f];
+    f = (f + 1) % QUEUE_SIZE;
+  }
+  return ch;
+}
+
+void serial_rx_collect() {
+  char input[256];
+  // First open in read only and read
+  int ret = read(fifo_fd, input, 256);
+  assert(ret < 256);
+  if (ret > 0) {
+    int i;
+    for (i = 0; i < ret; i++) {
+      serial_enqueue(input[i]);
+    }
+  }
+}
+
+static uint8_t serial_rx_ready_flag() { return (f == r ? 0 : LSR_RX_READY); }
+
+uint8_t calculate_isr() {
+  bool receive_ready =
+      serial_rx_ready_flag() && (bool)(uart_base[UART_IER] & 0x01);
+  bool transmit_ready = true && (bool)(uart_base[UART_IER] & 0x02);
+  if (receive_ready) {
+    return 0x4;
+  } else if (transmit_ready) {
+    return 0x2;
+  } else {
+    return 0x1;
+  }
+}
+
 uint8_t uart_io_handler(uint32_t offset, int len, uint8_t wdata,
                         bool is_write) {
   // log_write("uart offset=%d, len=%d, wdata=%d, is_write=%d\n", offset, len,
@@ -96,17 +158,20 @@ uint8_t uart_io_handler(uint32_t offset, int len, uint8_t wdata,
         uart_putc(wdata);
       }
     } else {
-      uart_base[UART_RX] = uart_read();
+      uart_base[UART_RX] = serial_dequeue();
     }
     break;
-  case UART_DL2:
-    uart_base[offset] = 0;
+  case UART_IER:
+    break;
+  case UART_ISR:
+    uart_base[UART_ISR] = calculate_isr();
     break;
   case UART_LC:
     // nothing to do here
     break;
   case UART_LS:
-    uart_base[UART_LS] = UART_LS_TFE_FLAG | UART_LS_TE_FLAG | uart_key_ready();
+    uart_base[UART_LS] =
+        UART_LS_TFE_FLAG | UART_LS_TE_FLAG | serial_rx_ready_flag();
     // printf("uart_key_ready: %d\n", uart_key_ready());
     break;
   case UART_SCR:
@@ -141,10 +206,18 @@ static void __attribute((unused)) CaptureKeyboardInput() {
   tcsetattr(fileno(stdin), TCSANOW, &term);
 }
 
+static void init_fifo() {
+  int ret = mkfifo(FIFO_PATH, 0666);
+  assert(ret == 0 || errno == EEXIST);
+  fifo_fd = open(FIFO_PATH, O_RDONLY | O_NONBLOCK);
+  assert(fifo_fd != -1);
+}
+
 void init_uart() {
   // CaptureKeyboardInput();
+  init_fifo();
 }
 
 bool in_uart(uint32_t addr) {
-  return addr >= UART_BASE && addr < UART_BASE + 32; // !
+  return addr >= UART_BASE && addr < UART_BASE + 16; // !
 }

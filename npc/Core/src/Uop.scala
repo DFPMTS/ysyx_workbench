@@ -158,14 +158,20 @@ object DecodeFlagOp extends HasDecodeConfig {
   val SYS        = 0.U(OpcodeWidth.W)
   val BRK        = 1.U(OpcodeWidth.W)
   val ERTN       = 2.U(OpcodeWidth.W)
-  // 3
+  val INTERRUPT  = 3.U(OpcodeWidth.W)
   val FENCE      = 4.U(OpcodeWidth.W)
   val FENCE_I    = 5.U(OpcodeWidth.W)
   val WFI        = 6.U(OpcodeWidth.W)
   val SFENCE_VMA = 7.U(OpcodeWidth.W)
-  val INTERRUPT  = 8.U(OpcodeWidth.W)
-  val INST_PAGE_FAULT = 9.U(OpcodeWidth.W)
 
+  val TLBSRCH    = 8.U(OpcodeWidth.W)
+  val TLBRD      = 9.U(OpcodeWidth.W)
+  val TLBWR      = 10.U(OpcodeWidth.W)
+  val TLBFILL    = 11.U(OpcodeWidth.W)
+
+  // * Need to distinguish fetch PPI/TLBR from load/store
+  val FETCH_PPI  = 12.U(OpcodeWidth.W)
+  val FETCH_TLBR = 13.U(OpcodeWidth.W)
 
   val NONE    = 15.U(OpcodeWidth.W)
 }
@@ -295,6 +301,8 @@ object CSROp extends HasDecodeConfig {
   def RDCNT_VH_W = "b1001".U(OpcodeWidth.W)
 
   def CPUCFG  = "b1010".U(OpcodeWidth.W)
+
+  def INVTLB = "b1111".U(OpcodeWidth.W)
 }
 
 object MULOp extends HasDecodeConfig {
@@ -329,6 +337,7 @@ object LA32RImmType extends HasDecodeConfig {
   def OFFS16 = 5.U(ImmTypeWidth.W)
   def OFFS26 = 6.U(ImmTypeWidth.W)
   def CSR    = 7.U(ImmTypeWidth.W)
+  def INVTLB = 8.U(ImmTypeWidth.W)
   def X = BitPat.dontCare(ImmTypeWidth)
 }
 
@@ -553,6 +562,6 @@ object Addr {
     addr >= "h0b00_0000".U && addr < "h0c00_0000".U
   }
   def isMainMem(addr: UInt) = {
-    addr >= "h1000_0000".U && addr < "h2000_0000".U
+    addr < "hF000_0000".U
   }
 }

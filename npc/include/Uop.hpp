@@ -77,6 +77,8 @@ enum class CSROp : CData {
   RDCNT_VH_W = 0b1001,
 
   CPUCFG = 0b1010,
+
+  INVTLB = 0b1111
 };
 
 enum class ImmType : CData { I = 0, U = 1, S = 2, B = 3, J = 4, X = 0xFF };
@@ -177,6 +179,8 @@ inline const char *getFlagOpName(FlagOp flag) {
     return "INST NOT EXIST";
   case FlagOp::IPE:
     return "INST PRIV EXCEPTION";
+  case FlagOp::TLBR:
+    return "TLB REFILL";
   case FlagOp::BRANCH_TAKEN:
     return "BRANCH_TAKEN";
   case FlagOp::BRANCH_NOT_TAKEN:
@@ -196,16 +200,18 @@ enum class DecodeFlagOp : CData {
   SYS = 0,
   BRK = 1,
   ERTN = 2,
-  // 3
+  INTERRUPT = 3,
   FENCE = 4,
   FENCE_I = 5,
   WFI = 6,
   SFENCE_VMA = 7,
-  INTERRUPT = 8,
-  INST_PAGE_FAULT = 9,
-  /*
-  8-14
-  */
+  TLBSRCH = 8,
+  TLBRD = 9,
+  TLBWR = 10,
+  TLBFILL = 11,
+  FETCH_PPI = 12,  // * fetch PPI
+  FETCH_TLBR = 13, // * fetch TLBR
+  // 14
   NONE = 15
 };
 
@@ -217,6 +223,8 @@ inline const char *getDecodeFlagOpName(DecodeFlagOp flag) {
     return "BRK";
   case DecodeFlagOp::ERTN:
     return "ERTN";
+  case DecodeFlagOp::INTERRUPT:
+    return "INTERRUPT";
   case DecodeFlagOp::FENCE:
     return "FENCE";
   case DecodeFlagOp::FENCE_I:
@@ -225,10 +233,18 @@ inline const char *getDecodeFlagOpName(DecodeFlagOp flag) {
     return "WFI";
   case DecodeFlagOp::SFENCE_VMA:
     return "SFENCE_VMA";
-  case DecodeFlagOp::INTERRUPT:
-    return "INTERRUPT";
-  case DecodeFlagOp::INST_PAGE_FAULT:
-    return "INST_PAGE_FAULT";
+  case DecodeFlagOp::TLBSRCH:
+    return "TLBSRCH";
+  case DecodeFlagOp::TLBRD:
+    return "TLBRD";
+  case DecodeFlagOp::TLBWR:
+    return "TLBWR";
+  case DecodeFlagOp::TLBFILL:
+    return "TLBFILL";
+  case DecodeFlagOp::FETCH_PPI:
+    return "FETCH_PPI";
+  case DecodeFlagOp::FETCH_TLBR:
+    return "FETCH_TLBR";
   case DecodeFlagOp::NONE:
     return "NONE";
   default:

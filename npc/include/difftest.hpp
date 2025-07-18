@@ -13,12 +13,14 @@ typedef void (*ref_difftest_regcpy_t)(void *dut, bool direction, bool do_csr);
 typedef void (*ref_difftest_exec_t)(uint64_t n);
 typedef void (*ref_difftest_raise_intr_t)(word_t NO);
 typedef void (*ref_difftest_init_t)(int port);
+typedef void (*isa_difftest_tlbfill_index_set_t)(uint32_t index);
 
 extern ref_difftest_init_t ref_difftest_init;
 extern ref_difftest_memcpy_t ref_difftest_memcpy;
 extern ref_difftest_regcpy_t ref_difftest_regcpy;
 extern ref_difftest_exec_t ref_difftest_exec;
 extern ref_difftest_raise_intr_t ref_difftest_raise_intr;
+extern isa_difftest_tlbfill_index_set_t isa_difftest_tlbfill_index_set;
 
 extern difftest_context_t dut;
 

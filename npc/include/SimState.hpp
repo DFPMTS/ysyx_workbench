@@ -40,8 +40,12 @@ public:
   uint32_t pc = RESET_VECTOR;
   uint32_t lastPC = RESET_VECTOR;
 
+  uint32_t tlbFillIndex = 0;
+  void incrementTlbFillIndex() { tlbFillIndex = (tlbFillIndex + 1) % TLB_SIZE; }
+
   uint64_t lastCommit;
   uint64_t instRetired = 0;
+  uint64_t perfCycle = 0;
 
   InstInfo commited[32];
   uint32_t commitedIndex = 0;
@@ -63,7 +67,7 @@ public:
 
   FILE *customFile = nullptr;
 
-#define KONATA
+  // #define KONATA
 
   void konataLogStage(uint64_t instId, const char *stage) {
 #ifdef KONATA
@@ -230,7 +234,7 @@ public:
   }
 
   void log(uint64_t cycle) {
-
+    perfCycle++;
     if (cycle % 1000 == 0) {
       fprintf(customFile, "%lu %lu\n", cycle, instRetired);
     }
@@ -248,7 +252,7 @@ public:
       fflush(stdout);
     }
     konataLogCycle(cycle);
-    if (cycle > lastCommit + 20000) {
+    if (cycle > lastCommit + 5000) {
       Log("CPU hangs");
       stop = Stop::CPU_HANG;
       running.store(false);
@@ -364,34 +368,57 @@ public:
                        (inst.flag != FlagOp::BRANCH_NOT_TAKEN);
         if (inst.fuType == FuType::LSU) {
           auto addr = inst.paddr;
-          if (in_confreg(addr)) {
+          if (in_confreg(addr) || in_uart(addr)) {
             // fprintf(stderr, "LSU MMIO: %x\n", addr);
             access_device = true;
+            if (addr == 0x1fafe000) {
+              if (inst.opcode & 8) {
+                instRetired = 0;
+                perfCycle = 0;
+                printf("----Clear Perf Counter\n");
+              } else {
+                // * Output IPC
+                printf("----Perf IPC: %.2f\n", (double)instRetired / perfCycle);
+              }
+            }
           }
         }
-        if (inst.fuType == FuType::CSR) {
+        if (inst.fuType == FuType::CSR) { // * CSR
           auto opcode = (CSROp)inst.opcode;
-          if (opcode == CSROp::RDCNT_VL_W || opcode == CSROp::RDCNT_VH_W) {
+          // * Skip RDCNT / CPUCFG
+          if (opcode == CSROp::RDCNT_VL_W || opcode == CSROp::RDCNT_VH_W ||
+              opcode == CSROp::CPUCFG) {
             access_device = true;
           }
-          // TODO: skip mip register
-          auto csrAddr = inst.imm & ((1 << 14) - 1);
-          if (csrAddr == 0x41) {
-            // fprintf(stderr, "CSR MMIO: %x\n", csrAddr);
-            // access_device = true;
-            printf("tcfg accessed\n");
-            printf("pc = %x\n", inst.pc);
-            printf("opcode = %d\n", (int)inst.opcode);
-            printf("wdata = %08x\n", inst.src1);
+          // * Skip ESTAT / TVAL
+          if (opcode == CSROp::CSRRD || opcode == CSROp::CSRWR ||
+              opcode == CSROp::CSRXCHG) {
+            auto csrAddr = inst.imm & ((1 << 14) - 1);
+            if (csrAddr == CSR_ESTAT || csrAddr == CSR_TVAL) {
+              access_device = true;
+            }
           }
+        }
+        if (inst.flag == FlagOp::SYS) { // * SYSCALL
+          if (inst.inst == 0x002b0011) {
+            // * syscall 0x11, NEMU end
+            running.store(false);
+          }
+        }
+        if (inst.flag == FlagOp::DECODE_FLAG &&
+            (DecodeFlagOp)inst.rd == DecodeFlagOp::TLBFILL) {
+          isa_difftest_tlbfill_index_set(tlbFillIndex);
+          printf("TLB Fill Index: %d\n", tlbFillIndex);
+          incrementTlbFillIndex();
         }
         if (inst.flag == FlagOp::DECODE_FLAG &&
             (DecodeFlagOp)inst.rd == DecodeFlagOp::INTERRUPT) {
           // * override the difftest ref
-          // if (begin_wave || begin_log) {
-          fprintf(stderr, "INTERRUPT on PC: %x:\n", *flagUop[i].pc);
-          // }
+          if (begin_wave || begin_log) {
+            fprintf(stderr, "INTERRUPT on PC: %x:\n", *flagUop[i].pc);
+          }
           access_device = true;
+          // begin_wave = true;
         }
         if (begin_wave || begin_log) {
           printf("commit[%d]: ", robIndex);

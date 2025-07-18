@@ -48,10 +48,11 @@ class IDU extends CoreModule with HasPerfCounters {
     val isRdcntID = decodeSignal.fuType === FuType.CSR && decodeSignal.opcode === CSROp.RDCNT_ID_W && rd === 0.U
     val isBranch = decodeSignal.fuType === FuType.BRU && BRUOp.isBranch(decodeSignal.opcode)
     val isStore = decodeSignal.fuType === FuType.LSU && LSUOp.isStore(decodeSignal.opcode)
+    val isSC    = decodeSignal.fuType === FuType.AMO && decodeSignal.opcode === AMOOp.SC_W
     // *** Filling uopNext
     uopNext.rd        := Mux(decodeSignal.regWe, Mux(isBL, 1.U, Mux(isRdcntID, rs1, rd)), ZERO)
     uopNext.rs1       := Mux(decodeSignal.src1Type === SrcType.REG, rs1, 0.U)
-    uopNext.rs2       := Mux(decodeSignal.src2Type === SrcType.REG, Mux(isBranch || isStore, rd, rs2), 0.U)
+    uopNext.rs2       := Mux(decodeSignal.src2Type === SrcType.REG, Mux(isBranch || isStore || isSC, rd, rs2), 0.U)
 
     uopNext.src1Type  := decodeSignal.src1Type
     uopNext.src2Type  := decodeSignal.src2Type
@@ -92,8 +93,10 @@ class IDU extends CoreModule with HasPerfCounters {
       uopNext.fuType := FuType.FLAG
       uopNext.opcode := FlagOp.ADEF
     }.elsewhen(instSignal.tlbMiss){
+      // * Fetch TLBR
       uopNext.fuType := FuType.FLAG
-      uopNext.opcode := FlagOp.TLBR
+      uopNext.opcode := FlagOp.DECODE_FLAG
+      uopNext.rd     := DecodeFlagOp.FETCH_TLBR
     }.elsewhen(instSignal.pageFault) {
       uopNext.fuType := FuType.FLAG
       uopNext.opcode := FlagOp.PIF
@@ -101,7 +104,7 @@ class IDU extends CoreModule with HasPerfCounters {
       // * Fetch PPI
       uopNext.fuType := FuType.FLAG
       uopNext.opcode := FlagOp.DECODE_FLAG
-      uopNext.rd     := DecodeFlagOp.PPI
+      uopNext.rd     := DecodeFlagOp.FETCH_PPI
     }.elsewhen(instSignal.access_fault) {
       // * Fetch ADEF
       uopNext.fuType := FuType.FLAG

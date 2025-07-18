@@ -35,7 +35,7 @@ uint8_t sdram[SDRAM_SIZE];
 
 static bool in_pmem(paddr_t addr) {
   // return addr - MEM_BASE < MEM_SIZE;
-  return addr <= 0x80000000;
+  return addr < 0xf0000000;
 }
 static bool in_clock(paddr_t addr) {
   return false;
@@ -51,7 +51,6 @@ bool in_confreg(uint32_t addr) {
 }
 
 uint8_t uart_io_handler(uint32_t offset, int len, uint8_t wdata, bool is_write);
-bool in_uart(uint32_t addr);
 
 static uint8_t *guest_to_host(paddr_t addr) { return mem + addr - MEM_BASE; }
 static mem_word_t clock_read(paddr_t offset) {
@@ -94,24 +93,56 @@ void load_img(const char *img) {
   }
 
   if (succ) {
-    fseek(fd, 0, SEEK_END);
-    auto size = ftell(fd);
-    fseek(fd, 0, SEEK_SET);
-    printf("Loading %ld bytes to MEM\n", size);
+    auto img_name = std::string(img);
+    if (img_name.substr(img_name.size() - 5) == ".vlog") {
+      // vlog file
+      printf("Parsing vlog file: %s\n", img);
+      char line[1024];
+      uint32_t addr = 0;
+      uint32_t bytes = 0;
+      while (fgets(line, sizeof(line), fd)) {
+        if (line[0] == '@') {
+          if (bytes != 0) {
+            printf("0x%08x bytes loaded to 0x%08x\n", bytes, addr);
+            bytes = 0;
+          }
+          sscanf(line + 1, "%x", &addr);
+          printf("Loading to address 0x%08x\n", addr);
+        } else {
+          uint8_t val = (uint8_t)strtoul(line, NULL, 16);
+          mem[addr + bytes] = val;
+          bytes++;
+        }
+      }
+      if (bytes != 0) {
+        printf("0x%08x bytes loaded to 0x%08x\n", bytes, addr);
+      }
+      // * Dump 0x00000000-0x20000000 to file
+      FILE *out = fopen("mem_dump.bin", "wb");
+      if (out) {
+        fwrite(mem, 1, 0x20000000, out);
+        fclose(out);
+      }
+    } else {
+      fseek(fd, 0, SEEK_END);
+      auto size = ftell(fd);
+      fseek(fd, 0, SEEK_SET);
+      printf("Loading %ld bytes to MEM\n", size);
 #ifdef NPC
-    // assert(fread(mem, 1, size, fd) == size);
-    auto read_size = fread(mem + RESET_VECTOR, 1, size, fd);
-    if (read_size != size) {
-      printf("Error reading image, read %ld bytes\n", read_size);
-      exit(1);
-    }
-    fclose(fd);
+      // assert(fread(mem, 1, size, fd) == size);
+      auto read_size = fread(mem + RESET_VECTOR, 1, size, fd);
+      if (read_size != size) {
+        printf("Error reading image, read %ld bytes\n", read_size);
+        exit(1);
+      }
+      fclose(fd);
 #else
-    // Log("Loading %d bytes to MROM\n", size);
-    // assert(fread(mrom, 1, size, fd) == size);
-    Log("Loading %ld bytes to Flash\n", size);
-    assert(fread(flash, 1, size, fd) == size);
+      // Log("Loading %d bytes to MROM\n", size);
+      // assert(fread(mrom, 1, size, fd) == size);
+      Log("Loading %ld bytes to Flash\n", size);
+      assert(fread(flash, 1, size, fd) == size);
 #endif
+    }
   } else {
 #ifdef NPC
     memcpy(mem, image, sizeof(image));
@@ -153,7 +184,23 @@ void mem_read(uint32_t en, uint32_t addr, uint32_t *result) {
   // }
   bool valid = false;
   mem_word_t retval = 0;
-  if (in_pmem(addr)) {
+  if (in_confreg(raw_addr)) {
+    valid = true;
+  } else if (in_uart(raw_addr)) {
+    // access_device = true;
+    valid = true;
+    retval = uart_io_handler(raw_addr - UART_BASE, 1, 0, false);
+    for (int i = 0; i < 1; ++i) {
+      result[i] = 0;
+    }
+    if (raw_addr - addr < 4) {
+      result[0] = retval << (8 * (raw_addr - addr));
+    } else if (raw_addr - addr < 8) {
+      result[1] = retval << (8 * (raw_addr - addr - 4));
+    } else {
+      result[2] = retval << (8 * (raw_addr - addr - 8));
+    }
+  } else if (in_pmem(addr)) {
     valid = true;
     // retval = host_read(guest_to_host(addr));
     if (begin_wave) {
@@ -164,31 +211,6 @@ void mem_read(uint32_t en, uint32_t addr, uint32_t *result) {
       result[i] = *((uint32_t *)guest_to_host(addr) + i);
       if (begin_wave) {
         printf("result[%d] = 0x%08x\n", i, result[i]);
-      }
-    }
-  }
-  if (in_clock(addr)) {
-    // access_device = true;
-    // #ifdef MTRACE
-    //     log_write("|clock| ");
-    // #endif
-    valid = true;
-    retval = clock_read(addr - RTC_ADDR);
-  }
-  if (in_confreg(raw_addr)) {
-    valid = true;
-    if (in_uart(raw_addr)) {
-      // access_device = true;
-      retval = uart_io_handler(raw_addr - UART_BASE, 1, 0, false);
-      for (int i = 0; i < 1; ++i) {
-        result[i] = 0;
-      }
-      if (raw_addr - addr < 4) {
-        result[0] = retval << (8 * (raw_addr - addr));
-      } else if (raw_addr - addr < 8) {
-        result[1] = retval << (8 * (raw_addr - addr - 4));
-      } else {
-        result[2] = retval << (8 * (raw_addr - addr - 8));
       }
     }
   }
@@ -243,7 +265,13 @@ void mem_write(uint32_t en, uint32_t addr, uint32_t wdata, uint32_t wmask) {
   //   }
   // #endif
   auto wdata_ptr = (uint8_t *)&wdata;
-  if (in_pmem(addr)) {
+  if (in_confreg(raw_addr)) {
+    return;
+  } else if (in_uart(raw_addr)) {
+    // access_device = true;
+    uart_io_handler(raw_addr - UART_BASE, 1, wdata_ptr[raw_addr - addr], true);
+    return;
+  } else if (in_pmem(addr)) {
     if (begin_wave) {
       printf("addr = 0x%08x\n", addr);
       printf("wmask = 0x%08x\n", wmask);
@@ -272,14 +300,6 @@ void mem_write(uint32_t en, uint32_t addr, uint32_t wdata, uint32_t wmask) {
   //     serial_write(addr - SERIAL_PORT, wdata);
   //     return;
   //   }
-  if (in_confreg(raw_addr)) {
-    if (in_uart(raw_addr)) {
-      // access_device = true;
-      uart_io_handler(raw_addr - UART_BASE, 1, wdata_ptr[raw_addr - addr],
-                      true);
-    }
-    return;
-  }
   Log("Invalid write to 0x%08x\n", raw_addr);
   running.store(false);
   stop = Stop::DIFFTEST_FAILED;

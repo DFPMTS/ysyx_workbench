@@ -61,4 +61,6 @@ void isa_reg_display(difftest_context_t *ctx);
 void init_cpu();
 void cpu_step();
 
+void cpu_update_hw_intr();
+
 #endif

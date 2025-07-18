@@ -14,6 +14,7 @@ ref_difftest_memcpy_t ref_difftest_memcpy;
 ref_difftest_regcpy_t ref_difftest_regcpy;
 ref_difftest_exec_t ref_difftest_exec;
 ref_difftest_raise_intr_t ref_difftest_raise_intr;
+isa_difftest_tlbfill_index_set_t isa_difftest_tlbfill_index_set;
 
 difftest_context_t ref;
 difftest_context_t dut;
@@ -42,6 +43,10 @@ void init_difftest(const char *diff_so_file) {
   ref_difftest_raise_intr =
       (ref_difftest_raise_intr_t)dlsym(ref_handle, "difftest_raise_intr");
   assert(ref_difftest_raise_intr);
+
+  isa_difftest_tlbfill_index_set = (isa_difftest_tlbfill_index_set_t)dlsym(
+      ref_handle, "isa_difftest_tlbfill_index_set");
+  assert(isa_difftest_tlbfill_index_set);
 
   ref_difftest_init(0);
 #ifdef NPC
@@ -77,13 +82,19 @@ bool check_context(difftest_context_t *ref, difftest_context_t *dut) {
   succ &= difftest_check_reg("pc", dut->pc, ref->pc, dut->pc);
   succ &= difftest_check_reg("CRMD", dut->pc, ref->crmd, dut->crmd);
   succ &= difftest_check_reg("PRMD", dut->pc, ref->prmd, dut->prmd);
-  // succ &= difftest_check_reg("ESTAT", dut->pc, ref->estat, dut->estat);
+  succ &= difftest_check_reg("ESTAT.Ecode", dut->pc, (ref->estat >> 16),
+                             (dut->estat >> 16));
   succ &= difftest_check_reg("ECFG", dut->pc, ref->ecfg, dut->ecfg);
   succ &= difftest_check_reg("ERA", dut->pc, ref->era, dut->era);
   succ &= difftest_check_reg("BADV", dut->pc, ref->badv, dut->badv);
   succ &= difftest_check_reg("EENTRY", dut->pc, ref->eentry, dut->eentry);
   succ &=
       difftest_check_reg("TLBRENTRY", dut->pc, ref->tlbrentry, dut->tlbrentry);
+  succ &= difftest_check_reg("ASID", dut->pc, ref->asid, dut->asid);
+  succ &= difftest_check_reg("TLBIDX", dut->pc, ref->tlbidx, dut->tlbidx);
+  succ &= difftest_check_reg("TLBEHI", dut->pc, ref->tlbehi, dut->tlbehi);
+  succ &= difftest_check_reg("TLBLO0", dut->pc, ref->tlbelo0, dut->tlbelo0);
+  succ &= difftest_check_reg("TLBLO1", dut->pc, ref->tlbelo1, dut->tlbelo1);
 
   return succ;
 }

@@ -3,6 +3,7 @@
 #include "difftest.hpp"
 #include "disasm.hpp"
 #include <cstdint>
+#include <cstdio>
 #include <functional>
 
 Vtop *top;
@@ -138,7 +139,7 @@ void get_context(difftest_context_t *dut) {
 void cpu_step() {
   static uint64_t sim_time = 1;
   top->clock = 0;
-
+  cpu_update_hw_intr();
   top->eval();
   eval_time = sim_time * SIM_T - 2;
 #ifdef WAVE
@@ -198,4 +199,25 @@ void init_cpu() {
   running.store(true);
   top->reset = 0;
   top->eval();
+}
+
+uint8_t calculate_isr();
+void serial_rx_collect();
+
+void cpu_update_hw_intr() {
+  static int uart_counter = 0;
+  static uint8_t intr = 0;
+  ++uart_counter;
+  if (uart_counter > 10000) {
+    serial_rx_collect();
+    uart_counter = 0;
+  }
+  if ((calculate_isr() & 0x1) == 0) {
+    // printf("UART INT\n");
+    // fflush(stdout);
+    intr |= 0x2;
+  } else {
+    intr &= ~0x2;
+  }
+  top->io_hwIntr = intr;
 }

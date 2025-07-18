@@ -126,4 +126,7 @@ public:
 #define BIND_CSRS_FIELD(field, suffix)                                         \
   CSRS.field = (decltype(CSRS.field))&V_CSRS(field, suffix);
 
+#define CSR_ESTAT 0x5
+#define CSR_TVAL 0x42
+
 #endif

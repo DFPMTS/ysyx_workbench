@@ -46,12 +46,13 @@ void parse_args(int argc, char *argv[]) {
   }
   printf("%s\n%s\n%s\n%s\n", log_file, diff_so_file, elf_file, img_file);
 }
-
+void init_uart();
 void init_monitor(int argc, char *argv[]) {
   parse_args(argc, argv);
   init_log(log_file);
   load_img(img_file);
   init_func_sym(elf_file);
+  init_uart();
   init_cpu();
   init_disasm();
 #ifdef DIFFTEST
