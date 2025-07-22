@@ -23,7 +23,7 @@ class Core extends CoreModule {
     // val IFUcacheMiss = Output(Bool())
     // val slave     = Flipped(new AXI4ysyxSoC(AXI_DATA_WIDTH, AXI_ADDR_WIDTH))
     // val interrupt = Input(Bool())
-    // val commitUop = Valid(new CommitUop)
+    val commitUop = Valid(new CommitUop)
     // val loadUop = Valid(new AGUUop)
     // val storeUop = Valid(new AGUUop)
     // val instCommited = Output(UInt(64.W))
@@ -158,7 +158,7 @@ class Core extends CoreModule {
   dontTouch(commitUop)  
 
   // !
-  // io.commitUop := commitUop(0)
+  io.commitUop := commitUop(0)
   // io.loadUop := loadArb.io.OUT_AGUUop
   // io.storeUop := storeQueue.io.OUT_stUop
   // io.instCommited := rob.io.OUT_instCommited

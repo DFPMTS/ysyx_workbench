@@ -19,10 +19,10 @@ class RAS extends CoreModule {
   val io = IO(new RASIO)
 
   val top = RegInit(0.U(log2Up(RAS_SIZE).W))
-  val ras = Reg(Vec(RAS_SIZE, UInt(XLEN.W)))
+  val ras = RegInit(VecInit(Seq.fill(RAS_SIZE)(0.U(XLEN.W))))
 
   val archTop = RegInit(0.U(log2Up(RAS_SIZE).W))
-  val archRAS = Reg(Vec(RAS_SIZE, UInt(XLEN.W)))
+  val archRAS = RegInit(VecInit(Seq.fill(RAS_SIZE)(0.U(XLEN.W))))
 
   when(io.IN_commitUpdate.valid) {
     when(io.IN_commitUpdate.bits.push) {

@@ -363,7 +363,8 @@ class CacheController extends CoreModule {
   val axiRId = io.OUT_axi.r.bits.id
   val axiBId = io.OUT_axi.b.bits.id
 
-  val wDataReg = RegInit(0.U(AXI_DATA_WIDTH.W))
+  val wIdReg   = Reg(UInt(4.W))
+  val wDataReg = Reg(UInt(AXI_DATA_WIDTH.W))
   val wStrbReg = Reg(UInt((AXI_DATA_WIDTH / 8).W))
   val wLenReg = Reg(UInt(8.W)) // * registers the AW len of current W
 
@@ -420,6 +421,7 @@ class CacheController extends CoreModule {
       val wMSHR = mshr(dataReadRespMSHRIndex)  
       when(!wMSHR.uncached) {
         wCacheLineData := io.IN_DDataResp.data(wMSHR.way)
+        wIdReg := dataReadRespMSHRIndex
         wStrbReg := Fill(AXI_DATA_WIDTH / 8, 1.U(1.W))
         wLockValid := false.B // ! Order matter, see below assignment of wLockValid
         wMSHR.needReadCache := false.B
@@ -428,6 +430,7 @@ class CacheController extends CoreModule {
         wLenReg := wMSHR.axiLen()
       }.elsewhen(wMSHR.uncached) {
         wCacheLineData(0) := wMSHR.uncachedAXIwdata()
+        wIdReg := dataReadRespMSHRIndex
         wStrbReg := wMSHR.uncachedAXIwstrb()
         wLockValid := false.B // ! Order matter, see below assignment of wLockValid
         wMSHR.needReadCache := false.B
@@ -546,6 +549,7 @@ class CacheController extends CoreModule {
   // ** w
   io.OUT_axi.w.valid := wState === sWLoaded
   io.OUT_axi.w.bits.data := wCacheLineData(wCnt)
+  io.OUT_axi.w.bits.id := wIdReg
   io.OUT_axi.w.bits.strb := wStrbReg
   io.OUT_axi.w.bits.last := wCnt === wLenReg
   

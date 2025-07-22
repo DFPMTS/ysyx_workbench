@@ -23,6 +23,7 @@
 build/
 vsrc/
 vivado_vsrc/
+myCPU/
 # xmake config
 !csrc/config.h.in
 

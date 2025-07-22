@@ -90,6 +90,14 @@ vivado:
 	mv $(VSRC_DIR) $(VIVADO_VSRC_DIR)
 	mv $(VIVADO_VSRC_DIR)/Core.sv $(VIVADO_VSRC_DIR)/Core.v
 
+chiplab:
+	make gen_verilog SIM_TARGET=Core MODE=Evaluation
+	-rm -rf ./myCPU
+	cp -r $(VSRC_DIR) ./myCPU
+	cp ./SoC/CoreTop.v ./myCPU/CoreTop.v
+	-rm -rf /home/dfpmts/Documents/chiplab/IP/myCPU/*
+	cp ./myCPU/* /home/dfpmts/Documents/chiplab/IP/myCPU/
+
 sim: 	
 	xmake build chisel
 	xmake build Vtop

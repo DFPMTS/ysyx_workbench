@@ -176,6 +176,7 @@ class AXI4(val dataBits: Int, val addrBits: Int) extends Bundle {
   })
 
   val w = Decoupled(new Bundle {
+    val id   = UInt(4.W)
     val data = UInt(dataBits.W)
     val strb = UInt((dataBits / 8).W)
     val last = Bool()
@@ -213,6 +214,7 @@ class AXI4ysyxSoC(val dataBits: Int, val addrBits: Int) extends Bundle {
   val awburst = Output(UInt(2.W))
   val wready  = Input(Bool())
   val wvalid  = Output(Bool())
+  val wid     = Output(UInt(4.W))
   val wdata   = Output(UInt(dataBits.W))
   val wstrb   = Output(UInt((dataBits / 8).W))
   val wlast   = Output(Bool())
@@ -248,6 +250,7 @@ object AXI4 {
     _.wready -> _.w.ready,
     _.wvalid -> _.w.valid,
     _.wdata -> _.w.bits.data,
+    _.wid -> _.w.bits.id,
     _.wstrb -> _.w.bits.strb,
     _.wlast -> _.w.bits.last,
     _.bready -> _.b.ready,
