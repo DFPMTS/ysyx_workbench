@@ -95,8 +95,9 @@ CFLAGS   += -O2 -MMD -Wall -Werror $(INCFLAGS) \
             -D__ARCH__=$(ARCH) -D__ARCH_$(shell echo $(ARCH) | tr a-z A-Z | tr - _) \
             -D__PLATFORM__=$(PLATFORM) -D__PLATFORM_$(shell echo $(PLATFORM) | tr a-z A-Z | tr - _) \
             -DARCH_H=\"$(ARCH_H)\" \
-            -fno-asynchronous-unwind-tables -fno-builtin -fno-stack-protector -fno-optimize-sibling-calls -fno-inline\
-            -Wno-main -U_FORTIFY_SOURCE -fvisibility=hidden
+            -fno-asynchronous-unwind-tables -fno-builtin -fno-stack-protector\
+            -Wno-main -U_FORTIFY_SOURCE -fvisibility=hidden \
+						-O3 -funroll-all-loops -falign-jumps=16 -falign-functions=16 -fgcse-sm -fgcse-las -finline-functions -finline-limit=1000 -msoft-float
 CXXFLAGS +=  $(CFLAGS) -ffreestanding -fno-rtti -fno-exceptions
 ASFLAGS  += -MMD $(INCFLAGS)
 LDFLAGS  += -z noexecstack
