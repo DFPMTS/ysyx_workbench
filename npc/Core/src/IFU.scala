@@ -52,8 +52,6 @@ class IFUIO extends CoreBundle {
   //* VM
   val OUT_TLBReq = Valid(new TLBReq)
   val IN_TLBResp = Flipped(Valid(new TLBResp))
-  val OUT_PTWReq = Decoupled(new PTWReq)
-  val IN_PTWResp = Flipped(Valid(new PTWResp))
   val IN_VMCSR   = Flipped(new VMCSR)
   val IN_trapCSR = Flipped(new TrapCSR)
 
@@ -357,20 +355,6 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
     ITagWrite.bits.data.valid := true.B
     ITagWrite.bits.data.tag := phyPC(XLEN - 1, XLEN - ICACHE_TAG)
   }
-
-
-  // ** PTW Req logic
-  val ptwReqValid = RegInit(false.B)
-  val ptwReq      = Reg(new PTWReq)
-
-  ptwReqValid := doTranslate && !io.IN_TLBResp.valid
-  when(io.IN_PTWResp.valid && io.IN_PTWResp.bits.id === 0.U) {
-    ptwReqValid := false.B
-  }
-  ptwReq.vpn := vPC(31, 12)
-
-  io.OUT_PTWReq.valid := ptwReqValid
-  io.OUT_PTWReq.bits  := ptwReq 
 
   // ** CacheCtrlUop
   io.OUT_cacheCtrlUop.valid := cacheCtrlUopValid

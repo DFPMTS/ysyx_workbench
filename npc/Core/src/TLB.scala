@@ -24,7 +24,6 @@ class InvTLBOp extends CoreBundle {
 class TLBIO extends CoreBundle {
   val IN_TLBReq = Flipped(Valid(new TLBReq))
   val OUT_TLBResp = Valid(new TLBResp)
-  val IN_PTWResp = Flipped(Valid(new PTWResp))
 
   val IN_VMCSR = Flipped(new VMCSR)
 
@@ -33,8 +32,6 @@ class TLBIO extends CoreBundle {
   val IN_InvTLBOp = Flipped(Valid(new InvTLBOp))
 
   val OUT_TLBOpResult = new TLBOpResult
-  
-  val IN_TLBFlush = Flipped(Bool())
 }
 
 class TLBPPN extends CoreBundle {

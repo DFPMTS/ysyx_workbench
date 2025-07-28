@@ -86,9 +86,6 @@ class Core extends CoreModule {
   val amoUnit = Module(new AmoUnit)
   val lsu  = Module(new NewLSU)
   val dtlb = Module(new TLB(id = 1))
-  val ptw  = Module(new PTW)
-  val loadArb = Module(new LoadArbiter)
-
 
   val xtvalRecorder = Module(new XtvalRecorder)
   val flagHandler = Module(new FlagHandler)
@@ -187,8 +184,6 @@ class Core extends CoreModule {
   ifu.io.IN_fetchEnable := !lsu.io.OUT_flushBusy
   ifu.io.OUT_TLBReq <> itlb.io.IN_TLBReq
   ifu.io.IN_TLBResp <> itlb.io.OUT_TLBResp
-  ifu.io.OUT_PTWReq <> ptw.io.IN_PTWReq(0)
-  ifu.io.IN_PTWResp <> ptw.io.OUT_PTWResp
   ifu.io.IN_VMCSR <> csr.io.OUT_VMCSR
   ifu.io.IN_trapCSR <> csr.io.OUT_trapCSR
   ifu.io.OUT_ITagRead <> icache.io.IN_tagRead
@@ -205,8 +200,6 @@ class Core extends CoreModule {
   itlb.io.IN_TLBCtrl := flagHandler.io.OUT_TLBCtrl
   itlb.io.IN_TLBCSR := csr.io.OUT_TLBCSR
   itlb.io.IN_VMCSR <> csr.io.OUT_VMCSR
-  itlb.io.IN_PTWResp <> ptw.io.OUT_PTWResp
-  itlb.io.IN_TLBFlush := TLBFlush
 
   // * DE
   idu.io.IN_inst <> ifu.io.out
@@ -354,28 +347,17 @@ class Core extends CoreModule {
   dtlb.io.IN_TLBCtrl := flagHandler.io.OUT_TLBCtrl
   dtlb.io.IN_TLBCSR := csr.io.OUT_TLBCSR
   dtlb.io.IN_VMCSR := csr.io.OUT_VMCSR
-  dtlb.io.IN_PTWResp <> ptw.io.OUT_PTWResp
-  dtlb.io.IN_TLBFlush := TLBFlush
-  ptw.io.IN_VMCSR := csr.io.OUT_VMCSR
-  ptw.io.IN_writebackUop <> writebackUop(3)
-  ptw.io.IN_TLBFlush := TLBFlush
-  ptw.io.IN_loadNegAck <> lsu.io.OUT_loadNegAck
 
   agu.io.IN_VMCSR := csr.io.OUT_VMCSR
-  agu.io.OUT_PTWReq <> ptw.io.IN_PTWReq(1)
 
   agu.io.OUT_writebackUop <> writebackUop(4)
-  agu.io.IN_PTWResp <> ptw.io.OUT_PTWResp
   agu.io.IN_flush := flush
   
   xtvalRecorder.io.IN_robTailPtr := rob.io.OUT_robTailPtr
   xtvalRecorder.io.IN_flush := flush
   xtvalRecorder.io.IN_tval := agu.io.OUT_xtvalRec
 
-  loadArb.io.IN_stopPTWUop := amoUnit.io.OUT_amoActive
-  loadArb.io.IN_AGUUop <> loadQueue.io.OUT_ldUop
-  loadArb.io.IN_PTWUop <> ptw.io.OUT_PTWUop
-  lsu.io.IN_loadUop <> loadArb.io.OUT_AGUUop
+  lsu.io.IN_loadUop <> loadQueue.io.OUT_ldUop
   lsu.io.IN_flush := flush
   lsu.io.IN_flushDCache := flagHandler.io.OUT_flushDCache
   

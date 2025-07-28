@@ -95,9 +95,6 @@ class AGUIO extends CoreBundle {
   val OUT_TLBReq     = Valid(new TLBReq)
   val IN_TLBResp    = Flipped(Valid(new TLBResp))
 
-  val OUT_PTWReq     = Decoupled(new PTWReq)
-  val IN_PTWResp     = Flipped(Valid(new PTWResp))
-
   val OUT_AGUUop     = Valid(new AGUUop)
   val OUT_writebackUop = Valid(new WritebackUop)
   val OUT_xtvalRec   = Valid(new XtvalRec)
@@ -197,14 +194,6 @@ class AGU extends CoreModule {
     uopNextValid := tlbMissQueue.io.OUT_uop.valid
     uopNext := tlbMissQueue.io.OUT_uop.bits    
   }
-  
-  val ptwReq = Reg(new PTWReq)
-  val ptwReqValid = RegInit(false.B)
-
-  val ptwReqNext = Wire(new PTWReq)
-  val ptwReqNextValid = WireInit(false.B)
-  ptwReqNext.vpn := uopNext.addr(XLEN - 1, 12)
-  ptwReqNext.stqPtr := uopNext.stqPtr
 
   val storeWbUopValid = io.OUT_AGUUop.valid && io.OUT_AGUUop.bits.fuType === FuType.LSU && LSUOp.isStore(io.OUT_AGUUop.bits.opcode)
   val storeWbUop = WireInit(0.U.asTypeOf(new WritebackUop))
@@ -249,21 +238,8 @@ class AGU extends CoreModule {
           tlbMissQueue.io.OUT_uop.ready := true.B
         }
       }
-    }.otherwise {
-      ptwReqNextValid := true.B
     }
   }
-
-  when(!ptwReqValid) {
-    ptwReq := ptwReqNext
-    ptwReqValid := ptwReqNextValid
-  }
-  when(io.IN_PTWResp.valid && io.IN_PTWResp.bits.id === 1.U) {
-    ptwReqValid := false.B
-  }
-
-  io.OUT_PTWReq.valid := ptwReqValid
-  io.OUT_PTWReq.bits := ptwReq
 
   io.OUT_writebackUop.valid := wbUopValid || storeWbUopValid
   io.OUT_writebackUop.bits := Mux(wbUopValid, wbUop, storeWbUop)
@@ -278,7 +254,6 @@ class AGU extends CoreModule {
   when(io.IN_flush) {
     uopValid := false.B
     wbUopValid := false.B
-    ptwReqValid := false.B
   }
 
   io.OUT_AGUUop.valid := uopValid
