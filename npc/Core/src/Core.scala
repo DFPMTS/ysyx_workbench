@@ -88,7 +88,7 @@ class Core extends CoreModule {
   val storeBuffer = Module(new StoreBuffer)
   val amoUnit = Module(new AmoUnit)
   val lsu  = Module(new NewLSU)
-  val dtlb = Module(new TLB(id = 1))
+  val dtlb = Module(new MicroTLB(id = MicroTLBId.DTLB))
 
   val xtvalRecorder = Module(new XtvalRecorder)
   val flagHandler = Module(new FlagHandler)
@@ -205,8 +205,7 @@ class Core extends CoreModule {
   mainTLB.io.IN_TLBCtrl := flagHandler.io.OUT_TLBCtrl
   mainTLB.io.IN_TLBCSR := csr.io.OUT_TLBCSR
   mainTLB.io.IN_mainTLBReq(0) <> ifu.io.OUT_mainTLBReq
-  mainTLB.io.IN_mainTLBReq(1).valid := false.B
-  mainTLB.io.IN_mainTLBReq(1).bits := 0.U.asTypeOf(new MainTLBReq)
+  mainTLB.io.IN_mainTLBReq(1) <> agu.io.OUT_mainTLBReq
   mainTLB.io.IN_flush := flush
 
   itlb.io.IN_VMCSR <> csr.io.OUT_VMCSR
@@ -255,7 +254,7 @@ class Core extends CoreModule {
   flagHandler.io.OUT_CSRCtrl <> CSRCtrl
   flagHandler.io.IN_trapCSR <> csr.io.OUT_trapCSR
   flagHandler.io.IN_flagUop <> flagUop
-  flagHandler.io.IN_TLBOpResult := dtlb.io.OUT_TLBOpResult
+  flagHandler.io.IN_TLBOpResult := mainTLB.io.OUT_TLBOpResult
   flush := flagHandler.io.OUT_flush
   redirect := flagHandler.io.OUT_redirect
   TLBFlush := flagHandler.io.OUT_TLBFlush
@@ -352,13 +351,13 @@ class Core extends CoreModule {
   // ** Port 3: LSU
   agu.io.IN_readRegUop <> readRegUop(3)
 
-  agu.io.OUT_TLBReq <> dtlb.io.IN_TLBReq
   agu.io.IN_TLBResp <> dtlb.io.OUT_TLBResp
+  agu.io.IN_mainTLBResp <> mainTLB.io.OUT_mainTLBResp
 
-  dtlb.io.IN_InvTLBOp := csr.io.OUT_InvTLBOp
-  dtlb.io.IN_TLBCtrl := flagHandler.io.OUT_TLBCtrl
-  dtlb.io.IN_TLBCSR := csr.io.OUT_TLBCSR
+  dtlb.io.IN_TLBReq <> agu.io.OUT_TLBReq
   dtlb.io.IN_VMCSR := csr.io.OUT_VMCSR
+  dtlb.io.IN_mainTLBResp <> mainTLB.io.OUT_mainTLBResp
+  dtlb.io.IN_flushMicroTLB <> mainTLB.io.OUT_flushMicroTLB
 
   agu.io.IN_VMCSR := csr.io.OUT_VMCSR
 

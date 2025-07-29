@@ -95,6 +95,9 @@ class AGUIO extends CoreBundle {
   val OUT_TLBReq     = Valid(new TLBReq)
   val IN_TLBResp    = Flipped(Valid(new TLBResp))
 
+  val OUT_mainTLBReq = Decoupled(new MainTLBReq)
+  val IN_mainTLBResp = Flipped(Valid(new MainTLBResp))
+
   val OUT_AGUUop     = Valid(new AGUUop)
   val OUT_writebackUop = Valid(new WritebackUop)
   val OUT_xtvalRec   = Valid(new XtvalRec)
@@ -158,11 +161,10 @@ class AGU extends CoreModule {
   io.OUT_TLBReq.bits.isWrite := isStore
   io.OUT_TLBReq.bits.isFetch := false.B
 
-  val translateDone = true.B
+  val translateDone = !doTranslate || io.IN_TLBResp.valid
 
   // * Need translate && TLB miss
-  // tlbMissQueue.io.IN_uop.valid := inValid && !addrMisalign && !tlbHit
-  tlbMissQueue.io.IN_uop.valid := false.B
+  tlbMissQueue.io.IN_uop.valid := inValid && !translateDone
   tlbMissQueue.io.IN_uop.bits := uopNext
   tlbMissQueue.io.IN_flush := io.IN_flush
 
@@ -215,6 +217,20 @@ class AGU extends CoreModule {
   
   xtvalRec.tval := uopNext.addr
   xtvalRec.robPtr := uopNext.robPtr
+
+  val mainTLBReqValid = RegInit(false.B)
+  val mainTLBReq = Reg(new MainTLBReq)  
+  val mainTLBRespValid = io.IN_mainTLBResp.valid && io.IN_mainTLBResp.bits.id === MicroTLBId.DTLB
+  
+  io.OUT_mainTLBReq.valid := mainTLBReqValid
+  io.OUT_mainTLBReq.bits := mainTLBReq
+
+  mainTLBReqValid := uopNextValid && !translateDone
+  when(mainTLBRespValid) {
+    mainTLBReqValid := false.B
+  }
+  mainTLBReq.vaddr := uopNext.addr
+  mainTLBReq.id := MicroTLBId.DTLB
 
   uopValid := false.B
   wbUopValid := false.B
