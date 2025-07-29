@@ -43,8 +43,11 @@ class Core extends CoreModule {
   val icache = Module(new NewICache)
   val cacheController = Module(new CacheController)
 
+  // * TLB
+  val itlb = Module(new MicroTLB(id = MicroTLBId.ITLB))
+  val mainTLB = Module(new MainTLB)
+
   val ifu = Module(new IFU)
-  val itlb = Module(new TLB(id = 0))
   val idu = Module(new IDU)
   val rename = Module(new Rename)
   val rob = Module(new ROB)
@@ -184,6 +187,7 @@ class Core extends CoreModule {
   ifu.io.IN_fetchEnable := !lsu.io.OUT_flushBusy
   ifu.io.OUT_TLBReq <> itlb.io.IN_TLBReq
   ifu.io.IN_TLBResp <> itlb.io.OUT_TLBResp
+  ifu.io.IN_mainTLBResp <> mainTLB.io.OUT_mainTLBResp
   ifu.io.IN_VMCSR <> csr.io.OUT_VMCSR
   ifu.io.IN_trapCSR <> csr.io.OUT_trapCSR
   ifu.io.OUT_ITagRead <> icache.io.IN_tagRead
@@ -196,10 +200,18 @@ class Core extends CoreModule {
 
   icache.io.IN_ctrlDataWrite <> cacheController.io.OUT_IDataWrite  
 
-  itlb.io.IN_InvTLBOp := csr.io.OUT_InvTLBOp
-  itlb.io.IN_TLBCtrl := flagHandler.io.OUT_TLBCtrl
-  itlb.io.IN_TLBCSR := csr.io.OUT_TLBCSR
+  mainTLB.io.IN_VMCSR <> csr.io.OUT_VMCSR
+  mainTLB.io.IN_InvTLBOp := csr.io.OUT_InvTLBOp
+  mainTLB.io.IN_TLBCtrl := flagHandler.io.OUT_TLBCtrl
+  mainTLB.io.IN_TLBCSR := csr.io.OUT_TLBCSR
+  mainTLB.io.IN_mainTLBReq(0) <> ifu.io.OUT_mainTLBReq
+  mainTLB.io.IN_mainTLBReq(1).valid := false.B
+  mainTLB.io.IN_mainTLBReq(1).bits := 0.U.asTypeOf(new MainTLBReq)
+  mainTLB.io.IN_flush := flush
+
   itlb.io.IN_VMCSR <> csr.io.OUT_VMCSR
+  itlb.io.IN_mainTLBResp <> mainTLB.io.OUT_mainTLBResp
+  itlb.io.IN_flushMicroTLB <> mainTLB.io.OUT_flushMicroTLB
 
   // * DE
   idu.io.IN_inst <> ifu.io.out
@@ -243,7 +255,7 @@ class Core extends CoreModule {
   flagHandler.io.OUT_CSRCtrl <> CSRCtrl
   flagHandler.io.IN_trapCSR <> csr.io.OUT_trapCSR
   flagHandler.io.IN_flagUop <> flagUop
-  flagHandler.io.IN_TLBOpResult := itlb.io.OUT_TLBOpResult
+  flagHandler.io.IN_TLBOpResult := dtlb.io.OUT_TLBOpResult
   flush := flagHandler.io.OUT_flush
   redirect := flagHandler.io.OUT_redirect
   TLBFlush := flagHandler.io.OUT_TLBFlush

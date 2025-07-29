@@ -52,6 +52,8 @@ class IFUIO extends CoreBundle {
   //* VM
   val OUT_TLBReq = Valid(new TLBReq)
   val IN_TLBResp = Flipped(Valid(new TLBResp))
+  val OUT_mainTLBReq = Decoupled(new MainTLBReq)
+  val IN_mainTLBResp = Flipped(Valid(new MainTLBResp))
   val IN_VMCSR   = Flipped(new VMCSR)
   val IN_trapCSR = Flipped(new TrapCSR)
 
@@ -188,10 +190,8 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   io.OUT_fetchRedirect := fetchRedirect
   io.OUT_fixRedirect := fixRedirect
   // !
-
-  val redirect = Mux(io.redirect.valid, 
-                    io.redirect, 
-                    Mux(fixRedirectReg.valid, fixRedirectReg, fetchRedirect))
+  val frontendRedirect = Mux(fixRedirectReg.valid, fixRedirectReg, fetchRedirect)
+  val redirect = Mux(io.redirect.valid, io.redirect, frontendRedirect)
 
   // * Stage 0: PC addr translation
   // ** Branch Prediction
@@ -222,7 +222,19 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   io.OUT_TLBReq.bits.isWrite := false.B
   io.OUT_TLBReq.bits.isFetch := true.B
 
-  phyPCValidNext := (!doTranslate || io.IN_TLBResp.valid) && // Always True, since TLB miss is an exception now
+  // * Main TLB Req
+  val mainTLBReqValid = RegInit(false.B)
+  val mainTLBRespValid = io.IN_mainTLBResp.valid && io.IN_mainTLBResp.bits.id === MicroTLBId.ITLB
+  mainTLBReqValid := doTranslate && !io.IN_TLBResp.valid
+  when(mainTLBRespValid) {
+    mainTLBReqValid := false.B
+  }
+
+  io.OUT_mainTLBReq.valid := mainTLBReqValid
+  io.OUT_mainTLBReq.bits.vaddr := vPC1
+  io.OUT_mainTLBReq.bits.id := MicroTLBId.ITLB
+
+  phyPCValidNext := (!doTranslate || io.IN_TLBResp.valid) &&
                     fetchBuffer.io.fetchCanContinue && 
                     flushState === sFlushIdle && io.IN_fetchEnable
   phyPCNext := Mux(doTranslate, io.IN_TLBResp.bits.paddr, vPC)    
@@ -376,230 +388,3 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   monitorEvent(ifuFinished, io.out(0).fire)
   monitorEvent(ifuStalled, io.out(0).valid && ~reset.asBool)
 }
-
-class FetchCacheLine extends CoreModule {
-  val io = IO(new Bundle {
-    val in = Flipped(Decoupled(UInt(32.W)))
-    val out = new Bundle {
-      val offset = UInt(2.W)
-      val data   = UInt(32.W)
-      val valid  = Bool()
-      val fin    = Bool()
-    }
-    val master = new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
-  })
-
-  val data = Reg(Vec(4, UInt(32.W)))
-
-  val rCnt = RegInit(0.U(3.W))
-
-  rCnt := Mux(io.in.fire, 0.U, Mux(io.master.r.fire, rCnt + 1.U, rCnt))
-
-  val sIdle :: sFill :: Nil = Enum(2)
-  val state                 = RegInit(sIdle)
-  state := MuxLookup(state, sIdle)(
-    Seq(
-      sIdle -> Mux(io.in.valid, sFill, sIdle),
-      sFill -> Mux(io.out.fin, sIdle, sFill)
-    )
-  )
-
-  // val isBurst = io.in.bits >= "hA0000000".U && io.in.bits < "hA2000000".U
-  val isBurst = false.B
-
-  val lowAddrBuffer = Reg(UInt(4.W))
-  val nextLowAddr   = Mux(!isBurst && io.master.r.valid, lowAddrBuffer + 4.U, lowAddrBuffer)
-  lowAddrBuffer := Mux(io.in.fire, 0.U(4.W), nextLowAddr)
-  val addr = Cat(io.in.bits(31, 4), lowAddrBuffer)
-
-  val reqValid = Reg(Bool())
-  reqValid := Mux(
-    io.in.fire,
-    true.B,
-    Mux(
-      io.master.ar.fire,
-      false.B,
-      Mux(!isBurst && io.master.r.fire, rCnt < 3.U, reqValid)
-    )
-  )
-  io.master.ar.valid      := reqValid && ~reset.asBool
-  io.master.ar.bits.addr  := addr
-  io.master.ar.bits.id    := 0.U
-  io.master.ar.bits.len   := Mux(isBurst, 3.U, 0.U)
-  io.master.ar.bits.size  := 2.U
-  io.master.ar.bits.burst := "b01".U
-
-  io.master.r.ready := true.B
-
-  io.master.aw.valid      := false.B
-  io.master.aw.bits.addr  := 0.U
-  io.master.aw.bits.id    := 0.U
-  io.master.aw.bits.len   := 0.U
-  io.master.aw.bits.size  := 0.U
-  io.master.aw.bits.burst := "b01".U
-
-  io.master.w.valid     := false.B
-  io.master.w.bits.data := 0.U
-  io.master.w.bits.strb := 0.U
-  io.master.w.bits.last := false.B
-
-  io.master.b.ready := false.B
-
-  io.out.offset := rCnt
-  val readDataVec = Wire(Vec(8, UInt(32.W)))
-  val idx = Cat(addr(4), rCnt(1, 0))
-  dontTouch(idx)
-  readDataVec := io.master.r.bits.data.asTypeOf(readDataVec)
-  io.out.data   := readDataVec(idx)
-  io.out.valid  := io.master.r.valid && state === sFill
-  io.out.fin    := state === sFill && rCnt === 4.U
-  io.in.ready   := state === sIdle
-}
-
-class ICache extends CoreModule with HasPerfCounters {
-  val io = IO(new Bundle {
-    val in          = Flipped(Decoupled(UInt(32.W)))
-    val out         = Decoupled(UInt(32.W))
-    val flushICache = Input(Bool())
-    val master      = new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
-  })
-  val numCacheLine = 4
-
-  val validBuffer = RegInit(false.B)
-
-  val data     = Reg(Vec(numCacheLine, Vec(4, UInt(32.W))))
-  val tag      = Reg(Vec(numCacheLine, UInt(26.W)))
-  val valid    = RegInit(VecInit(Seq.fill(numCacheLine)(false.B)))
-  val inTag    = io.in.bits(31, 6)
-  val inOffset = io.in.bits(3, 2)
-  val inIndex  = io.in.bits(5, 4)
-
-  val fetchLine = Module(new FetchCacheLine)
-  io.master <> fetchLine.io.master
-
-  val sIdle :: sFetchReq :: sFetchWaitReply :: Nil = Enum(3)
-
-  val state = RegInit(sIdle)
-
-  fetchLine.io.in.bits  := io.in.bits
-  fetchLine.io.in.valid := state === sFetchReq
-
-  val hitMap = valid.zip(tag).map { case (v, t) => v && t === inTag }
-  // val hit    = hitMap.reduce(_ || _)
-  val hit = valid(inIndex) && tag(inIndex) === inTag
-
-  state := MuxLookup(state, sIdle)(
-    Seq(
-      sIdle -> Mux(io.in.fire, Mux(hit, sIdle, sFetchReq), sIdle),
-      sFetchReq -> Mux(fetchLine.io.in.fire, sFetchWaitReply, sFetchReq),
-      sFetchWaitReply -> Mux(io.out.fire, sIdle, sFetchWaitReply)
-    )
-  )
-
-  when(state === sIdle && io.in.valid) {
-    validBuffer := true.B
-  }
-  when(io.out.fire) {
-    validBuffer := false.B
-  }
-
-  when(io.flushICache) {
-    valid.foreach(_ := false.B)
-  }
-
-  val replaceIdx = RegInit(0.U(2.W))
-  replaceIdx := Mux(replaceIdx === 2.U, replaceIdx, replaceIdx + 1.U)
-
-  when(fetchLine.io.out.valid) {
-    data(inIndex)(fetchLine.io.out.offset) := fetchLine.io.out.data
-  }
-  when(fetchLine.io.out.fin) {
-    tag(inIndex)   := inTag
-    valid(inIndex) := true.B
-  }
-
-  io.in.ready := state === sIdle && !io.flushICache
-
-  val line = Mux1H(hitMap, data)
-  // io.out.bits := line(inOffset)
-  io.out.bits := data(inIndex)(inOffset)
-
-  io.out.valid := (io.in.valid || validBuffer) && hit
-
-  monitorEvent(icacheMiss, state === sIdle && !hit)
-}
-
-class FullyAssocICache extends CoreModule with HasPerfCounters {
-  val io = IO(new Bundle {
-    val in     = Flipped(Decoupled(UInt(32.W)))
-    val out    = Decoupled(UInt(32.W))
-    val master = new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
-  })
-  val numCacheLine = 3
-
-  val data     = Reg(Vec(numCacheLine, Vec(4, UInt(32.W))))
-  val tag      = Reg(Vec(numCacheLine, UInt(28.W)))
-  val valid    = RegInit(VecInit(Seq.fill(numCacheLine)(false.B)))
-  val inTag    = io.in.bits(31, 4)
-  val inOffset = io.in.bits(3, 2)
-  val inIndex  = io.in.bits(5, 4)
-
-  val fetchLine = Module(new FetchCacheLine)
-  io.master <> fetchLine.io.master
-
-  val sIdle :: sCheckHit :: sFetchLine :: Nil = Enum(3)
-
-  val state = RegInit(sIdle)
-
-  fetchLine.io.in.bits  := io.in.bits
-  fetchLine.io.in.valid := state === sFetchLine
-
-  val hitMap = valid.zip(tag).map { case (v, t) => v && t === inTag }
-  val hit    = hitMap.reduce(_ || _)
-
-  state := MuxLookup(state, sIdle)(
-    Seq(
-      sIdle -> Mux(io.in.valid, sCheckHit, sIdle),
-      sCheckHit -> Mux(hit, Mux(io.out.fire, sIdle, sCheckHit), sFetchLine),
-      sFetchLine -> Mux(fetchLine.io.out.fin, sCheckHit, sFetchLine)
-    )
-  )
-
-  val hasInvalid = !valid.reduce(_ && _)
-  val invalidIdx = PriorityMux(valid.zipWithIndex.map { case (v, i) => (!v -> i.U) })
-  val rndIdxReg  = RegInit(0.U(2.W))
-  val rndIdx     = RegEnable(rndIdxReg, state === sCheckHit && !hit)
-  val replaceIdx = Mux(hasInvalid, invalidIdx, rndIdx)
-  rndIdxReg := Mux(rndIdxReg === numCacheLine.U - 1.U, 0.U, rndIdxReg + 1.U)
-
-  when(fetchLine.io.out.valid) {
-    data(replaceIdx)(fetchLine.io.out.offset) := fetchLine.io.out.data
-  }
-  when(fetchLine.io.out.fin) {
-    tag(replaceIdx)   := inTag
-    valid(replaceIdx) := true.B
-  }
-
-  io.in.ready := state === sIdle
-
-  io.out.bits := Mux1H(hitMap, data)(inOffset)
-
-  io.out.valid := state === sCheckHit && hit
-
-  monitorEvent(icacheMiss, state === sCheckHit && !hit)
-}
-
-// class ICacheTest extends Module {
-//   val io = IO(new Bundle {
-//     val in  = Input(UInt(32.W))
-//     val out = UInt(32.W)
-//   })
-
-//   val x      = Reg(UInt(32.W))
-//   val icache = Module(new ICache)
-//   icache.io.in    := x ^ io.in
-//   x               := icache.io.out
-//   icache.io.wdata := x & io.in
-//   icache.io.win   := x | io.in
-//   io.out          := x
-// }
