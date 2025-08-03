@@ -95,19 +95,44 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
     } else {
       // ** For LSU, the readRegUop will wake up dependencies
       for (i <- 0 until NUM_ALU) {
-        val readRegValid = io.IN_readRegUop(i).valid
-        val readRegUop = io.IN_readRegUop(i).bits
-        when (readRegValid && FuType.isOneCycle(readRegUop.fuType)) {
-          when (queue(j).prs1 === readRegUop.prd) {
+      //   val readRegValid = io.IN_readRegUop(i).valid
+      //   val readRegUop = io.IN_readRegUop(i).bits
+      //   when (readRegValid && FuType.isOneCycle(readRegUop.fuType)) {
+      //     when (queue(j).prs1 === readRegUop.prd) {
+      //       queue(j).src1Ready := true.B
+      //       writebackReady(j)(0) := true.B
+      //     }
+      //     when (queue(j).prs2 === readRegUop.prd) {
+      //       queue(j).src2Ready := true.B
+      //       writebackReady(j)(1) := true.B
+      //     }
+      //   }
+      // }
+        val issueValid = io.IN_issueUops(i).valid
+        val issueUop = io.IN_issueUops(i).bits
+        when (issueValid && FuType.isOneCycle(issueUop.fuType)) {
+          when (queue(j).prs1 === issueUop.prd) {
             queue(j).src1Ready := true.B
             writebackReady(j)(0) := true.B
           }
-          when (queue(j).prs2 === readRegUop.prd) {
+          when (queue(j).prs2 === issueUop.prd) {
             queue(j).src2Ready := true.B
             writebackReady(j)(1) := true.B
           }
         }
       }
+      val lsuWakeUpValid = io.IN_lsuWakeUp.valid
+      val lsuWakeUpUop = io.IN_lsuWakeUp.bits
+      when (lsuWakeUpValid) {
+        when (queue(j).prs1 === lsuWakeUpUop.prd) {
+          queue(j).src1Ready := true.B
+          writebackReady(j)(0) := true.B
+        }
+        when (queue(j).prs2 === lsuWakeUpUop.prd) {
+          queue(j).src2Ready := true.B
+          writebackReady(j)(1) := true.B
+        }
+      }      
     }
   }  
 

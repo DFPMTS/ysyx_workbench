@@ -49,8 +49,6 @@ class ReadReg extends CoreModule {
 
       if(i == 2) {
         uopNext(i).src1 := Mux(issueUop.src1Type === SrcType.PC, issueUop.pc, Mux(src1CanForward, src1ForwardData, io.IN_readRegVal(i)(0)))
-      } else if(i == 3) {
-        uopNext(i).src1 := io.IN_readRegVal(i)(0) + issueUop.imm
       } else {
         uopNext(i).src1 := Mux(src1CanForward, src1ForwardData, io.IN_readRegVal(i)(0))
       }

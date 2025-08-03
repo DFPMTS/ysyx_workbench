@@ -16,6 +16,7 @@ class MemLoadFoward extends CoreBundle {
 class CacheControllerIO extends CoreBundle {
   // * Cache Controller Uop
   val IN_cacheCtrlUop = Flipped(Vec(3, Decoupled(new CacheCtrlUop)))
+  val IN_dirty = Flipped(Vec(DCACHE_WAYS, Vec(DCACHE_SETS, Bool())))
 
   // * Cache Array Management
   // ** Data Cache Tag & Data
@@ -311,12 +312,18 @@ class CacheController extends CoreModule {
       newMSHR.memReadAddr := raddr
       newMSHR.memWriteAddr := waddr
 
+      val needWriteBack = uop.cacheId === CacheId.DCACHE && io.IN_dirty(uop.way)(uop.index)
+
       newMSHR.needReadMem := true.B
-      newMSHR.needReadCache := true.B
-      newMSHR.needWriteMem := true.B
+      when(needWriteBack) {
+        newMSHR.needReadCache := true.B
+        newMSHR.needWriteMem := true.B
+      }
 
       newMSHR.axiReadDone := false.B
-      newMSHR.axiWriteDone := false.B
+      when(needWriteBack) {
+        newMSHR.axiWriteDone := false.B
+      }
     }.elsewhen(uop.opcode === CacheOpcode.INVALIDATE) {
       // * invalidate cache line
       newMSHR.memWriteAddr := waddr

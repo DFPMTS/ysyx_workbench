@@ -173,7 +173,7 @@ class AGU extends CoreModule {
     uopNextValid := true.B
     uopNext.prd := inUop.prd
     // ! uopNext.addr := Mux(inUop.fuType === FuType.AMO, inUop.src1, inUop.src1 + inUop.imm)
-    uopNext.addr := inUop.src1
+    uopNext.addr := inUop.src1 + inUop.imm
     uopNext.wdata := inUop.src2
 
     uopNext.dest := Dest.ROB
@@ -264,7 +264,7 @@ class AGU extends CoreModule {
   io.OUT_xtvalRec.bits := xtvalRec
 
   io.OUT_virtualIndex.valid := io.IN_readRegUop.fire && LSUOp.isLoad(io.IN_readRegUop.bits.opcode) && io.IN_readRegUop.bits.fuType === FuType.LSU
-  io.OUT_virtualIndex.bits.index := io.IN_readRegUop.bits.src1(log2Up(DCACHE_SETS) + log2Up(CACHE_LINE_B) - 1, log2Up(CACHE_LINE_B))
+  io.OUT_virtualIndex.bits.index := (inUop.src1 + inUop.imm)(log2Up(DCACHE_SETS) + log2Up(CACHE_LINE_B) - 1, log2Up(CACHE_LINE_B))
   io.OUT_virtualIndex.bits.opcode := io.IN_readRegUop.bits.opcode
 
   when(io.IN_flush) {

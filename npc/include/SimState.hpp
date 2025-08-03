@@ -10,6 +10,8 @@
 #include "itrace.hpp"
 #include "mem.hpp"
 #include "status.hpp"
+#include "verilated.h"
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 
@@ -28,8 +30,10 @@ public:
   CSR csr;
 
   uint64_t konataInstId = 0;
-  uint64_t decodeInstIds[ISSUE_WIDTH];
-  bool decodeInstValid[ISSUE_WIDTH];
+  uint64_t decodeInstIds[2][ISSUE_WIDTH];
+  CData *renameBufferHead = NULL;
+  CData *renameBufferTail = NULL;
+  bool decodeInstValid[2][ISSUE_WIDTH];
 
   Ptr robHeadPtr = Ptr(ROB_SIZE, 0, 0);
   Ptr robTailPtr = Ptr(ROB_SIZE, 1, 0);
@@ -67,7 +71,7 @@ public:
 
   FILE *customFile = nullptr;
 
-  // #define KONATA
+#define KONATA
 
   void konataLogStage(uint64_t instId, const char *stage) {
 #ifdef KONATA
@@ -143,6 +147,14 @@ public:
     REPEAT_3(BIND_FIELDS)
     REPEAT_3(BIND_VALID)
     REPEAT_3(BIND_READY)
+
+    // * Rename Buffer
+    renameBufferHead =
+        &top->rootp
+             ->npc_top__DOT__npc__DOT__rename__DOT__renameBuffer__DOT__headPtr;
+    renameBufferTail =
+        &top->rootp
+             ->npc_top__DOT__npc__DOT__rename__DOT__renameBuffer__DOT__tailPtr;
 
     // * renameUop -> ROB
 #define UOP renameROBUop
@@ -546,11 +558,13 @@ public:
       }
       robHeadPtr.reset(0);
       robTailPtr.reset(1);
-      for (int i = 0; i < ISSUE_WIDTH; ++i) {
-        if (decodeInstValid[i]) {
-          konataLogFlush(decodeInstIds[i]);
+      for (int index = 0; index < 2; ++index) {
+        for (int i = 0; i < ISSUE_WIDTH; ++i) {
+          if (decodeInstValid[index][i]) {
+            konataLogFlush(decodeInstIds[index][i]);
+          }
+          decodeInstValid[index][i] = false;
         }
-        decodeInstValid[i] = false;
       }
       pc = V_REDIRECT_PC;
       for (int i = 0; i < ROB_SIZE; ++i) {
@@ -560,11 +574,11 @@ public:
       // * rename -> ROB
       for (int i = 0; i < ISSUE_WIDTH; ++i) {
         if (*renameROBUop[i].valid && *renameROBUop[i].ready) {
-          decodeInstValid[i] = false;
+          decodeInstValid[(*renameBufferTail) & 1][i] = false;
           auto &inst = insts[*renameROBUop[i].robPtr_index];
           auto &uop = renameROBUop[i];
           robHeadPtr.inc();
-          inst.konataId = decodeInstIds[i];
+          inst.konataId = decodeInstIds[(*renameBufferTail) & 1][i];
           inst.robPtr_index = *uop.robPtr_index;
           // printf("------------rob[%d]: kanataId=%lu\n", inst.robPtr_index,
           //        inst.konataId);
@@ -603,9 +617,10 @@ public:
       for (int i = 0; i < ISSUE_WIDTH; ++i) {
         if (decodeUop[i].isFire()) {
           auto &uop = decodeUop[i];
-          decodeInstIds[i] = konataInstId++;
-          decodeInstValid[i] = true;
-          konataLogDecode(decodeInstIds[i], *uop.pc, *uop.inst);
+          decodeInstIds[(*renameBufferHead) & 1][i] = konataInstId++;
+          decodeInstValid[(*renameBufferHead) & 1][i] = true;
+          konataLogDecode(decodeInstIds[(*renameBufferHead) & 1][i], *uop.pc,
+                          *uop.inst);
         }
       }
     }

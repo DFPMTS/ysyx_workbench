@@ -282,6 +282,7 @@ class NewLSUIO extends CoreBundle {
   val IN_mshrs = Flipped(Vec(NUM_MSHR, new MSHR))
   val IN_memLoadFoward = Flipped(Valid(new MemLoadFoward))
   val IN_uncacheStoreResp = Flipped(Bool())
+  val OUT_dirty = Vec(DCACHE_WAYS, Vec(DCACHE_SETS, Bool()))
 
   val OUT_writebackUop = Valid(new WritebackUop)
 
@@ -307,8 +308,31 @@ class NewLSU extends CoreModule with HasLSUOps {
   val io = IO(new NewLSUIO)
 
   // * dummy counter for replacement
-  val replaceCounter = RegInit(0.U(4.W))
+  val replaceCounter = RegInit(0.U(log2Up(DCACHE_WAYS).W))
   replaceCounter := Mux(replaceCounter === DCACHE_WAYS.U - 1.U, 0.U, replaceCounter + 1.U)
+
+  // * Util to get the DCache index
+  def getDCacheIndex(addr: UInt): UInt = {
+    addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
+  }
+
+  // * Dirty Table
+  val dirty = RegInit(0.U.asTypeOf(Vec(DCACHE_WAYS, Vec(DCACHE_SETS, Bool()))))
+  io.OUT_dirty := dirty
+  val setDirtyValid = WireInit(false.B)
+  val setDirtyWay = Wire(UInt(log2Up(DCACHE_WAYS).W))
+  val setDirtyIndex = Wire(UInt(log2Up(DCACHE_SETS).W))
+
+  val clearDirtyValid = WireInit(false.B)
+  val clearDirtyWay = Wire(UInt(log2Up(DCACHE_WAYS).W))
+  val clearDirtyIndex = Wire(UInt(log2Up(DCACHE_SETS).W))
+
+  when(setDirtyValid) {
+    dirty(setDirtyWay)(setDirtyIndex) := true.B
+  }
+  when(clearDirtyValid) {
+    dirty(clearDirtyWay)(clearDirtyIndex) := false.B
+  }
 
   // * Submodules
   val loadResultBuffer = Module(new LoadResultBuffer)
@@ -339,6 +363,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   // * write data
   val writeTag = RegInit(false.B)
   val storeWriteData = WireInit(false.B)
+  val amoWriteData = WireInit(false.B)
 
   // * Load/Store Pipeline
   val stage = Reg(Vec(2, new AGUUop))
@@ -562,8 +587,21 @@ class NewLSU extends CoreModule with HasLSUOps {
     cacheUopTagReq.data := dtag
   }
 
+  when(flushState === sFlushActive) {
+    clearDirtyValid := true.B
+    clearDirtyWay := flushWay
+    clearDirtyIndex := flushIndex
+  }.otherwise {
+    clearDirtyValid := io.OUT_cacheCtrlUop.fire
+    clearDirtyWay := io.OUT_cacheCtrlUop.bits.way
+    clearDirtyIndex := io.OUT_cacheCtrlUop.bits.index
+  }
+
+
   stageValid(1) := false.B
   stage(1) := Mux(needAGULoadUop, io.IN_aguLoadUop.bits, stage(0))
+
+  val stage0Index = getDCacheIndex(stage(0).addr)
 
   replaceWay := replaceCounter
   replaceTag := tagResp(replaceCounter).tag
@@ -595,18 +633,20 @@ class NewLSU extends CoreModule with HasLSUOps {
       val isUncached = stage(0).isUncached
       val isCached = !isUncached
       val storeMiss = !isUncached && !tagHit && !addrInFlight
+
+      val dirtyConflict = clearDirtyValid && getDCacheIndex(stage(0).addr) === clearDirtyIndex && clearDirtyWay === tagHitWay
       
       cacheHit := isUncached || (tagHit && !addrInFlight && !writeTag)
       cacheMiss := !isUncached && !(tagHit && !addrInFlight && !writeTag)
       needCacheUop := !addrInFlight && !writeTag
 
-      when(!isUncached && !(tagHit && !addrInFlight)) {
+      when(!isUncached && !(tagHit && !addrInFlight && !dirtyConflict)) {
         stageValid(1) := true.B
       }
 
       when(isUncached) {
         storeAck.resp := 0.U
-      }.elsewhen(tagHit && !addrInFlight) {
+      }.elsewhen(tagHit && !addrInFlight && !dirtyConflict) {
         val offset = stage(0).addr(log2Up(CACHE_LINE_B) - 1, 2)
         // * Cache Hit - Write data
         io.OUT_dataWrite.valid := true.B
@@ -622,6 +662,10 @@ class NewLSU extends CoreModule with HasLSUOps {
       }
     }
   }
+
+  setDirtyValid := storeWriteData || amoWriteData
+  setDirtyWay := Mux(amoState === sAmoStore, amoTagHitWay, tagHitWay)
+  setDirtyIndex := Mux(amoState === sAmoStore, getDCacheIndex(amoUopReg.addr), getDCacheIndex(stage(0).addr))
 
   // * Stage 1 Signal: CacheMiss CacheLoadData
 
@@ -760,8 +804,8 @@ class NewLSU extends CoreModule with HasLSUOps {
       // ! For writeTag, see LoadPipeline situation
       val amoLoadFailed = writeTag || !amoTagHit || amoAddrAlreadyInFlight
       val amoNeedLoad = !writeTag && !amoTagHit && !amoAddrAlreadyInFlight
-
-      cacheUopReq.index := amoUopReg.addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
+      val amoUopIndex = getDCacheIndex(amoUopReg.addr)
+      cacheUopReq.index := amoUopIndex
       cacheUopReq.rtag := amoUopReg.addr(XLEN - 1, XLEN - 1 - DCACHE_TAG + 1)
       cacheUopReq.wtag := tagResp(replaceCounter).tag
       cacheUopReq.way := replaceCounter
@@ -802,6 +846,8 @@ class NewLSU extends CoreModule with HasLSUOps {
       when(!amoSuccess) {
         amoAckValid := true.B
         amoAck.resp := 1.U
+      }.otherwise {
+        amoWriteData := true.B
       }
 
       amoState := Mux(amoSuccess, sAmoWriteback, sAmoIdle)
