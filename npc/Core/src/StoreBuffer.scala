@@ -26,18 +26,6 @@ class StoreBuffer extends CoreModule {
   val uopValid = RegInit(false.B)
   val uopIssued = Reg(Bool())
 
-  io.IN_storeUop.ready := !uopValid
-
-  when(io.IN_storeUop.fire) {
-    uop := io.IN_storeUop.bits
-    uopValid := true.B
-    uopIssued := false.B
-  }.otherwise {
-    when(io.OUT_storeUop.fire) {
-      uopIssued := true.B
-    }
-  }
-
   def addrMatch (addr1: UInt, addr2: UInt): Bool = {
     addr1(XLEN - 1, 2) === addr2(XLEN - 1, 2)
   }
@@ -53,6 +41,7 @@ class StoreBuffer extends CoreModule {
   val bypassDataMask = bypassDataMaskNext
   io.OUT_storeBypassResp.data := bypassData.asTypeOf(UInt(32.W))
   io.OUT_storeBypassResp.mask := bypassDataMask.asUInt
+  io.OUT_storeBypassResp.notReady := 0.U
   val wmask = uop.mask
   val shiftedData = uop.wdata
   
@@ -82,6 +71,18 @@ class StoreBuffer extends CoreModule {
       retireStqPtr := retireStqPtr + 1.U
     }.otherwise {
       uopIssued := false.B
+    }
+  }
+
+  io.IN_storeUop.ready := !uopValid || (io.IN_storeAck.valid && io.IN_storeAck.bits.resp === 0.U)
+
+  when(io.IN_storeUop.fire) {
+    uop := io.IN_storeUop.bits
+    uopValid := true.B
+    uopIssued := false.B
+  }.otherwise {
+    when(io.OUT_storeUop.fire) {
+      uopIssued := true.B
     }
   }
 }

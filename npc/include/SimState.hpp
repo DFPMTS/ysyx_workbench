@@ -35,6 +35,14 @@ public:
   CData *renameBufferTail = NULL;
   bool decodeInstValid[2][ISSUE_WIDTH];
 
+  // * LSU
+
+  uint64_t totalLSUWriteback = 0;
+  uint64_t totalLSUCacheUopReq = 0;
+
+  CData *cacheCtrlUopReady = NULL;
+  CData *cacheCtrlUopValid = NULL;
+
   Ptr robHeadPtr = Ptr(ROB_SIZE, 0, 0);
   Ptr robTailPtr = Ptr(ROB_SIZE, 1, 0);
 
@@ -234,6 +242,15 @@ public:
     REPEAT_1(BIND_FIELDS)
     REPEAT_1(BIND_VALID)
 
+    // * LSU CacheCtrlUop
+    cacheCtrlUopReady =
+        &top->rootp
+             ->npc_top__DOT__npc__DOT___cacheController_io_IN_cacheCtrlUop_0_ready;
+    cacheCtrlUopValid =
+        &top->rootp->npc_top__DOT__npc__DOT__lsu__DOT__cacheCtrlUopValid;
+
+    // * CSR
+
 #define CSRS csr
     CSR_FIELDS(BIND_CSRS_FIELD);
     printf("bind uops done\n");
@@ -246,6 +263,14 @@ public:
   }
 
   void log(uint64_t cycle) {
+
+    if (*cacheCtrlUopValid && *cacheCtrlUopReady) {
+      ++totalLSUCacheUopReq;
+    }
+    if (writebackUop[3].isFire()) {
+      ++totalLSUWriteback;
+    }
+
     perfCycle++;
     if (cycle % 1000 == 0) {
       fprintf(customFile, "%lu %lu\n", cycle, instRetired);
@@ -692,6 +717,12 @@ public:
     printf("Total Branch Mispred: %lu\n", totalBranchMispred);
     printf("Branch Mispred Rate: %.2f%%\n",
            (double)totalBranchMispred / totalBranches * 100);
+    // LSU
+    printf("------------------------LSU------------------------\n");
+    printf("Total LSU Writeback: %lu\n", totalLSUWriteback);
+    printf("Total LSU Cache Uop Req: %lu\n", totalLSUCacheUopReq);
+    printf("LSU Cache Uop Req Rate: %.2f%%\n",
+           (double)totalLSUCacheUopReq / totalLSUWriteback * 100);
     printf("-----------------------Jump--------------------------\n");
     printf("Total Jump: %lu\n", totalJumps);
     printf("Total Jump Mispred: %lu\n", totalJumpMispred);

@@ -16,6 +16,8 @@ class ROBIO extends CoreBundle {
   val OUT_flagUop = Valid(new FlagUop)
   val OUT_robEmpty = Bool()
 
+  val IN_storeDataStqLimit = Flipped(Valid(RingBufferPtr(STQ_SIZE)))
+
   val OUT_phtUpdate = Valid(new PHTUpdate)
   val OUT_rasUpdate = Valid(new RASUpdate)
 
@@ -167,6 +169,7 @@ class ROB extends CoreModule with HasPerfCounters {
       flagUopNext.rd := deqEntry(i).rd
       flagUopNext.pc := deqEntry(i).pc
       flagUopNext.robPtr := robTailPtr + i.U
+      flagUopNext.stqPtr := deqEntry(i).stqPtr
 
       val branchTaken = FlagOp.isBranchTaken(deqEntry(i).flag)
       val branchNotTaken = FlagOp.isBranchNotTaken(deqEntry(i).flag)

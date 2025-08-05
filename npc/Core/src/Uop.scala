@@ -464,6 +464,7 @@ class FlagUop extends CoreBundle {
   val target = UInt(XLEN.W)
   // * debug
   val robPtr = RingBufferPtr(ROB_SIZE)
+  val stqPtr = RingBufferPtr(STQ_SIZE)
 }
 
 class WritebackUop extends CoreBundle {

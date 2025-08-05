@@ -11,6 +11,7 @@ class FlagHandlerIO extends CoreBundle {
   val IN_TLBOpResult = Flipped(new TLBOpResult)
 
   val OUT_flush = Bool()
+  val OUT_flushStqPtr = RingBufferPtr(STQ_SIZE)
   val OUT_CSRCtrl = new CSRCtrl
   val OUT_TLBCtrl = new TLBCtrl
   val OUT_redirect = new RedirectSignal
@@ -47,6 +48,7 @@ class FlagHandler extends CoreModule {
   val decodeFlag = io.IN_flagUop.bits.rd(3, 0)
 
   val flush = Reg(Bool())
+  val flushStqPtr = Reg(RingBufferPtr(STQ_SIZE))
   val TLBFlush = Reg(Bool())
   val flushICache = Reg(Bool())
   val flushDCache = Reg(Bool())
@@ -55,6 +57,9 @@ class FlagHandler extends CoreModule {
   val CSRCtrlNext = WireInit(0.U.asTypeOf(new CSRCtrl))
   val TLBCtrl = Reg(new TLBCtrl)
   val TLBCtrlNext = WireInit(0.U.asTypeOf(new TLBCtrl))
+
+  flushStqPtr := io.IN_flagUop.bits.stqPtr
+  io.OUT_flushStqPtr := flushStqPtr
 
   CSRCtrlNext.hit := io.IN_TLBOpResult.hit
   CSRCtrlNext.tlbidx := io.IN_TLBOpResult.index

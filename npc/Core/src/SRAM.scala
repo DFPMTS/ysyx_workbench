@@ -7,8 +7,8 @@ import scala.util.Random
 class SRAM extends CoreModule {
   val io = IO(Flipped(new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)))
 
-  val read_lat  = random.LFSR(2, true.B, Some(3))
-  val write_lat = random.LFSR(2, true.B, Some(1))
+  val read_lat  = random.LFSR(6, true.B, Some(3))
+  val write_lat = random.LFSR(5, true.B, Some(1))
   val counter   = RegInit(0.U(10.W))
 
   val out_data_buffer = Reg(UInt(AXI_DATA_WIDTH.W))
@@ -35,6 +35,7 @@ class SRAM extends CoreModule {
   val state      = RegNext(next_state, s_Idle)
 
   next_state := state
+  counter := Mux(counter === 0.U, 0.U, counter - 1.U)
   switch(state) {
     is(s_Idle) {
       when(io.ar.fire) {
@@ -54,7 +55,6 @@ class SRAM extends CoreModule {
       counter := 0.U
     }
     is(s_ReadData) {
-      counter := Mux(counter === 0.U, 0.U, counter - 1.U)
       when(io.r.fire) {
         when(arCnt === arLen) {
           next_state := s_Idle
@@ -66,6 +66,7 @@ class SRAM extends CoreModule {
       }
     }
     is(s_WriteAddr) {
+      counter := 0.U
       when(io.aw.fire) {
         next_state := s_WriteData
         awId := io.aw.bits.id
@@ -99,7 +100,7 @@ class SRAM extends CoreModule {
   io.aw.ready := state === s_WriteAddr
   io.w.ready  := state === s_WriteData
   io.r.valid  := state === s_ReadData && counter === 0.U
-  io.b.valid  := state === s_WriteResp
+  io.b.valid  := state === s_WriteResp && counter === 0.U
 
   // Memory read interface
   val mem_read     = Module(new MemRead)

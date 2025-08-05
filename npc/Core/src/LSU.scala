@@ -242,11 +242,13 @@ class StoreBypassReq extends CoreBundle {
 class StoreBypassResp extends CoreBundle {
   val data = UInt(XLEN.W)
   val mask = UInt(4.W)
+  val notReady = UInt(4.W)
 }
 
 class VirtualIndex extends CoreBundle {
   val index = UInt(log2Up(DCACHE_SETS).W)
   val opcode = UInt(OpcodeWidth.W)
+  val mask = UInt(4.W)
 }
 
 class NewLSUIO extends CoreBundle {
@@ -467,6 +469,7 @@ class NewLSU extends CoreModule with HasLSUOps {
     stage(0).addr := Cat(inAGUVirtualIndex.index, 0.U(log2Up(CACHE_LINE_B).W))
     stage(0).opcode := inAGUVirtualIndex.opcode
     stage(0).dest := Dest.ROB
+    stage(0).mask := inAGUVirtualIndex.mask
   }
   needAGULoadUop := aguVirtualIndex
 
@@ -673,6 +676,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   val bypassDataMaskNext = io.IN_storeBypassResp.mask | io.IN_storeBufferBypassResp.mask
   val bypassDataMask = RegNext(bypassDataMaskNext)
   val bypassDataHit = RegNext((~bypassDataMaskNext & stage(0).mask) === 0.U)
+  val bypassDataNotReady = RegNext((io.IN_storeBypassResp.notReady & stage(0).mask) =/= 0.U)
   for(i <- 0 until 4) {
     bypassData(i) := Mux(
       io.IN_storeBypassResp.mask(i),
@@ -692,7 +696,7 @@ class NewLSU extends CoreModule with HasLSUOps {
     data
   }
 
-  val stage1LoadHit = (cacheHit || bypassDataHit) && !loadDiscard
+  val stage1LoadHit = (cacheHit || bypassDataHit) && !loadDiscard && !bypassDataNotReady
 
   hitLoadResult.data := finalData.asUInt
   hitLoadResult.ready := false.B
@@ -724,12 +728,12 @@ class NewLSU extends CoreModule with HasLSUOps {
 
       }.otherwise {
         // * Find out if we can serve cacheUop
-        cacheUopReqValid := !stage1LoadHit && needCacheUop
+        cacheUopReqValid := !stage1LoadHit && needCacheUop && !bypassDataNotReady
         hitLoadResultValid := stage1LoadHit
 
         // * LoadResult: from Stage(0)
         when(!stage1LoadHit) {
-          when(!(loadResultBuffer.io.OUT_numEmpty > 1.U) || !canServeCacheUop || !needCacheUop) {
+          when(!(loadResultBuffer.io.OUT_numEmpty > 1.U) || !canServeCacheUop || !needCacheUop || bypassDataNotReady) {
             // * NegAck
             loadNegAckValid := true.B
             loadNegAck.dest := stage(1).dest

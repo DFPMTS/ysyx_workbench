@@ -79,7 +79,7 @@ class LoadQueue extends CoreModule {
   // * choose
   val issueReady = ldqValid.asUInt & ~(ldqIssued.asUInt) & ldqReady.asUInt
   val hasIssueReady = issueReady.orR
-  val ldqIssueIndex = PriorityEncoder(issueReady)
+  val ldqIssueIndex = Mux(issueReady(io.IN_commitLdqPtr.index), io.IN_commitLdqPtr.index, PriorityEncoder(issueReady))
 
   def isInRange(index: UInt, start: RingBufferPtr, end: RingBufferPtr): Bool = {
     val wrap = end.flag =/= start.flag

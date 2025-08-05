@@ -6,6 +6,8 @@ import SrcType.IMM
 class ReadRegIO extends CoreBundle {
   val IN_issueUop = Flipped(Vec(MACHINE_WIDTH, Decoupled(new RenameUop)))
   val IN_zeroCycleForward = Flipped(Vec(NUM_ALU, Valid(new WritebackUop)))
+  val IN_storeDataReadReq = Flipped(Decoupled(new StoreDataReadReq))
+  val OUT_storeData = Valid(new StoreData)
   val OUT_readRegIndex = Vec(MACHINE_WIDTH, Vec(2, UInt(PREG_IDX_W)))
   val IN_readRegVal = Flipped(Vec(MACHINE_WIDTH, Vec(2, UInt(XLEN.W))))
   val OUT_readRegUop = Vec(MACHINE_WIDTH, Decoupled(new ReadRegUop))
@@ -23,7 +25,13 @@ class ReadReg extends CoreModule {
     for (i <- 0 until MACHINE_WIDTH) {
       
     }
-    
+
+    val storeDataValid = RegInit(false.B)
+    val storeData = Reg(new StoreData)
+    io.IN_storeDataReadReq.ready := io.IN_issueUop(3).bits.prs2 === ZERO
+    val port3Prs2 = Mux(io.IN_storeDataReadReq.fire, io.IN_storeDataReadReq.bits.prs, io.IN_issueUop(3).bits.prs2)
+    val port3Src2 = Wire(UInt(XLEN.W))
+
     for (i <- 0 until MACHINE_WIDTH) {
       val issueUop = io.IN_issueUop(i).bits
 
@@ -34,7 +42,7 @@ class ReadReg extends CoreModule {
       uopNext(i).prs2 := issueUop.prs2
 
       io.OUT_readRegIndex(i)(0) := issueUop.prs1
-      io.OUT_readRegIndex(i)(1) := issueUop.prs2
+      io.OUT_readRegIndex(i)(1) := (if (i == 3) port3Prs2 else issueUop.prs2)
       // * Try to get data from Zero cycle forward
       val src1MatchVec = io.IN_zeroCycleForward.map { forwardUop =>
         forwardUop.valid && forwardUop.bits.prd === issueUop.prs1
@@ -54,6 +62,9 @@ class ReadReg extends CoreModule {
       }
 
       uopNext(i).src2 := Mux(issueUop.src2Type === SrcType.IMM, issueUop.imm, Mux(src2CanForward, src2ForwardData, io.IN_readRegVal(i)(1)))
+      if (i == 3) {
+        port3Src2 := Mux(src2CanForward, src2ForwardData, io.IN_readRegVal(i)(1))
+      }
 
       uopNext(i).robPtr := issueUop.robPtr
       uopNext(i).ldqPtr := issueUop.ldqPtr
@@ -80,8 +91,13 @@ class ReadReg extends CoreModule {
       }
     }
 
+    storeDataValid := io.IN_storeDataReadReq.fire
+    storeData.stqPtr := io.IN_storeDataReadReq.bits.stqPtr
+    storeData.data := port3Src2
+
     when(io.IN_flush) {
       uopValid := VecInit(Seq.fill(MACHINE_WIDTH)(false.B))
+      // storeDataValid := false.B
     }
 
     // ** Output
@@ -89,5 +105,7 @@ class ReadReg extends CoreModule {
       io.OUT_readRegUop(i).valid := uopValid(i)
       io.OUT_readRegUop(i).bits := uop(i)
     }
+    io.OUT_storeData.valid := storeDataValid
+    io.OUT_storeData.bits := storeData
 }
 

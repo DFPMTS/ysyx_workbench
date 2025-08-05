@@ -5,15 +5,19 @@ import utils._
 
 class StoreQueueIO extends CoreBundle {
   val IN_AGUUop       = Flipped(Valid(new AGUUop))
+  val IN_storeData    = Flipped(Valid(new StoreData))
   val IN_robTailPtr   = Flipped(RingBufferPtr(ROB_SIZE))
   val IN_commitStqPtr = Flipped(RingBufferPtr(STQ_SIZE))
   val OUT_stUop       = Decoupled(new AGUUop)
   val OUT_stqBasePtr  = RingBufferPtr(STQ_SIZE)
   val OUT_storeQueueEmpty = Bool()
 
+  val OUT_stqLoadLimitPtr = RingBufferPtr(STQ_SIZE)
+
   val IN_storeBypassReq = Flipped(new StoreBypassReq)
   val OUT_storeBypassResp = new StoreBypassResp
   val IN_flush = Flipped(Bool())
+  val IN_flushStqPtr = Flipped(RingBufferPtr(STQ_SIZE))
 }
 
 class StoreQueue extends CoreModule {
@@ -21,6 +25,7 @@ class StoreQueue extends CoreModule {
 
   val stq       = Reg(Vec(STQ_SIZE, new AGUUop))
   val stqValid  = RegInit(VecInit(Seq.fill(STQ_SIZE)(false.B)))
+  val stqDataReady = RegInit(VecInit(Seq.fill(STQ_SIZE)(false.B)))
   // val committed  = RegInit(VecInit(Seq.fill(STQ_SIZE)(false.B)))
 
   val hasStqValid     = stqValid.reduce(_ || _)
@@ -33,6 +38,12 @@ class StoreQueue extends CoreModule {
     stq(io.IN_AGUUop.bits.stqPtr.index)       := io.IN_AGUUop.bits
     stqValid(io.IN_AGUUop.bits.stqPtr.index)  := true.B
     // committed(io.IN_AGUUop.bits.stqPtr.index)  := false.B
+    stqDataReady(io.IN_AGUUop.bits.stqPtr.index) := false.B
+  }
+
+  when(io.IN_storeData.valid) {
+    stq(io.IN_storeData.bits.stqPtr.index).wdata := io.IN_storeData.bits.data
+    stqDataReady(io.IN_storeData.bits.stqPtr.index) := true.B
   }
 
   def isInRange(index: UInt, start: RingBufferPtr, end: RingBufferPtr): Bool = {
@@ -45,6 +56,18 @@ class StoreQueue extends CoreModule {
   val stqBasePtr = RegInit(RingBufferPtr(STQ_SIZE, 0.U, 0.U))
   io.OUT_stqBasePtr := stqBasePtr
   
+  // * storeQueueLimitPtr
+  val stqLoadLimitPtr = RegInit(RingBufferPtr(STQ_SIZE, 0.U, 0.U))
+  io.OUT_stqLoadLimitPtr := stqLoadLimitPtr
+
+  val stqLimitPtr = Wire(RingBufferPtr(STQ_SIZE))
+  stqLimitPtr.flag := ~stqBasePtr.flag
+  stqLimitPtr.index := stqBasePtr.index
+
+  when(stqValid(stqLoadLimitPtr.index) && (stqLoadLimitPtr + 1.U).isBefore(stqLimitPtr)) {
+    stqLoadLimitPtr := stqLoadLimitPtr + 1.U
+  }
+
   // val newCommitted = VecInit((0 until STQ_SIZE).map { i =>
   //   val index = i.U(STQ_IDX_W)
   //   isInRange(index, lastCommitStqPtr, io.IN_commitStqPtr)
@@ -66,14 +89,21 @@ class StoreQueue extends CoreModule {
   bypassDataNext := 0.U.asTypeOf(bypassDataNext)
   val bypassDataMaskNext = Wire(Vec(4, Bool()))
   bypassDataMaskNext := 0.U.asTypeOf(bypassDataMaskNext)
+  val bypassDataNotReady = Wire(Vec(4, Bool()))
+  bypassDataNotReady := 0.U.asTypeOf(bypassDataNotReady)
   // val bypassData = RegNext(bypassDataNext)
   // val bypassDataMask = RegNext(bypassDataMaskNext)
   val bypassData = bypassDataNext
   val bypassDataMask = bypassDataMaskNext
   io.OUT_storeBypassResp.data := bypassData.asTypeOf(UInt(32.W))
   io.OUT_storeBypassResp.mask := bypassDataMask.asUInt
+  io.OUT_storeBypassResp.notReady := bypassDataNotReady.asUInt
   val wmask = stq.map(_.mask)
-  val shiftedData = stq.map(_.wdata)
+  def getShiftedData(aguUop: AGUUop): UInt = {
+    val addrOffset = aguUop.addr(log2Up(XLEN/8) - 1, 0)
+    (aguUop.wdata << (addrOffset << 3))(XLEN - 1, 0)
+  }
+  val shiftedData = stq.map(e => getShiftedData(e))
 
   when(addrMatch(io.IN_storeBypassReq.addr, uop.addr) && uopValid) {
     val uopWmask = uop.mask
@@ -95,6 +125,7 @@ class StoreQueue extends CoreModule {
           when(wmask(i)(j)) {
             bypassDataNext(j) := shiftedData(i)((j + 1) * 8 - 1, j * 8)
             bypassDataMaskNext(j) := true.B
+            bypassDataNotReady(j) := !stqDataReady(i)
           }
         }
       }
@@ -106,6 +137,7 @@ class StoreQueue extends CoreModule {
           when(wmask(i)(j)) {
             bypassDataNext(j) := shiftedData(i)((j + 1) * 8 - 1, j * 8)
             bypassDataMaskNext(j) := true.B
+            bypassDataNotReady(j) := !stqDataReady(i)
           }
         }
       }
@@ -116,6 +148,7 @@ class StoreQueue extends CoreModule {
           when(wmask(i)(j)) {
             bypassDataNext(j) := shiftedData(i)((j + 1) * 8 - 1, j * 8)
             bypassDataMaskNext(j) := true.B
+            bypassDataNotReady(j) := !stqDataReady(i)
           }
         }
       }
@@ -123,16 +156,39 @@ class StoreQueue extends CoreModule {
   }
 
   // Issue logic
-  val hasIssueReady = stqBasePtr.isBefore(io.IN_commitStqPtr)
   val stqIssueIndex = stqBasePtr.index
+  val hasIssueReady = stqBasePtr.isBefore(io.IN_commitStqPtr) && stqDataReady(stqIssueIndex)
 
   when(io.OUT_stUop.ready || !uopValid) {    
     uop := stq(stqIssueIndex)
+    uop.wdata := getShiftedData(stq(stqIssueIndex))
     uopValid := hasIssueReady
     when(hasIssueReady) {
       stqBasePtr := stqBasePtr + 1.U
+      stqDataReady(stqIssueIndex) := false.B
+      stqValid(stqIssueIndex) := false.B
     }
   }
+
+  when(io.IN_flush) {
+    stqLoadLimitPtr := io.IN_commitStqPtr
+    when(io.IN_commitStqPtr.flag =/= stqBasePtr.flag) {
+      for (i <- 0 until STQ_SIZE) {
+        when(i.U < stqBasePtr.index && i.U >= io.IN_flushStqPtr.index) {
+          stqValid(i) := false.B
+          stqDataReady(i) := false.B
+        }
+      }
+    }.otherwise{
+      for (i <- 0 until STQ_SIZE) {
+        when(i.U < stqBasePtr.index || i.U >= io.IN_flushStqPtr.index) {
+          stqValid(i) := false.B
+          stqDataReady(i) := false.B
+        }
+      }
+    }
+  }
+
   io.OUT_storeQueueEmpty := !hasIssueReady && !uopValid
   io.OUT_stUop.valid := uopValid
   io.OUT_stUop.bits  := uop

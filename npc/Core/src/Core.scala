@@ -58,6 +58,7 @@ class Core extends CoreModule {
     Module(new IssueQueue(Seq(FuType.ALU, FuType.MUL))),
     Module(new IssueQueue(Seq(FuType.LSU))),
   )
+  val storeDataIQ = Module(new StoreDataIQ)
   val dispatcher = Seq(
     Module(new Dispatcher(
       Seq(Seq(FuType.ALU), Seq(FuType.CSR))
@@ -249,6 +250,7 @@ class Core extends CoreModule {
   rob.io.OUT_flagUop <> flagUop
   rob.io.OUT_commitUop <> commitUop
   rob.io.IN_stqBasePtr := storeQueue.io.OUT_stqBasePtr
+  rob.io.IN_storeDataStqLimit := storeDataIQ.io.OUT_storeDataStqLimit
 
   // * flag handler
   flagHandler.io.OUT_CSRCtrl <> CSRCtrl
@@ -284,8 +286,20 @@ class Core extends CoreModule {
     iq(i).io.IN_idivBusy := (iq(1).io.OUT_issueUop.valid && iq(1).io.OUT_issueUop.bits.fuType === FuType.DIV) ||
                             (readRegUop(1).valid         && readRegUop(1).bits.fuType === FuType.DIV) ||
                             div.io.OUT_idivBusy
+    iq(i).io.IN_storeDataIQReady := storeDataIQ.io.IN_renameUop.ready
     issueUop(i) <> iq(i).io.OUT_issueUop
   }
+
+  // * Store Data IQ
+  val storeDataCanRead = WireInit(false.B)
+
+  storeDataIQ.io.IN_renameUop.valid := scheduler.io.OUT_renameUop(3).valid
+  storeDataIQ.io.IN_renameUop.bits := scheduler.io.OUT_renameUop(3).bits
+  storeDataIQ.io.IN_writebackUop := writebackUop
+  storeDataIQ.io.IN_stqBasePtr := storeQueue.io.OUT_stqBasePtr
+  storeDataIQ.io.IN_AGUUop := agu.io.OUT_AGUUop
+  storeDataIQ.io.IN_flushStqPtr := flagHandler.io.OUT_flushStqPtr
+  storeDataIQ.io.IN_flush := flush
 
   // * Read Register
   readReg.io.IN_issueUop <> issueUop
@@ -295,6 +309,7 @@ class Core extends CoreModule {
     readRegUop(i).ready := false.B
   }
   readReg.io.IN_zeroCycleForward := zeroCycleForward
+  readReg.io.IN_storeDataReadReq <> storeDataIQ.io.OUT_storeDataReadReq
   readReg.io.IN_flush := flush
 
   // * PReg
@@ -383,13 +398,15 @@ class Core extends CoreModule {
   loadQueue.io.IN_negAck <> lsu.io.OUT_loadNegAck
   loadQueue.io.IN_robTailPtr := rob.io.OUT_robTailPtr
   loadQueue.io.IN_commitLdqPtr := rob.io.OUT_ldqTailPtr
-  loadQueue.io.IN_commitStqPtr := rob.io.OUT_stqTailPtr
+  loadQueue.io.IN_commitStqPtr := storeQueue.io.OUT_stqLoadLimitPtr
   loadQueue.io.IN_retireStqPtr := storeBuffer.io.OUT_retireStqPtr
   loadQueue.io.IN_flush := flush
 
   storeQueue.io.IN_AGUUop <> aguUop
   storeQueue.io.IN_robTailPtr := rob.io.OUT_robTailPtr
   storeQueue.io.IN_commitStqPtr := rob.io.OUT_stqTailPtr
+  storeQueue.io.IN_storeData := readReg.io.OUT_storeData
+  storeQueue.io.IN_flushStqPtr := flagHandler.io.OUT_flushStqPtr
   storeQueue.io.IN_flush := flush
 
   storeBuffer.io.IN_storeUop <> storeQueue.io.OUT_stUop

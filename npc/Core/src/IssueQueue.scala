@@ -16,6 +16,8 @@ class IssueQueueIO extends CoreBundle {
   val IN_readRegUop = Flipped(Vec(NUM_ALU, Valid(new ReadRegUop)))
 
   val IN_idivBusy = Input(Bool())
+
+  val IN_storeDataIQReady = Flipped(Bool())
 }
 
 class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
@@ -171,7 +173,13 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
   val doDeq = updateValid && hasReady
 
   val enqStall = headIndex === IQ_SIZE.U
-  io.IN_renameUop.ready := !enqStall
+  io.IN_renameUop.ready := !enqStall && (!hasFU(FuType.LSU).B || io.IN_storeDataIQReady)
+
+  when (io.IN_flush) {
+    headIndex := 0.U
+  }.otherwise {
+    headIndex := headIndex + doEnq - doDeq  
+  }
 
   when (io.IN_flush) {
     headIndex := 0.U
@@ -215,6 +223,12 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
         }
       }
     }    
+    when(renameUop.fuType === FuType.LSU) {
+      when(LSUOp.isStore(renameUop.opcode)) {
+        queue(enqIndex).src2Ready := true.B
+        queue(enqIndex).prs2 := 0.U
+      }
+    }
   }
 
   when (io.IN_flush) {

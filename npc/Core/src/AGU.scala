@@ -122,6 +122,17 @@ class AGU extends CoreModule {
     ) << addrOffset
     mask(3, 0)
   }
+  def getWmaskFromAddr(addr: UInt, memLen: UInt): UInt = {
+    val addrOffset = addr(log2Up(XLEN/8) - 1, 0)
+    val mask = MuxLookup(memLen, 0.U(4.W))(
+      Seq(
+        0.U(2.W) -> "b0001".U,
+        1.U(2.W) -> "b0011".U,
+        2.U(2.W) -> "b1111".U
+      )
+    ) << addrOffset
+    mask(3, 0)
+  }
   def getShiftedData(aguUop: AGUUop): UInt = {
     val addrOffset = aguUop.addr(log2Up(XLEN/8) - 1, 0)
     (aguUop.wdata << (addrOffset << 3))(XLEN - 1, 0)
@@ -266,6 +277,7 @@ class AGU extends CoreModule {
   io.OUT_virtualIndex.valid := io.IN_readRegUop.fire && LSUOp.isLoad(io.IN_readRegUop.bits.opcode) && io.IN_readRegUop.bits.fuType === FuType.LSU
   io.OUT_virtualIndex.bits.index := (inUop.src1 + inUop.imm)(log2Up(DCACHE_SETS) + log2Up(CACHE_LINE_B) - 1, log2Up(CACHE_LINE_B))
   io.OUT_virtualIndex.bits.opcode := io.IN_readRegUop.bits.opcode
+  io.OUT_virtualIndex.bits.mask := getWmaskFromAddr(inUop.src1 + inUop.imm, memLen)
 
   when(io.IN_flush) {
     uopValid := false.B
