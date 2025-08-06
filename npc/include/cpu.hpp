@@ -17,6 +17,7 @@ extern VerilatedFstC *fst;
 extern uint64_t eval_time;
 extern bool begin_wave;
 extern bool begin_log;
+extern uint64_t totalCycles;
 
 #define CONCAT(x, y) concat_temp(x, y)
 #define concat_temp(x, y) x##y

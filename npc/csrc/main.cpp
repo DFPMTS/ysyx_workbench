@@ -17,8 +17,7 @@
 void nvboard_update();
 void nvboard_quit();
 void nvboard_init(int x);
-
-static uint64_t totalCycles = 0;
+uint64_t totalCycles = 0;
 
 void printPerfCounters() {
   std::cout << "-----------------------------------" << std::endl;
@@ -99,6 +98,9 @@ int main(int argc, char *argv[]) {
     //   stop = Stop::DIFFTEST_FAILED;
     //   running.store(false);
     //   // begin_wave = true;
+    // }
+    // if (totalCycles > 270000) {
+    // begin_wave = true;
     // }
     if (!lightsss.is_child()) {
       if (totalCycles > lastForkCycle + FORK_CYCLE || !forked) {

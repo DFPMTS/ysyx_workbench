@@ -52,7 +52,7 @@ class SRAM extends CoreModule {
     is(s_Read) {
       // Request memory read and transition to wait for data
       next_state := s_ReadData
-      counter := 0.U
+      counter := read_lat
     }
     is(s_ReadData) {
       when(io.r.fire) {
@@ -66,7 +66,7 @@ class SRAM extends CoreModule {
       }
     }
     is(s_WriteAddr) {
-      counter := 0.U
+      counter := write_lat
       when(io.aw.fire) {
         next_state := s_WriteData
         awId := io.aw.bits.id

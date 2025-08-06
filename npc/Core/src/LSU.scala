@@ -318,6 +318,9 @@ class NewLSU extends CoreModule with HasLSUOps {
     addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
   }
 
+  // * Access Table 
+  val accessed = RegInit(0.U.asTypeOf(Vec(DCACHE_SETS, UInt(log2Up(DCACHE_WAYS).W))))
+
   // * Dirty Table
   val dirty = RegInit(0.U.asTypeOf(Vec(DCACHE_WAYS, Vec(DCACHE_SETS, Bool()))))
   io.OUT_dirty := dirty
@@ -606,9 +609,12 @@ class NewLSU extends CoreModule with HasLSUOps {
 
   val stage0Index = getDCacheIndex(stage(0).addr)
 
-  replaceWay := replaceCounter
-  replaceTag := tagResp(replaceCounter).tag
-  replaceOpcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
+  // replaceWay := replaceCounter
+  // replaceTag := tagResp(replaceCounter).tag
+  // replaceOpcode := Mux(tagResp(replaceCounter).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
+  replaceWay := accessed(stage0Index)
+  replaceTag := tagResp(accessed(stage0Index)).tag
+  replaceOpcode := Mux(tagResp(accessed(stage0Index)).valid, CacheOpcode.REPLACE, CacheOpcode.LOAD)
 
   val addrInFlight = isLoadAddrAlreadyInFlight(loadStage0.addr)
   val inFlightAddrDataAvailable = isInFlightAddrDataAvailable(loadStage0.addr)
@@ -696,6 +702,7 @@ class NewLSU extends CoreModule with HasLSUOps {
     data
   }
 
+  val stage1TagHitWay = RegNext(tagHitWay)
   val stage1LoadHit = (cacheHit || bypassDataHit) && !loadDiscard && !bypassDataNotReady
 
   hitLoadResult.data := finalData.asUInt
@@ -722,6 +729,10 @@ class NewLSU extends CoreModule with HasLSUOps {
   cacheUopReq.offset := stage(1).addr(log2Up(CACHE_LINE_B) - 1, 0)
   cacheUopReq.opcode := replaceOpcode
   
+  when(cacheHit) {
+    accessed(getDCacheIndex(stage(1).addr)) := ~stage1TagHitWay
+  }
+
   when(stageValid(1)) {
     when(LSUOp.isLoad(stage(1).opcode)) {
       when(loadDiscard) {

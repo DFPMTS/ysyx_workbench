@@ -79,6 +79,8 @@ public:
 
   FILE *customFile = nullptr;
 
+  FILE *cacheMissFile = nullptr;
+
 #define KONATA
 
   void konataLogStage(uint64_t instId, const char *stage) {
@@ -260,6 +262,13 @@ public:
     fprintf(konataFile, "C=0\n");
 
     customFile = fopen("custom.log", "w");
+    cacheMissFile = fopen("cache_miss.log", "w");
+  }
+
+  void logCacheMiss(word_t addr) {
+    if (cacheMissFile) {
+      fprintf(cacheMissFile, "%lu %x\n", totalCycles, addr);
+    }
   }
 
   void log(uint64_t cycle) {

@@ -1,4 +1,5 @@
 #include "mem.hpp"
+#include "SimState.hpp"
 #include "config.hpp"
 #include "cpu.hpp"
 #include "debug.hpp"
@@ -186,6 +187,11 @@ void mem_read(uint32_t en, uint32_t addr, uint32_t *result) {
   mem_word_t retval = 0;
   if (in_confreg(raw_addr)) {
     valid = true;
+    if (raw_addr == SIMU_FLAG) {
+      result[0] = 0;
+    } else {
+      result[0] = 0;
+    }
   } else if (in_uart(raw_addr)) {
     // access_device = true;
     valid = true;
@@ -201,6 +207,9 @@ void mem_read(uint32_t en, uint32_t addr, uint32_t *result) {
       result[2] = retval << (8 * (raw_addr - addr - 8));
     }
   } else if (in_pmem(addr)) {
+    if (raw_addr % 32 == 0) {
+      state.logCacheMiss(addr);
+    }
     valid = true;
     // retval = host_read(guest_to_host(addr));
     if (begin_wave) {
