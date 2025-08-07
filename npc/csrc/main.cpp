@@ -99,8 +99,10 @@ int main(int argc, char *argv[]) {
     //   running.store(false);
     //   // begin_wave = true;
     // }
-    // if (totalCycles > 270000) {
-    // begin_wave = true;
+    // if (totalCycles > 200000 && totalCycles < 220000) {
+    //   begin_wave = true;
+    // } else {
+    //   begin_wave = false;
     // }
     if (!lightsss.is_child()) {
       if (totalCycles > lastForkCycle + FORK_CYCLE || !forked) {

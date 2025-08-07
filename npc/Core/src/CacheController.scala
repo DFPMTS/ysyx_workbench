@@ -312,7 +312,7 @@ class CacheController extends CoreModule {
       newMSHR.memReadAddr := raddr
       newMSHR.memWriteAddr := waddr
 
-      val needWriteBack = uop.cacheId === CacheId.DCACHE && io.IN_dirty(uop.way)(uop.index)
+      val needWriteBack = uop.cacheId === CacheId.DCACHE// && io.IN_dirty(uop.way)(uop.index)
 
       newMSHR.needReadMem := true.B
       when(needWriteBack) {

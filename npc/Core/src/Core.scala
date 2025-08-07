@@ -38,6 +38,8 @@ class Core extends CoreModule {
   // * Internal MMIO 
   val internalMMIO = Module(new InternalMMIO)
 
+  val l2cache = Module(new L2Cache)
+
   // * Cache
   val dcache = Module(new DCache)
   val icache = Module(new NewICache)
@@ -463,7 +465,17 @@ class Core extends CoreModule {
   dcache.io.OUT_ctrlDataResp <> cacheController.io.IN_DDataResp
 
   // * AXI4 master
-  io.master <> cacheController.io.OUT_axi.viewAs[AXI4ysyxSoC]
+  val l1ToL2 = Wire(new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH))
+  dontTouch(l1ToL2)
+  l1ToL2 <> cacheController.io.OUT_axi
+  l2cache.io.IN_axi <> l1ToL2
+
+  val l2Out = Wire(new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH))
+  dontTouch(l2Out)
+  l2cache.io.OUT_axi <> l2Out
+
+  io.master <> l2Out.viewAs[AXI4ysyxSoC]
+  // io.master <> cacheController.io.OUT_axi.viewAs[AXI4ysyxSoC]
 
   // AXI4 slave
   // io.slave.awready := false.B

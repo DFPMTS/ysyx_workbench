@@ -43,6 +43,17 @@ public:
   CData *cacheCtrlUopReady = NULL;
   CData *cacheCtrlUopValid = NULL;
 
+  CData *L2ArValid = NULL;
+  CData *L2ArReady = NULL;
+  IData *L2ArAddr = NULL;
+  CData *L2AwValid = NULL;
+  CData *L2AwReady = NULL;
+  IData *L2AwAddr = NULL;
+
+  CData *L2OutAwValid = NULL;
+  CData *L2OutAwReady = NULL;
+  IData *L2OutAwAddr = NULL;
+
   Ptr robHeadPtr = Ptr(ROB_SIZE, 0, 0);
   Ptr robTailPtr = Ptr(ROB_SIZE, 1, 0);
 
@@ -81,7 +92,7 @@ public:
 
   FILE *cacheMissFile = nullptr;
 
-#define KONATA
+  // #define KONATA
 
   void konataLogStage(uint64_t instId, const char *stage) {
 #ifdef KONATA
@@ -145,6 +156,20 @@ public:
 #ifdef KONATA
     fprintf(konataFile, "C\t1\t//%lu\n", cycle);
 #endif
+  }
+
+  void traceL1ToL2(uint64_t cycle) {
+    if (begin_wave) {
+      if (*L2AwValid && *L2AwReady) {
+        printf("cycle: %lu L2AW: addr = 0x%x\n", cycle, *L2AwAddr);
+      }
+      if (*L2ArValid && *L2ArReady) {
+        printf("cycle: %lu L2AR: addr = 0x%x\n", cycle, *L2ArAddr);
+      }
+      if (*L2OutAwValid && *L2OutAwReady) {
+        printf("cycle: %lu L2OutAW: addr = 0x%x\n", cycle, *L2OutAwAddr);
+      }
+    }
   }
 
   void bindUops() {
@@ -251,6 +276,19 @@ public:
     cacheCtrlUopValid =
         &top->rootp->npc_top__DOT__npc__DOT__lsu__DOT__cacheCtrlUopValid;
 
+    // * L2
+    L2ArValid = &top->rootp->npc_top__DOT__npc__DOT__l1ToL2_ar_valid;
+    L2ArReady = &top->rootp->npc_top__DOT__npc__DOT__l1ToL2_ar_ready;
+    L2ArAddr = &top->rootp->npc_top__DOT__npc__DOT__l1ToL2_ar_bits_addr;
+    L2AwValid = &top->rootp->npc_top__DOT__npc__DOT__l1ToL2_aw_valid;
+    L2AwReady = &top->rootp->npc_top__DOT__npc__DOT__l1ToL2_aw_ready;
+    L2AwAddr = &top->rootp->npc_top__DOT__npc__DOT__l1ToL2_aw_bits_addr;
+
+    // * L2 Out
+    L2OutAwValid = &top->rootp->npc_top__DOT__npc__DOT__l2Out_aw_valid;
+    L2OutAwReady = &top->rootp->npc_top__DOT__npc__DOT__l2Out_aw_ready;
+    L2OutAwAddr = &top->rootp->npc_top__DOT__npc__DOT__l2Out_aw_bits_addr;
+
     // * CSR
 
 #define CSRS csr
@@ -279,6 +317,8 @@ public:
     if (writebackUop[3].isFire()) {
       ++totalLSUWriteback;
     }
+
+    traceL1ToL2(cycle);
 
     perfCycle++;
     if (cycle % 1000 == 0) {
@@ -414,6 +454,12 @@ public:
                        (inst.flag != FlagOp::BRANCH_NOT_TAKEN);
         if (inst.fuType == FuType::LSU) {
           auto addr = inst.paddr;
+          // if (addr == 0x1c086b6c) {
+          //   printf("LSU Commit: addr = 0x%08x, data = 0x%08x, opcode =
+          //   0x%08x, "
+          //          "PC = 0x%08x\n",
+          //          addr, inst.result, inst.opcode, inst.pc);
+          // }
           if (in_confreg(addr) || in_uart(addr)) {
             // fprintf(stderr, "LSU MMIO: %x\n", addr);
             access_device = true;
