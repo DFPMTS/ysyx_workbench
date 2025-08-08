@@ -84,6 +84,7 @@ class L2Cache extends CoreModule {
   val invalidWayVec1 = Wire(Vec(CACHE_WAYS, Bool()))
   val hitWayOH1 = Wire(Vec(CACHE_WAYS, Bool()))
   val hitWay1 = Wire(UInt(log2Up(CACHE_WAYS).W))
+  val hit1 = Wire(Bool())
   val hasInvalid1 = Wire(Bool())
   val invalidWay1 = Wire(UInt(CACHE_WAYS.W))
 
@@ -114,17 +115,21 @@ class L2Cache extends CoreModule {
     invalidWayVec1(way) := !tagRead1(way)(TAG_BITS)
     hitWayOH1(way) := tagRead1(way)(TAG_BITS) && (tagRead1(way)(TAG_BITS-1, 0) === lookupTag)
   }
-
+  hit1 := hitWayOH1.asUInt.orR
   hitWay1 := OHToUInt(hitWayOH1)
   hasInvalid1 := invalidWayVec1.asUInt.orR
   invalidWay1 := PriorityEncoder(invalidWayVec1.asUInt)
   when(state === sReturnDataToL1) {
     replaceWay1 := hitWay1
   }.otherwise{
-    when(hasInvalid1) {
-      replaceWay1 := invalidWay1
-    }.otherwise {
-      replaceWay1 := replaceCounter(0)
+    when(hit1) {
+      replaceWay1 := hitWay1
+    }.otherwise{
+      when(hasInvalid1) {
+        replaceWay1 := invalidWay1
+      }.otherwise {
+        replaceWay1 := replaceCounter(0)
+      }
     }
   }
   replaceTag2 := tagRead1(replaceWay1)
@@ -265,8 +270,6 @@ class L2Cache extends CoreModule {
         when(rCnt === IN_NUM_BEATS.U) {
           rValid := false.B
           state := sIdle
-          writeTag := 0.U
-          doWriteTag := true.B
         }
       }
     }
@@ -345,11 +348,11 @@ class L2Cache extends CoreModule {
       }
     }
     is(sReplacePrepareWriteBack) {
-      when(replaceTag2(TAG_BITS)) {
-        // If the tag is valid, prepare to write back
+      when(replaceTag2(TAG_BITS) && !hit2) {
+        // If the tag is valid, and not the same address, prepare to write back
         replaceState := sReplaceAW
       }.otherwise {
-        // If the tag is invalid, directly write new data
+        // If the tag is invalid or is the same cacheline, directly write new data
         replaceState := sReplaceWriteNew
       }
     }
