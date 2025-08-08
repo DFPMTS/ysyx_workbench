@@ -13,6 +13,16 @@ class MemLoadFoward extends CoreBundle {
   val uncached = Bool()
 }
 
+class L2FastWrite extends CoreBundle {
+  val data = UInt((CACHE_LINE_B * 8).W)
+}
+
+class L2FastRead extends CoreBundle {
+  val data = Vec(CACHE_LINE_B / (AXI_DATA_WIDTH / 8), UInt(AXI_DATA_WIDTH.W))
+  val addr = UInt(XLEN.W)
+  val id = UInt(4.W)
+}
+
 class CacheControllerIO extends CoreBundle {
   // * Cache Controller Uop
   val IN_cacheCtrlUop = Flipped(Vec(3, Decoupled(new CacheCtrlUop)))
@@ -37,6 +47,10 @@ class CacheControllerIO extends CoreBundle {
 
   // * -> MEM interface
   val OUT_axi = new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
+
+  // * L2 Fast Path
+  val IN_L2FastRead = Flipped(Valid(new L2FastRead))
+  val OUT_L2FastWrite = Decoupled(new L2FastWrite)
 }
 
 class MSHR extends CoreBundle {
@@ -388,8 +402,8 @@ class CacheController extends CoreModule {
   // *                          (2) put Load into LoadResultBuffer 
   // *                          (3) R channel returns data
   // * If there is no latency, the data is forwarded before Load gets into LoadResultBuffer
-  io.OUT_memLoadFoward.valid := ShiftRegister(memLoadFowardValidReg, 3)
-  io.OUT_memLoadFoward.bits := ShiftRegister(memLoadFowardReg, 3)
+  io.OUT_memLoadFoward.valid := ShiftRegister(memLoadFowardValidReg, 1)
+  io.OUT_memLoadFoward.bits := ShiftRegister(memLoadFowardReg, 1)
 
   // * cache interface
   // ** cache read
@@ -422,6 +436,8 @@ class CacheController extends CoreModule {
 
   val sWIdle :: sWLoaded :: sWWrite :: Nil = Enum(3)
   val wState = RegInit(sWIdle)
+  // * isWCacheLine means writing back a cacheline
+  val isWCacheLine = RegInit(false.B)
 
   when(wState === sWIdle) {    
     when(dataReadRespValid) {    
@@ -435,6 +451,7 @@ class CacheController extends CoreModule {
         wCnt := 0.U
         wState := sWLoaded
         wLenReg := wMSHR.axiLen()
+        isWCacheLine := true.B
       }.elsewhen(wMSHR.uncached) {
         wCacheLineData(0) := wMSHR.uncachedAXIwdata()
         wIdReg := dataReadRespMSHRIndex
@@ -444,15 +461,22 @@ class CacheController extends CoreModule {
         wCnt := 0.U
         wState := sWLoaded
         wLenReg := wMSHR.axiLen()
+        isWCacheLine := false.B
       }      
     }
   }.elsewhen(wState === sWLoaded) {
-    when(io.OUT_axi.w.fire) {
-      wCnt := wCnt + 1.U
-      when(wCnt === wLenReg) {
+    when(isWCacheLine) {
+      when(io.OUT_L2FastWrite.fire) {
         wState := sWIdle
       }
-    } 
+    }.otherwise {
+      when(io.OUT_axi.w.fire) {
+        wCnt := wCnt + 1.U
+        when(wCnt === wLenReg) {
+          wState := sWIdle
+        }
+      } 
+    }
   }
 
   // ** cache write
@@ -466,30 +490,45 @@ class CacheController extends CoreModule {
 
     rMSHR.rCnt := rMSHR.rCnt + 1.U
 
-    // val inCacheLineOffset = Cat(rMSHR.memReadAddr(log2Up(CACHE_LINE_B) - 1, 2), 0.U(2.W))
-    // for (i <- 0 until 4) {
-    //   when(rMSHR.wmask(i)) {
-    //     wdata(inCacheLineOffset + i.U) := rMSHR.wdata((i + 1) * 8 - 1, i * 8)
-    //   }
+    // when(rMSHR.cacheId === CacheId.DCACHE) {       
+    //   io.OUT_DDataWrite.bits.addr := rMSHR.memReadAddr
+    //   io.OUT_DDataWrite.bits.data := wdata.asUInt
+    //   io.OUT_DDataWrite.bits.way := rMSHR.way
+    //   io.OUT_DDataWrite.bits.wmask := Fill(AXI_DATA_WIDTH / 8, 1.U(1.W)) << (rMSHR.rCnt * 4.U)
+    //   io.OUT_DDataWrite.bits.write := true.B
+    //   io.OUT_DDataWrite.valid := !CacheOpcode.isUnCached(rMSHR.opcode)
+    // }.elsewhen(rMSHR.cacheId === CacheId.ICACHE) {
+    //   io.OUT_IDataWrite.bits.addr := rMSHR.memReadAddr
+    //   io.OUT_IDataWrite.bits.data := wdata.asTypeOf(io.OUT_IDataWrite.bits.data)
+    //   io.OUT_IDataWrite.bits.way := rMSHR.way
+    //   io.OUT_IDataWrite.bits.wmask := 1.U << rMSHR.rCnt
+    //   io.OUT_IDataWrite.valid := true.B
     // }
-    when(rMSHR.cacheId === CacheId.DCACHE) {       
-      io.OUT_DDataWrite.bits.addr := rMSHR.memReadAddr
-      io.OUT_DDataWrite.bits.data := wdata.asUInt
-      io.OUT_DDataWrite.bits.way := rMSHR.way
-      io.OUT_DDataWrite.bits.wmask := Fill(AXI_DATA_WIDTH / 8, 1.U(1.W)) << (rMSHR.rCnt * 4.U)
-      io.OUT_DDataWrite.bits.write := true.B
-      io.OUT_DDataWrite.valid := !CacheOpcode.isUnCached(rMSHR.opcode)
-    }.elsewhen(rMSHR.cacheId === CacheId.ICACHE) {
-      io.OUT_IDataWrite.bits.addr := rMSHR.memReadAddr
-      io.OUT_IDataWrite.bits.data := wdata.asTypeOf(io.OUT_IDataWrite.bits.data)
-      io.OUT_IDataWrite.bits.way := rMSHR.way
-      io.OUT_IDataWrite.bits.wmask := 1.U << rMSHR.rCnt
-      io.OUT_IDataWrite.valid := true.B
-    }
 
     when(io.OUT_axi.r.bits.last) {
       rMSHR.axiReadDone := true.B
     }
+  }
+
+  when(io.IN_L2FastRead.valid) {
+    val l2FastRead = io.IN_L2FastRead.bits
+    val l2FastReadMSHR = mshr(l2FastRead.id)
+
+    when(l2FastReadMSHR.cacheId === CacheId.DCACHE) {
+      io.OUT_DDataWrite.bits.addr := l2FastReadMSHR.memReadAddr
+      io.OUT_DDataWrite.bits.data := l2FastRead.data.asUInt
+      io.OUT_DDataWrite.bits.way := l2FastReadMSHR.way
+      io.OUT_DDataWrite.bits.wmask := Fill(CACHE_LINE_B, 1.U(1.W))
+      io.OUT_DDataWrite.bits.write := true.B
+      io.OUT_DDataWrite.valid := true.B
+    }.elsewhen(l2FastReadMSHR.cacheId === CacheId.ICACHE) {
+      io.OUT_IDataWrite.bits.addr := l2FastReadMSHR.memReadAddr
+      io.OUT_IDataWrite.bits.data := l2FastRead.data.asTypeOf(io.OUT_IDataWrite.bits.data)
+      io.OUT_IDataWrite.bits.way := l2FastReadMSHR.way
+      io.OUT_IDataWrite.bits.wmask := Fill(CACHE_LINE_B / 4, 1.U(1.W))
+      io.OUT_IDataWrite.valid := true.B
+    }
+    l2FastReadMSHR.axiReadDone := true.B
   }
 
   // * axi interface
@@ -554,11 +593,15 @@ class CacheController extends CoreModule {
   io.OUT_axi.aw.bits.id := awIdReg
 
   // ** w
-  io.OUT_axi.w.valid := wState === sWLoaded
+  io.OUT_axi.w.valid := wState === sWLoaded && !isWCacheLine
   io.OUT_axi.w.bits.data := wCacheLineData(wCnt)
   io.OUT_axi.w.bits.id := wIdReg
   io.OUT_axi.w.bits.strb := wStrbReg
   io.OUT_axi.w.bits.last := wCnt === wLenReg
+
+  // ** L2Fast Write
+  io.OUT_L2FastWrite.valid := wState === sWLoaded && isWCacheLine
+  io.OUT_L2FastWrite.bits.data := wCacheLineData.asUInt
   
   // ** r
   io.OUT_axi.r.ready := true.B

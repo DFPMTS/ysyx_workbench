@@ -470,6 +470,10 @@ class Core extends CoreModule {
   l1ToL2 <> cacheController.io.OUT_axi
   l2cache.io.IN_axi <> l1ToL2
 
+  cacheController.io.IN_L2FastRead <> l2cache.io.OUT_L2FastRead
+  lsu.io.IN_L2FastRead <> l2cache.io.OUT_L2FastRead
+  l2cache.io.IN_L2FastWrite <> cacheController.io.OUT_L2FastWrite
+
   val l2Out = Wire(new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH))
   dontTouch(l2Out)
   l2cache.io.OUT_axi <> l2Out

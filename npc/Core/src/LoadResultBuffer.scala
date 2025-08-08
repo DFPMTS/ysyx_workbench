@@ -21,6 +21,7 @@ class LoadResultBufferIO extends CoreBundle {
   val OUT_numEmpty = UInt(log2Up(NUM_MSHR + 1).W)
   
   val IN_memLoadFoward = Flipped(Valid(new MemLoadFoward))
+  val IN_L2FastRead = Flipped(Valid(new L2FastRead))
   val OUT_writebackUop = Valid(new WritebackUop)
 
   val IN_flush = Flipped(Bool())
@@ -53,17 +54,32 @@ class LoadResultBuffer extends CoreModule with HasLSUOps {
   
   // Forward load data to all entries
   for (i <- 0 until NUM_MSHR) {
-    when(valid(i) && io.IN_memLoadFoward.valid &&
-          io.IN_memLoadFoward.bits.addr(XLEN - 1, log2Up(AXI_DATA_WIDTH / 8)) === entries(i).addr(XLEN - 1, log2Up(AXI_DATA_WIDTH / 8))) {
+    // when(valid(i) && io.IN_memLoadFoward.valid &&
+    //       io.IN_memLoadFoward.bits.addr(XLEN - 1, log2Up(AXI_DATA_WIDTH / 8)) === entries(i).addr(XLEN - 1, log2Up(AXI_DATA_WIDTH / 8))) {
+    //   val data = Wire(Vec(4, UInt(8.W)))
+    //   data := entries(i).data.asTypeOf(data)
+    //   val offset = if(AXI_DATA_WIDTH == XLEN) 0.U 
+    //                else Cat(entries(i).addr(log2Up(AXI_DATA_WIDTH / 8) - 1, 2), 0.U(2.W))
+    //   val bytes = Wire(Vec(AXI_DATA_WIDTH / 8, UInt(8.W)))
+    //   bytes := io.IN_memLoadFoward.bits.data.asTypeOf(bytes)
+    //   for (j <- 0 until 4) {
+    //     when(!entries(i).bypassMask(j)) {
+    //       data(j) := bytes(offset + j.U)
+    //     }
+    //   }
+    //   entries(i).data := data.asUInt
+    //   entries(i).ready := true.B
+    // }
+    when(valid(i) && io.IN_L2FastRead.valid &&
+          io.IN_L2FastRead.bits.addr(XLEN - 1, log2Up(CACHE_LINE_B)) === entries(i).addr(XLEN - 1, log2Up(CACHE_LINE_B))) {
       val data = Wire(Vec(4, UInt(8.W)))
       data := entries(i).data.asTypeOf(data)
-      val offset = if(AXI_DATA_WIDTH == XLEN) 0.U 
-                   else Cat(entries(i).addr(log2Up(AXI_DATA_WIDTH / 8) - 1, 2), 0.U(2.W))
-      val bytes = Wire(Vec(AXI_DATA_WIDTH / 8, UInt(8.W)))
-      bytes := io.IN_memLoadFoward.bits.data.asTypeOf(bytes)
+      val offset = entries(i).addr(log2Up(CACHE_LINE_B) - 1, 2)
+      val word = Wire(Vec(4, UInt(8.W)))
+      word := io.IN_L2FastRead.bits.data(offset).asTypeOf(word)
       for (j <- 0 until 4) {
         when(!entries(i).bypassMask(j)) {
-          data(j) := bytes(offset + j.U)
+          data(j) := word(j)
         }
       }
       entries(i).data := data.asUInt

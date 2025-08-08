@@ -5,13 +5,15 @@ import utils._
 class L2CacheIO extends CoreBundle {
   val IN_axi = Flipped(new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH))
   val OUT_axi = new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
+  val OUT_L2FastRead = Valid(new L2FastRead)
+  val IN_L2FastWrite = Flipped(Decoupled(new L2FastWrite))
 }
 
 class L2Cache extends CoreModule {
   val io = IO(new L2CacheIO)
 
   // Cache parameters
-  val CACHE_WAYS = 2
+  val CACHE_WAYS = 4
   val CACHE_SETS = 512
   val CACHE_LINE_BYTES = 32
   val IN_NUM_BEATS = CACHE_LINE_BYTES / (AXI_DATA_WIDTH / 8)
@@ -149,6 +151,11 @@ class L2Cache extends CoreModule {
   val outArLen = Reg(UInt(8.W))
   val outArSize = Reg(UInt(3.W))
 
+  val isOutARCacheLine = RegInit(false.B)
+
+  // * OUT R
+  val outRCnt = RegInit(0.U(8.W))
+
   // * OUT AW
   val outAwValid = RegInit(false.B)
   val outAwAddr = Reg(UInt(AXI_ADDR_WIDTH.W))
@@ -165,6 +172,11 @@ class L2Cache extends CoreModule {
 
   val outWCnt = RegInit(0.U(8.W))
 
+  // * IN L2FastRead
+  val l2FastRead = Reg(new L2FastRead)
+  val l2FastReadValid = RegInit(false.B)
+  l2FastReadValid := false.B
+  // * IN R
   val rData = Reg(UInt(AXI_DATA_WIDTH.W))
   val rValid = RegInit(false.B)
   val rLast = RegInit(false.B)
@@ -188,6 +200,7 @@ class L2Cache extends CoreModule {
     is(sIdle) {
       when(io.IN_axi.ar.fire) {
         // Read request
+        lookupAddr := io.IN_axi.ar.bits.addr
         inArAddr := io.IN_axi.ar.bits.addr
         inArId := io.IN_axi.ar.bits.id
         inArLen := io.IN_axi.ar.bits.len
@@ -197,6 +210,7 @@ class L2Cache extends CoreModule {
         state := sAR
       }.elsewhen(io.IN_axi.aw.valid) {
         // Write request
+        lookupAddr := io.IN_axi.aw.bits.addr
         inAwAddr := io.IN_axi.aw.bits.addr
         inAwId := io.IN_axi.aw.bits.id
         inAwLen := io.IN_axi.aw.bits.len
@@ -213,6 +227,7 @@ class L2Cache extends CoreModule {
         state := sLookUp0
       }.otherwise {
         state := sForwardAR
+        isOutARCacheLine := false.B
       }
     }
     is(sAW) {
@@ -226,11 +241,16 @@ class L2Cache extends CoreModule {
       }
     }
     is(sCollectW) {
+      when(io.IN_L2FastWrite.fire) {
+        inWCacheLine := io.IN_L2FastWrite.bits.data.asTypeOf(inWCacheLine)
+        state := sLookUp1
+        inBValid := true.B
+      }
       when(io.IN_axi.w.fire) {
         inWCacheLine(inWCnt) := io.IN_axi.w.bits.data
         inWCnt := inWCnt + 1.U
         when(io.IN_axi.w.bits.last) {
-          state := sLookUp0
+          state := sLookUp1
         }
       }
     }
@@ -240,7 +260,7 @@ class L2Cache extends CoreModule {
     }
     is(sLookUp1) {
       // Calculate tagRead / dataRead
-      state := sLookUp2
+      state := sLookUpFin
     }
     is(sLookUp2) {
       // Calculate hitData2/hit2/hitWayOH2
@@ -250,11 +270,16 @@ class L2Cache extends CoreModule {
       when(inOp === READ) {
         when(hit2) {
           state := sReturnDataToL1
-          rCnt := 1.U
-          rValid := true.B
-          rLast := false.B
-          rData := hitData2(0)
+          // rCnt := 1.U
+          // rValid := true.B
+          // rLast := false.B
+          // rData := hitData2(0)
+          l2FastReadValid := true.B
+          l2FastRead.data := hitData2
+          l2FastRead.id := inArId
+          l2FastRead.addr := inArAddr
         }.otherwise {
+          isOutARCacheLine := true.B
           state := sForwardAR
         }
       }.otherwise {
@@ -263,15 +288,16 @@ class L2Cache extends CoreModule {
     }
     is(sReturnDataToL1) {
       // Forward data to L1
-      when(io.IN_axi.r.fire) {
-        rCnt := rCnt + 1.U
-        rData := hitData2(rCnt)
-        rLast := (rCnt === (IN_NUM_BEATS - 1).U)
-        when(rCnt === IN_NUM_BEATS.U) {
-          rValid := false.B
-          state := sIdle
-        }
-      }
+      // when(io.IN_axi.r.fire) {
+      //   rCnt := rCnt + 1.U
+      //   rData := hitData2(rCnt)
+      //   rLast := (rCnt === (IN_NUM_BEATS - 1).U)
+      //   when(rCnt === IN_NUM_BEATS.U) {
+      //     rValid := false.B
+      //     state := sIdle
+      //   }
+      // }
+      state := sIdle
     }
     is(sForwardAR) {
       // Forward read request to L2
@@ -281,6 +307,8 @@ class L2Cache extends CoreModule {
       outArLen := inArLen
       outArSize := inArSize
 
+      outRCnt := 0.U
+
       state := sForwardWaitR
     }
     is(sForwardWaitR) {
@@ -288,14 +316,28 @@ class L2Cache extends CoreModule {
       when(io.OUT_axi.ar.fire) {
         outArValid := false.B
       }
-      when(io.IN_axi.r.fire) {
-        rValid := false.B
-        when(io.IN_axi.r.bits.last) {
-          state := sIdle
+      when(isOutARCacheLine) {
+        when(io.OUT_axi.r.fire) {
+          l2FastRead.data(outRCnt) := io.OUT_axi.r.bits.data
+          outRCnt := outRCnt + 1.U
+          when(io.OUT_axi.r.bits.last) {
+            l2FastReadValid := true.B
+            l2FastRead.id := outArId
+            l2FastRead.addr := outArAddr
+
+            state := sIdle
+          }
         }
-      }
-      when(io.OUT_axi.r.fire) {
-        rValid := true.B
+      }.otherwise {
+        when(io.IN_axi.r.fire) {
+          rValid := false.B
+          when(io.IN_axi.r.bits.last) {
+            state := sIdle
+          }
+        }
+        when(io.OUT_axi.r.fire) {
+          rValid := true.B
+        }
       }
       rData := io.OUT_axi.r.bits.data
       rResp := io.OUT_axi.r.bits.resp
@@ -399,7 +441,6 @@ class L2Cache extends CoreModule {
       replaceState := sReplaceFin
     }
     is(sReplaceFin) {
-      inBValid := true.B
       replaceState := sReplaceIdle
     }
   }
@@ -413,6 +454,11 @@ class L2Cache extends CoreModule {
   io.IN_axi.r.bits.resp := rResp
   io.IN_axi.r.bits.last := rLast
   io.IN_axi.r.bits.id := inArId
+  // ** L2FastRead
+  io.OUT_L2FastRead.valid := l2FastReadValid
+  io.OUT_L2FastRead.bits := l2FastRead
+  // ** L2FastWrite
+  io.IN_L2FastWrite.ready := state === sCollectW
   // ** AW
   io.IN_axi.aw.ready := state === sAW
   // ** W

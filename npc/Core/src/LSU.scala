@@ -294,6 +294,8 @@ class NewLSUIO extends CoreBundle {
   val IN_flushDCache = Flipped(Bool())
   val OUT_flushBusy = Bool()
 
+  val IN_L2FastRead = Flipped(Valid(new L2FastRead))
+
   // * One cycle before the writeback
   val OUT_wakeUp = Valid(new WritebackUop)
   
@@ -550,6 +552,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   loadResultBuffer.io.IN_hitLoadResult.valid := hitLoadResultValid
   loadResultBuffer.io.IN_hitLoadResult.bits := hitLoadResult
   loadResultBuffer.io.IN_memLoadFoward := io.IN_memLoadFoward
+  loadResultBuffer.io.IN_L2FastRead := io.IN_L2FastRead
   loadResultBuffer.io.IN_flush := io.IN_flush
   
   // * Load cache hit or miss 
