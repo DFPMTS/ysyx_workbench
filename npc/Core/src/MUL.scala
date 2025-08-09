@@ -44,7 +44,7 @@ class MUL extends CoreModule {
     io.OUT_writebackUop.bits := uop(IMUL_DELAY)
     io.OUT_writebackUop.valid := uopValid(IMUL_DELAY)
   } else {
-    val multiplier = Module(new Multiplier)
+    val multiplier = (if (USE_DSP_MULTIPLIER) Module(new DSP48E1Multiplier) else Module(new Multiplier))
     multiplier.io.opcode := io.IN_readRegUop.bits.opcode
     multiplier.io.src1 := io.IN_readRegUop.bits.src1
     multiplier.io.src2 := io.IN_readRegUop.bits.src2
@@ -74,6 +74,15 @@ class MUL extends CoreModule {
   }
 }
 
+class AbstractMultiplier extends CoreModule {
+  val io = IO(new Bundle {
+    val opcode = Input(UInt(8.W))
+    val src1 = Input(UInt(32.W))
+    val src2 = Input(UInt(32.W))
+    val out = Output(UInt(32.W))
+  })
+}
+
 class DummyMUL extends HasBlackBoxInline{
   val io = IO(new Bundle {
     val opcode = Input(UInt(8.W))
@@ -95,13 +104,7 @@ class DummyMUL extends HasBlackBoxInline{
     """.stripMargin)
 }
 
-class Multiplier extends CoreModule {
-  val io = IO(new Bundle {
-    val opcode = Input(UInt(8.W))
-    val src1 = Input(UInt(XLEN.W))
-    val src2 = Input(UInt(XLEN.W))
-    val out = Output(UInt(XLEN.W))
-  })
+class Multiplier extends AbstractMultiplier {
 
   val aSigned = io.opcode === MULOp.MUL || io.opcode === MULOp.MULH || io.opcode === MULOp.MULHSU
   val bSigned = io.opcode === MULOp.MUL || io.opcode === MULOp.MULH 
@@ -245,4 +248,48 @@ class WallaceTree17x69 extends CoreModule {
 
   io.outA := level6(0)
   io.outB := level6(1)
+}
+
+class DSP48E1Multiplier extends AbstractMultiplier {
+
+  val aNeg = MULOp.isANegative(io.opcode, io.src1)
+  val bNeg = MULOp.isBNegative(io.opcode, io.src2)
+  val isH = MULOp.isHigh(io.opcode)
+  val isResultNeg = MULOp.isResultNegative(io.opcode, aNeg, bNeg)
+
+  val isHReg = RegNext(isH)
+  val isResultNegReg = RegNext(isResultNeg)
+
+  val aAbs = Mux(aNeg, ~io.src1 + 1.U, io.src1)
+  val bAbs = Mux(bNeg, ~io.src2 + 1.U, io.src2)
+
+  val PartVec = Vec(2, UInt((XLEN / 2).W))
+  val aAbsVec = WireInit(aAbs.asTypeOf(PartVec))
+  val bAbsVec = WireInit(bAbs.asTypeOf(PartVec))
+
+  // * Stage 0
+  val partialProdReg = Reg(Vec(2, Vec(2, UInt(XLEN.W))))
+  val shiftedPartialProd = Wire(Vec(2, Vec(2, UInt((2 * XLEN).W))))
+  val finalSum = Wire(UInt((2 * XLEN).W))
+
+  def DSP48Mul16bit(a: UInt, b: UInt): UInt = {
+    a * b
+  }
+
+  def shiftPartialProd(prod: UInt, shift: Int): UInt = {
+    Cat(prod, 0.U((shift * (XLEN / 2)).W))
+  }
+
+  for (i <- 0 until 2) {
+    for (j <- 0 until 2) {
+      // * Stage 0 Reg
+      partialProdReg(i)(j) := DSP48Mul16bit(aAbsVec(i), bAbsVec(j))
+      shiftedPartialProd(i)(j) := shiftPartialProd(partialProdReg(i)(j), i + j)
+    }
+  }
+
+  val unsignedSum = shiftedPartialProd.flatten.reduce(_ + _)
+  finalSum := Mux(isResultNegReg, ~unsignedSum + 1.U, unsignedSum)
+
+  io.out := Mux(isHReg, finalSum(2 * XLEN - 1, XLEN), finalSum(XLEN - 1, 0))
 }

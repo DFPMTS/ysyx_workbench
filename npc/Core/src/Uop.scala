@@ -305,11 +305,32 @@ object CSROp extends HasDecodeConfig {
   def INVTLB = "b1111".U(OpcodeWidth.W)
 }
 
-object MULOp extends HasDecodeConfig {
+object MULOp extends HasDecodeConfig with HasCoreParameters {
   def MUL    = 0.U(OpcodeWidth.W)
   def MULH   = 1.U(OpcodeWidth.W)
   def MULHSU = 2.U(OpcodeWidth.W)
   def MULHU  = 3.U(OpcodeWidth.W) 
+
+  def isHigh(opcode: UInt) = {
+    opcode === MULH || opcode === MULHSU || opcode === MULHU
+  }
+
+  def isANegative (opcode: UInt, a: UInt) = {
+    (opcode === MUL || opcode === MULH || opcode === MULHSU) && a(XLEN - 1)
+  }
+
+  def isBNegative (opcode: UInt, b: UInt) = {
+    (opcode === MUL || opcode === MULH) && b(XLEN - 1)
+  }
+
+  def isResultNegative (opcode: UInt, aNegative: Bool, bNegative: Bool) = {
+    MuxLookup(opcode, false.B)(Seq(
+      MUL    -> (aNegative ^ bNegative),
+      MULH   -> (aNegative ^ bNegative),
+      MULHSU -> aNegative,
+      MULHU  -> false.B
+    ))
+  }
 }
 
 object DIVOp extends HasDecodeConfig {

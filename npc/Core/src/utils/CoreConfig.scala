@@ -28,14 +28,17 @@ trait HasCoreParameters extends HasDecodeConfig {
   // * TLB Entries
   val NUM_TLB = 32
 
+  // * MUL DIV Config
   def USE_DUMMY_MUL_DIV = false
   // def USE_DUMMY_MUL_DIV = true
+  def DUMMY_MUL_DELAY = 3
+  def USE_DSP_MULTIPLIER = true
 
   def NUM_ALU = 3
 
   // * Int Mul Delay
   // * Delay = IMUL latency - ALU latency
-  def IMUL_DELAY = 2
+  def IMUL_DELAY = if (USE_DUMMY_MUL_DIV) { DUMMY_MUL_DELAY } else { if (USE_DSP_MULTIPLIER) 1 else 2 }
 
   // * Int Div Delay
   // def IDIV_DELAY = if (USE_DUMMY_MUL_DIV) 3 else (XLEN + 1)
