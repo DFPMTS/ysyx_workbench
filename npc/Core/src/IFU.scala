@@ -255,20 +255,21 @@ class IFU extends Module with HasPerfCounters with HasCoreParameters {
   val tagHitWay = OHToUInt(tagHitVec)
   val tagHit = tagHitVec.reduce(_ || _)
 
+  cacheCtrlUopNext.cacheId := CacheId.ICACHE
+  cacheCtrlUopNext.rtag := phyPC(XLEN - 1, XLEN - ICACHE_TAG)
+  cacheCtrlUopNext.wtag := 0.U
+  cacheCtrlUopNext.wmask := 0.U
+  cacheCtrlUopNext.offset := phyPC(log2Up(CACHE_LINE_B) - 1, 0)
+  cacheCtrlUopNext.wdata := 0.U
+  cacheCtrlUopNext.opcode := CacheOpcode.LOAD
+  cacheCtrlUopNext.index := phyPC(log2Up(CACHE_LINE_B) + log2Up(ICACHE_SETS) - 1, log2Up(CACHE_LINE_B))
+  cacheCtrlUopNext.way := replaceCounter
+
   when(phyPCValid) {
     val alreadyInFlight = MSHRChecker.isLoadAddrAlreadyInFlight(io.IN_mshrs, io.OUT_cacheCtrlUop, CacheId.ICACHE, phyPC)
     cacheMiss := !tagHit || alreadyInFlight
     when(cacheMiss && !alreadyInFlight && !accessFault && !translateFail && !addrMisalign) {
       needCacheOp := true.B
-      cacheCtrlUopNext.cacheId := CacheId.ICACHE
-      cacheCtrlUopNext.rtag := phyPC(XLEN - 1, XLEN - ICACHE_TAG)
-      cacheCtrlUopNext.wtag := 0.U
-      cacheCtrlUopNext.wmask := 0.U
-      cacheCtrlUopNext.offset := phyPC(log2Up(CACHE_LINE_B) - 1, 0)
-      cacheCtrlUopNext.wdata := 0.U
-      cacheCtrlUopNext.opcode := CacheOpcode.LOAD
-      cacheCtrlUopNext.index := phyPC(log2Up(CACHE_LINE_B) + log2Up(ICACHE_SETS) - 1, log2Up(CACHE_LINE_B))
-      cacheCtrlUopNext.way := replaceCounter
     }
   }
 
