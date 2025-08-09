@@ -192,7 +192,9 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
   when (doDeq) {
     uop := uopNext
     when(uopNext.fuType === FuType.MUL) {
-      wbReserved(IMUL_DELAY - 1) := true.B      
+      if(IMUL_DELAY != 0) {
+        wbReserved(IMUL_DELAY - 1) := true.B
+      }
     }
     when(uopNext.fuType === FuType.DIV) {
       wbReserved(IDIV_DELAY - 1) := true.B      

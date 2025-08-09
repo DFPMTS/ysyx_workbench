@@ -58,9 +58,7 @@ class MainTLB(walkCntPerCycle: Int = 4) extends CoreModule {
   val io = IO(new MainTLBIO)
 
   // * TLB entry
-  val tlb = RegInit(VecInit(Seq.fill(NUM_TLB)({
-    0.U.asTypeOf(new TLBEntry)
-  })))
+  val tlb = Reg(Vec(NUM_TLB, new TLBEntry))
 
   // * Walk state machine
   val sIdle :: sWalk :: sEnd :: Nil = Enum(3)

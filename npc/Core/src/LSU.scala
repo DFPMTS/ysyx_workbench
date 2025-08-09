@@ -249,6 +249,7 @@ class VirtualIndex extends CoreBundle {
   val index = UInt(log2Up(DCACHE_SETS).W)
   val opcode = UInt(OpcodeWidth.W)
   val mask = UInt(4.W)
+  val prd = UInt(PREG_IDX_W)
 }
 
 class NewLSUIO extends CoreBundle {
@@ -275,9 +276,6 @@ class NewLSUIO extends CoreBundle {
   val OUT_dataRead = Decoupled(new DDataReq)
   val IN_dataResp = Flipped(new DDataResp)
   val OUT_dataWrite = Decoupled(new DDataReq)
-  // * Internal MMIO Interface (CLINT)
-  val OUT_mmioReq = new MMIOReq
-  val IN_mmioResp = Flipped(new MMIOResp)
   // * Cache Controller Interface
   val OUT_cacheCtrlUop = Decoupled(new CacheCtrlUop)
   val OUT_uncacheUop = Decoupled(new CacheCtrlUop)
@@ -475,6 +473,7 @@ class NewLSU extends CoreModule with HasLSUOps {
     stage(0).opcode := inAGUVirtualIndex.opcode
     stage(0).dest := Dest.ROB
     stage(0).mask := inAGUVirtualIndex.mask
+    stage(0).prd := inAGUVirtualIndex.prd
   }
   needAGULoadUop := aguVirtualIndex
 
@@ -485,9 +484,6 @@ class NewLSU extends CoreModule with HasLSUOps {
   uncachedLSU.io.IN_storeUop.bits := io.IN_storeUop.bits
   uncachedLSU.io.IN_memLoadFoward := io.IN_memLoadFoward
   uncachedLSU.io.IN_uncacheStoreResp := io.IN_uncacheStoreResp
-
-  io.OUT_mmioReq := uncachedLSU.io.OUT_mmioReq
-  uncachedLSU.io.IN_mmioResp := io.IN_mmioResp
 
   uncachedLSU.io.IN_flush := io.IN_flush
 
@@ -627,13 +623,18 @@ class NewLSU extends CoreModule with HasLSUOps {
   val loadWord = loadHitCacheline(wordOffset)
   cacheLoadData := loadWord
 
+  val cacheHit_c = WireInit(false.B)
+  cacheHit := cacheHit_c
+  val loadDiscard_c = WireInit(false.B)
+  loadDiscard := loadDiscard_c
+
   when(stageValid(0)) {
     val mask = stage(0).mask
     when(LSUOp.isLoad(stage(0).opcode)) {
       val virtualIndexMatch = stage(0).addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B)) === io.IN_aguLoadUop.bits.addr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B)) && io.IN_aguLoadUop.valid
       stageValid(1) := (!io.IN_flush || stage(0).dest === Dest.PTW) && (!needAGULoadUop || io.IN_aguLoadUop.valid)
-      loadDiscard := needAGULoadUop && !virtualIndexMatch
-      cacheHit := tagHit && (!addrInFlight || inFlightAddrDataAvailable) && !writeTag
+      loadDiscard_c := needAGULoadUop && !virtualIndexMatch
+      cacheHit_c := tagHit && (!addrInFlight || inFlightAddrDataAvailable) && !writeTag
       cacheMiss := !(tagHit && !addrInFlight && !writeTag)
       needCacheUop := !addrInFlight && !writeTag
     }.otherwise {
@@ -648,7 +649,7 @@ class NewLSU extends CoreModule with HasLSUOps {
 
       val dirtyConflict = clearDirtyValid && getDCacheIndex(stage(0).addr) === clearDirtyIndex && clearDirtyWay === tagHitWay
       
-      cacheHit := isUncached || (tagHit && !addrInFlight && !writeTag)
+      cacheHit_c := isUncached || (tagHit && !addrInFlight && !writeTag)
       cacheMiss := !isUncached && !(tagHit && !addrInFlight && !writeTag)
       needCacheUop := !addrInFlight && !writeTag
 
@@ -684,8 +685,10 @@ class NewLSU extends CoreModule with HasLSUOps {
   val bypassData = Reg(Vec(4, UInt(8.W)))
   val bypassDataMaskNext = io.IN_storeBypassResp.mask | io.IN_storeBufferBypassResp.mask
   val bypassDataMask = RegNext(bypassDataMaskNext)
-  val bypassDataHit = RegNext((~bypassDataMaskNext & stage(0).mask) === 0.U)
-  val bypassDataNotReady = RegNext((io.IN_storeBypassResp.notReady & stage(0).mask) =/= 0.U)
+  val bypassDataHit_c = (~bypassDataMaskNext & stage(0).mask) === 0.U
+  val bypassDataHit = RegNext(bypassDataHit_c)
+  val bypassDataNotReady_c = (io.IN_storeBypassResp.notReady & stage(0).mask) =/= 0.U
+  val bypassDataNotReady = RegNext(bypassDataNotReady_c)
   for(i <- 0 until 4) {
     bypassData(i) := Mux(
       io.IN_storeBypassResp.mask(i),
@@ -706,6 +709,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   }
 
   val stage1TagHitWay = RegNext(tagHitWay)
+  val stage1LoadHit_c = (cacheHit_c || bypassDataHit_c) && !loadDiscard_c && !bypassDataNotReady_c
   val stage1LoadHit = (cacheHit || bypassDataHit) && !loadDiscard && !bypassDataNotReady
 
   hitLoadResult.data := finalData.asUInt
@@ -718,6 +722,11 @@ class NewLSU extends CoreModule with HasLSUOps {
   hitLoadResult.dest := stage(1).dest
 
   loadResult := hitLoadResult
+
+  // // * Experiment
+  // io.OUT_wakeUp.valid := stageValid(0) && LSUOp.isLoad(stage(0).opcode) && stage1LoadHit_c
+  // io.OUT_wakeUp.bits := DontCare
+  // io.OUT_wakeUp.bits.prd := stage(0).prd
 
   io.OUT_wakeUp.valid := stageValid(1) && LSUOp.isLoad(stage(1).opcode) && stage1LoadHit
   io.OUT_wakeUp.bits := DontCare

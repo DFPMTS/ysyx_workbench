@@ -267,7 +267,12 @@ class CacheController extends CoreModule {
   val uop = io.IN_cacheCtrlUop(uopValidIndex).bits
   val uopValid = io.IN_cacheCtrlUop(uopValidIndex).valid
 
-  val mshr = RegInit(VecInit(Seq.fill(NUM_MSHR)(0.U.asTypeOf(new MSHR))))
+  val mshr = RegInit(VecInit(Seq.fill(NUM_MSHR)({
+    val initMSHR = Wire(new MSHR)
+    initMSHR := DontCare
+    initMSHR.valid := false.B
+    initMSHR
+  })))
   val mshrFree = mshr.map(!_.valid)
   val mshrFreeIndex = PriorityEncoder(mshrFree)
   val canAllocateMSHR = mshrFree.reduce(_ || _)
@@ -375,8 +380,8 @@ class CacheController extends CoreModule {
 
   // ** aw
   val awValidReg = RegInit(false.B)
-  val awAddrReg = RegInit(0.U(AXI_ADDR_WIDTH.W))
-  val awLenReg = RegInit(0.U(8.W))
+  val awAddrReg = Reg(UInt(AXI_ADDR_WIDTH.W))
+  val awLenReg = Reg(UInt(8.W))
   val awIdReg = Reg(UInt(4.W))
   val awSizeReg = Reg(UInt(3.W))
 
@@ -534,8 +539,8 @@ class CacheController extends CoreModule {
   // * axi interface
   // ** ar
   val arValidReg = RegInit(false.B)
-  val arAddrReg = RegInit(0.U(AXI_ADDR_WIDTH.W))
-  val arLenReg = RegInit(0.U(8.W))
+  val arAddrReg = Reg(UInt(AXI_ADDR_WIDTH.W))
+  val arLenReg = Reg(UInt(8.W))
   val arIdReg = Reg(UInt(4.W))
   val arSizeReg = Reg(UInt(3.W))
   // ** Select MSHR to read Mem (AR channel)

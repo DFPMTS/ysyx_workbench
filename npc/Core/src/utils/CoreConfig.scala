@@ -92,13 +92,13 @@ trait HasCoreParameters extends HasDecodeConfig {
   def CACHE_ID_LEN = 1
 
   // * Cache Line Size in Bytes
-  def CACHE_LINE_B = 32
+  def CACHE_LINE_B = 64
 
   // * DCache Ways
   def DCACHE_WAYS = 2
 
   // * DCache Sets
-  def DCACHE_SETS = 128
+  def DCACHE_SETS = 64
 
   // * DCache Tag Width
   def DCACHE_TAG = XLEN - log2Up(DCACHE_SETS) - log2Up(CACHE_LINE_B)
@@ -110,7 +110,7 @@ trait HasCoreParameters extends HasDecodeConfig {
   def ICACHE_WAYS = 2
 
   // * ICache Sets
-  def ICACHE_SETS = 128
+  def ICACHE_SETS = 64
 
   // * ICache Tag Width
   def ICACHE_TAG = XLEN - log2Up(ICACHE_SETS) - log2Up(CACHE_LINE_B)

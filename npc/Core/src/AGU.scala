@@ -278,6 +278,7 @@ class AGU extends CoreModule {
   io.OUT_virtualIndex.bits.index := (inUop.src1 + inUop.imm)(log2Up(DCACHE_SETS) + log2Up(CACHE_LINE_B) - 1, log2Up(CACHE_LINE_B))
   io.OUT_virtualIndex.bits.opcode := io.IN_readRegUop.bits.opcode
   io.OUT_virtualIndex.bits.mask := getWmaskFromAddr(inUop.src1 + inUop.imm, memLen)
+  io.OUT_virtualIndex.bits.prd := inUop.prd
 
   when(io.IN_flush) {
     uopValid := false.B

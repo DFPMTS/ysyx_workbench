@@ -35,9 +35,6 @@ class Core extends CoreModule {
     // val mshr = Vec(4, Output(new MSHR))
   })
 
-  // * Internal MMIO 
-  val internalMMIO = Module(new InternalMMIO)
-
   val l2cache = Module(new L2Cache)
 
   // * Cache
@@ -327,8 +324,6 @@ class Core extends CoreModule {
   alu0.io.IN_readRegUop <> dispatcher(0).io.OUT_uop(0)
   csr.io.IN_readRegUop  <> dispatcher(0).io.OUT_uop(1)
 
-  csr.io.IN_mtime := internalMMIO.io.OUT_mtime
-  csr.io.IN_MTIP := internalMMIO.io.OUT_MTIP
   csr.io.IN_xtvalRec <> xtvalRecorder.io.OUT_tval
   csr.io.IN_CSRCtrl <> CSRCtrl
 
@@ -426,10 +421,6 @@ class Core extends CoreModule {
   lsu.io.IN_storeBufferBypassResp <> storeBuffer.io.OUT_storeBypassResp
   storeBuffer.io.IN_storeBypassReq <> lsu.io.OUT_storeBypassReq
   lsu.io.IN_storeBufferEmpty := storeBuffer.io.OUT_storeBufferEmpty
-
-  // ** Internal MMIO
-  lsu.io.OUT_mmioReq <> internalMMIO.io.IN_mmioReq
-  lsu.io.IN_mmioResp <> internalMMIO.io.OUT_mmioResp
 
   // ** Amo Unit
   amoUnit.io.IN_AGUUop <> aguUop

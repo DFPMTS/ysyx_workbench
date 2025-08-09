@@ -232,8 +232,6 @@ class LA32RCSRIO extends CoreBundle {
   val OUT_VMCSR = new VMCSR
   val OUT_TLBCSR = new TLBCSR
   val OUT_trapCSR = new TrapCSR
-  val IN_mtime = Input(UInt(64.W))
-  val IN_MTIP = Flipped(Bool())
   val IN_xtvalRec = Flipped(Valid(new XtvalRec))
 
   val IN_LLB = Flipped(Bool())

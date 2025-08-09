@@ -10,10 +10,6 @@ class UncachedLSUIO extends CoreBundle {
   val IN_uncacheStoreResp = Flipped(Bool())
   val OUT_cacheCtrlUop = Decoupled(new CacheCtrlUop)
 
-  // * Internal MMIO Req/Resp
-  val OUT_mmioReq = new MMIOReq
-  val IN_mmioResp = Flipped(new MMIOResp)
-
   val OUT_loadResult = Decoupled(new LoadResult)
 
   // * [robTailPtr change] -> [flush]
@@ -95,17 +91,10 @@ class UncachedLSU extends CoreModule {
       }
     }
     is (sLoadReq) {
-      when(uop.isInternalMMIO) {
-        internalRen := false.B
-        state := sLoadFin
-        loadResultValid := true.B
-        loadData := io.IN_mmioResp.data
-      }.otherwise {
-        when(io.OUT_cacheCtrlUop.fire) {
-          state := sWaitLoadResp
-          cacheCtrlUopValid := false.B
-        } 
-      }     
+      when(io.OUT_cacheCtrlUop.fire) {
+        state := sWaitLoadResp
+        cacheCtrlUopValid := false.B
+      }      
     }
     is (sStoreReq) {
       when(uop.isInternalMMIO) {
@@ -140,11 +129,6 @@ class UncachedLSU extends CoreModule {
       }
     }
   }
-
-  io.OUT_mmioReq.ren := internalRen
-  io.OUT_mmioReq.wen := internalWen
-  io.OUT_mmioReq.addr := uop.addr
-  io.OUT_mmioReq.wdata := uop.wdata
 
   io.OUT_cacheCtrlUop.valid := cacheCtrlUopValid
   io.OUT_cacheCtrlUop.bits := cacheCtrlUop

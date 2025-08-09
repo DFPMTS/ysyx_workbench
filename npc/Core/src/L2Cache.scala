@@ -13,9 +13,9 @@ class L2Cache extends CoreModule {
   val io = IO(new L2CacheIO)
 
   // Cache parameters
-  val CACHE_WAYS = 4
+  val CACHE_WAYS = 2
   val CACHE_SETS = 512
-  val CACHE_LINE_BYTES = 32
+  val CACHE_LINE_BYTES = 64
   val IN_NUM_BEATS = CACHE_LINE_BYTES / (AXI_DATA_WIDTH / 8)
   val INDEX_BITS = log2Ceil(CACHE_SETS)
   val OFFSET_BITS = log2Ceil(CACHE_LINE_BYTES)
@@ -75,7 +75,7 @@ class L2Cache extends CoreModule {
   lookupIndex := getIndex(lookupAddr)
   lookupOffset := getOffset(lookupAddr)
 
-  val replaceCounter = RegInit(0.U(2.W))
+  val replaceCounter = RegInit(0.U(log2Up(CACHE_WAYS).W))
   when(replaceState === sReplaceFin) {
     replaceCounter := replaceCounter + 1.U
   }
@@ -130,7 +130,7 @@ class L2Cache extends CoreModule {
       when(hasInvalid1) {
         replaceWay1 := invalidWay1
       }.otherwise {
-        replaceWay1 := replaceCounter(0)
+        replaceWay1 := replaceCounter
       }
     }
   }
@@ -267,6 +267,7 @@ class L2Cache extends CoreModule {
       state := sLookUpFin
     }
     is(sLookUpFin) {
+      isOutARCacheLine := false.B
       when(inOp === READ) {
         when(hit2) {
           state := sReturnDataToL1
@@ -325,7 +326,8 @@ class L2Cache extends CoreModule {
             l2FastRead.id := outArId
             l2FastRead.addr := outArAddr
 
-            state := sIdle
+            state := sWaitReplaceFin
+            // state := sIdle
           }
         }
       }.otherwise {
@@ -436,7 +438,7 @@ class L2Cache extends CoreModule {
       doWriteTag := true.B
       doWriteData := true.B
       writeTag := Cat(true.B, lookupTag)
-      writeData := inWCacheLine.asUInt
+      writeData := Mux(isOutARCacheLine, l2FastRead.data.asUInt, inWCacheLine.asUInt)
 
       replaceState := sReplaceFin
     }

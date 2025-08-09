@@ -32,11 +32,9 @@ class TLBMissEntry extends CoreBundle{
 class MicroTLB(id: UInt, size: Int = 4) extends CoreModule {
   val io = IO(new MicroTLBIO)
   // * TLB Entries
-  val entry = RegInit(VecInit(Seq.fill(size)({
-    0.U.asTypeOf(new TLBEntry)
-  })))
+  val entry = Reg(Vec(size, new TLBEntry))
   // * Miss Entry
-  val missEntry = RegInit(0.U.asTypeOf(new TLBMissEntry))
+  val missEntry = Reg(new TLBMissEntry)
   // * DMW
   val (dmwHit, dmwPAddr, dmwMAT) = io.IN_VMCSR.matchDMW(io.IN_TLBReq.bits.vaddr)
 
