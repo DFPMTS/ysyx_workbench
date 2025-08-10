@@ -99,11 +99,7 @@ class StoreQueue extends CoreModule {
   io.OUT_storeBypassResp.mask := bypassDataMask.asUInt
   io.OUT_storeBypassResp.notReady := bypassDataNotReady.asUInt
   val wmask = stq.map(_.mask)
-  def getShiftedData(aguUop: AGUUop): UInt = {
-    val addrOffset = aguUop.addr(log2Up(XLEN/8) - 1, 0)
-    (aguUop.wdata << (addrOffset << 3))(XLEN - 1, 0)
-  }
-  val shiftedData = stq.map(e => getShiftedData(e))
+  val shiftedData = stq.map(_.wdata)
 
   when(addrMatch(io.IN_storeBypassReq.addr, uop.addr) && uopValid) {
     val uopWmask = uop.mask
@@ -161,7 +157,6 @@ class StoreQueue extends CoreModule {
 
   when(io.OUT_stUop.ready || !uopValid) {    
     uop := stq(stqIssueIndex)
-    uop.wdata := getShiftedData(stq(stqIssueIndex))
     uopValid := hasIssueReady
     when(hasIssueReady) {
       stqBasePtr := stqBasePtr + 1.U

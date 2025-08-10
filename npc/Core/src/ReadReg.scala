@@ -91,9 +91,13 @@ class ReadReg extends CoreModule {
       }
     }
 
+    def getShiftedData(data: UInt, addrOffset: UInt): UInt = {
+     (data << (addrOffset << 3))(XLEN - 1, 0)
+    }
+
     storeDataValid := io.IN_storeDataReadReq.fire
     storeData.stqPtr := io.IN_storeDataReadReq.bits.stqPtr
-    storeData.data := port3Src2
+    storeData.data := getShiftedData(port3Src2, io.IN_storeDataReadReq.bits.addrOffset)
 
     when(io.IN_flush) {
       uopValid := VecInit(Seq.fill(MACHINE_WIDTH)(false.B))

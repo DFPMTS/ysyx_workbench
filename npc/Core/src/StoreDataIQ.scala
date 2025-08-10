@@ -6,6 +6,7 @@ class StoreDataReadReq extends CoreBundle {
   val stqPtr = RingBufferPtr(STQ_SIZE)
   val prs = UInt(PREG_IDX_W)
   val ready = Vec(2, Bool())
+  val addrOffset = UInt(2.W)
 }
 
 class StoreData extends CoreBundle {
@@ -38,6 +39,10 @@ class StoreDataIQ extends CoreModule {
 
   val headIndex = RegInit(0.U(IQ_IDX_W + 1))
 
+  val AGUStoreUopValid = io.IN_AGUUop.valid && 
+                        (io.IN_AGUUop.bits.fuType === FuType.LSU && LSUOp.isStore(io.IN_AGUUop.bits.opcode))
+  val AGUStoreUop = io.IN_AGUUop.bits  
+
   val writebackReady = Wire(Vec(IQ_SIZE, Vec(2, Bool())))
   for (j <- 0 until IQ_SIZE) {
     writebackReady(j)(0) := false.B
@@ -52,13 +57,11 @@ class StoreDataIQ extends CoreModule {
         }
       }
     }
-    val AGUStoreUopValid = io.IN_AGUUop.valid && 
-                           (io.IN_AGUUop.bits.fuType === FuType.LSU && LSUOp.isStore(io.IN_AGUUop.bits.opcode))
-    val AGUStoreUop = io.IN_AGUUop.bits
     when (AGUStoreUopValid) {
       when (queue(j).stqPtr === AGUStoreUop.stqPtr) {
         queue(j).ready(0) := true.B
         writebackReady(j)(0) := true.B
+        queue(j).addrOffset := AGUStoreUop.addr(1, 0)
       }
     }
   }
@@ -104,11 +107,17 @@ class StoreDataIQ extends CoreModule {
   uopNext := queue(deqIndex)
   when (doDeq) {
     uop := uopNext
+    when(writebackReady(deqIndex)(0)) {
+      uop.addrOffset := AGUStoreUop.addr(1, 0)
+    }
     for (i <- 0 until IQ_SIZE - 1) {
       when (i.U >= deqIndex) {
         queue(i) := queue(i + 1)
         for (k <- 0 until 2) {
           queue(i).ready(k) := queue(i + 1).ready(k) || writebackReady(i + 1)(k)
+        }
+        when(writebackReady(i + 1)(0)) {
+          queue(i).addrOffset := AGUStoreUop.addr(1, 0)
         }
       }      
     }
