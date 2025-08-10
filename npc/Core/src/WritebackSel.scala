@@ -11,7 +11,6 @@ class WritebackSel(N: Int) extends CoreModule {
   val io = IO(new WritebackSelIO(N))
 
   val validVec = io.IN_uop.map(_.valid)
-  val validIndex = OHToUInt(validVec)
 
-  io.OUT_uop := io.IN_uop(validIndex)
+  io.OUT_uop := Mux1H(validVec, io.IN_uop)
 }

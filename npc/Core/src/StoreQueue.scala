@@ -184,7 +184,7 @@ class StoreQueue extends CoreModule {
     }
   }
 
-  io.OUT_storeQueueEmpty := !hasIssueReady && !uopValid
+  io.OUT_storeQueueEmpty := (RegNext(stqBasePtr) === io.IN_commitStqPtr) && !uopValid
   io.OUT_stUop.valid := uopValid
   io.OUT_stUop.bits  := uop
 }

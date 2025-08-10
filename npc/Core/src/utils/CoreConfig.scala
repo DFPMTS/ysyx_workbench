@@ -32,7 +32,7 @@ trait HasCoreParameters extends HasDecodeConfig {
   def USE_DUMMY_MUL_DIV = false
   // def USE_DUMMY_MUL_DIV = true
   def DUMMY_MUL_DELAY = 3
-  def USE_DSP_MULTIPLIER = true
+  def USE_DSP_MULTIPLIER = false
 
   def NUM_ALU = 3
 
@@ -126,6 +126,8 @@ trait HasCoreParameters extends HasDecodeConfig {
 
   def CacheLine = Vec(CACHE_LINE_B, UInt(8.W))
   def CacheSet = Vec(DCACHE_WAYS, CacheLine)
+
+  def STORE_LINE_B = 16 // * Store Line Size in Bytes
 
   def ZERO = 0.U
 }

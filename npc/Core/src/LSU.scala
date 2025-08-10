@@ -260,6 +260,7 @@ class NewLSUIO extends CoreBundle {
   val IN_loadUop = Flipped(Decoupled(new AGUUop))
   val OUT_loadNegAck = Valid(new LoadNegAck)
   val IN_storeUop = Flipped(Decoupled(new AGUUop))
+  val IN_storeLine = Flipped(new StoreLine)
   val OUT_storeAck = Valid(new StoreAck)
   val IN_amoUop = Flipped(Decoupled(new AGUUop))
   val OUT_amoAck = Valid(new StoreAck)
@@ -285,9 +286,6 @@ class NewLSUIO extends CoreBundle {
   val OUT_dirty = Vec(DCACHE_WAYS, Vec(DCACHE_SETS, Bool()))
 
   val OUT_writebackUop = Valid(new WritebackUop)
-
-  val IN_storeQueueEmpty = Flipped(Bool())
-  val IN_storeBufferEmpty = Flipped(Bool())
 
   val IN_flushDCache = Flipped(Bool())
   val OUT_flushBusy = Bool()
@@ -628,6 +626,14 @@ class NewLSU extends CoreModule with HasLSUOps {
   val loadDiscard_c = WireInit(false.B)
   loadDiscard := loadDiscard_c
 
+  def extendMask(addr: UInt, mask: UInt): UInt = {
+    val extendedMask = Wire(Vec(CACHE_LINE_B / STORE_LINE_B, UInt(STORE_LINE_B.W)))
+    extendedMask := 0.U.asTypeOf(extendedMask)
+    val maskIndex = (if (CACHE_LINE_B == STORE_LINE_B) 0.U else addr(log2Up(CACHE_LINE_B) - 1, log2Up(STORE_LINE_B)))
+    extendedMask(maskIndex) := mask
+    extendedMask.asUInt
+  }
+
   when(stageValid(0)) {
     val mask = stage(0).mask
     when(LSUOp.isLoad(stage(0).opcode)) {
@@ -666,8 +672,8 @@ class NewLSU extends CoreModule with HasLSUOps {
         io.OUT_dataWrite.bits.addr := stage(0).addr
         io.OUT_dataWrite.bits.write := true.B
         io.OUT_dataWrite.bits.way := tagHitWay
-        io.OUT_dataWrite.bits.wmask := mask << (offset * 4.U)
-        io.OUT_dataWrite.bits.data := stage(0).wdata << (stage(0).addr(log2Up(CACHE_LINE_B) - 1, 2) * 32.U)
+        io.OUT_dataWrite.bits.wmask := extendMask(stage(0).addr, io.IN_storeLine.mask.asUInt)
+        io.OUT_dataWrite.bits.data := Fill(CACHE_LINE_B / STORE_LINE_B, io.IN_storeLine.data.asUInt)
         storeWriteData := true.B
         when (io.OUT_dataWrite.ready) {     
           storeAck.resp := 0.U 
