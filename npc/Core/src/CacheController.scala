@@ -385,6 +385,9 @@ class CacheController extends CoreModule {
   val awIdReg = Reg(UInt(4.W))
   val awSizeReg = Reg(UInt(3.W))
 
+  val awValidNext = WireInit(false.B)
+  val awIdNext = Wire(UInt(4.W))
+
   // * AXI R/B id
   val axiRId = io.OUT_axi.r.bits.id
   val axiBId = io.OUT_axi.b.bits.id
@@ -544,7 +547,7 @@ class CacheController extends CoreModule {
   val arIdReg = Reg(UInt(4.W))
   val arSizeReg = Reg(UInt(3.W))
   // ** Select MSHR to read Mem (AR channel)
-  val arMSHRVec = mshr.map(e => (e.valid && e.needReadMem && e.axiWriteDone))
+  val arMSHRVec = mshr.zipWithIndex.map { case (e, index) => (e.valid && e.needReadMem && (e.axiWriteDone || (awValidNext && awIdNext === index.U)))}
   val arMSHRIndex = PriorityEncoder(arMSHRVec)
   val hasArMSHR = arMSHRVec.reduce(_ || _)
   when(!arValidReg || io.OUT_axi.ar.fire) {    
@@ -572,10 +575,11 @@ class CacheController extends CoreModule {
   val awMSHRIndex = PriorityEncoder(awMSHRVec)
   val hasAwMSHR = awMSHRVec.reduce(_ || _) && !wLockValid
 
-
+  awIdNext := awMSHRIndex
   when(!awValidReg || io.OUT_axi.aw.fire) {
     when(hasAwMSHR) {
       val awMSHR = mshr(awMSHRIndex)
+      awValidNext := awMSHR.needWriteMem
       awValidReg := awMSHR.needWriteMem
       awAddrReg := awMSHR.axiAWaddr()
       awLenReg := awMSHR.axiLen()

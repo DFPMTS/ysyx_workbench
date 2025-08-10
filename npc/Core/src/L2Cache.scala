@@ -46,6 +46,8 @@ class L2Cache extends CoreModule {
   val inAwLen = Reg(UInt(8.W))
   val inAwSize = Reg(UInt(3.W))
 
+  val inARAWSameMSHR = RegInit(false.B)
+
   val READ = 0.U(2.W)
   val WRITE = 1.U(2.W)
   val inOp = RegInit(0.U(2.W))
@@ -207,6 +209,7 @@ class L2Cache extends CoreModule {
         inArSize := io.IN_axi.ar.bits.size
         inArBurst := io.IN_axi.ar.bits.burst
         inOp := READ
+        inARAWSameMSHR := io.IN_axi.aw.valid && io.IN_axi.aw.bits.id === io.IN_axi.ar.bits.id
         state := sAR
       }.elsewhen(io.IN_axi.aw.valid) {
         // Write request
@@ -256,7 +259,13 @@ class L2Cache extends CoreModule {
     }
     is(sLookUp0) {
       // Send LookUpAddr to Cache Array
-      state := sLookUp1
+      when(inARAWSameMSHR) {
+        when(io.IN_L2FastWrite.valid) {
+          state := sLookUp1
+        }
+      }.otherwise {
+        state := sLookUp1
+      }
     }
     is(sLookUp1) {
       // Calculate tagRead / dataRead
