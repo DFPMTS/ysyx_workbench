@@ -301,6 +301,8 @@ class NewLSUIO extends CoreBundle {
   val IN_clearLLB = Flipped(Bool())
   val OUT_LLB = Bool()
 
+  val IN_setDirty = Flipped(Valid(new SetDirty))
+
   val IN_flush = Flipped(Bool())
 }
 
@@ -322,19 +324,16 @@ class NewLSU extends CoreModule with HasLSUOps {
   // * Dirty Table
   val dirty = RegInit(0.U.asTypeOf(Vec(DCACHE_WAYS, Vec(DCACHE_SETS, Bool()))))
   io.OUT_dirty := dirty
-  val setDirtyValid = WireInit(false.B)
-  val setDirtyWay = Wire(UInt(log2Up(DCACHE_WAYS).W))
-  val setDirtyIndex = Wire(UInt(log2Up(DCACHE_SETS).W))
-
-  val clearDirtyValid = WireInit(false.B)
-  val clearDirtyWay = Wire(UInt(log2Up(DCACHE_WAYS).W))
-  val clearDirtyIndex = Wire(UInt(log2Up(DCACHE_SETS).W))
+  val setDirtyValid = RegInit(false.B)
+  val setDirtyWay = Reg(UInt(log2Up(DCACHE_WAYS).W))
+  val setDirtyIndex = Reg(UInt(log2Up(DCACHE_SETS).W))
 
   when(setDirtyValid) {
     dirty(setDirtyWay)(setDirtyIndex) := true.B
   }
-  when(clearDirtyValid) {
-    dirty(clearDirtyWay)(clearDirtyIndex) := false.B
+
+  when(io.IN_setDirty.valid) {
+    dirty(io.IN_setDirty.bits.way)(io.IN_setDirty.bits.index) := io.IN_setDirty.bits.dirty
   }
 
   // * Submodules
@@ -590,17 +589,6 @@ class NewLSU extends CoreModule with HasLSUOps {
     cacheUopTagReq.data := dtag
   }
 
-  when(flushState === sFlushActive) {
-    clearDirtyValid := true.B
-    clearDirtyWay := flushWay
-    clearDirtyIndex := flushIndex
-  }.otherwise {
-    clearDirtyValid := io.OUT_cacheCtrlUop.fire
-    clearDirtyWay := io.OUT_cacheCtrlUop.bits.way
-    clearDirtyIndex := io.OUT_cacheCtrlUop.bits.index
-  }
-
-
   stageValid(1) := false.B
   stage(1) := Mux(needAGULoadUop, io.IN_aguLoadUop.bits, stage(0))
 
@@ -652,20 +640,18 @@ class NewLSU extends CoreModule with HasLSUOps {
       val isUncached = stage(0).isUncached
       val isCached = !isUncached
       val storeMiss = !isUncached && !tagHit && !addrInFlight
-
-      val dirtyConflict = clearDirtyValid && getDCacheIndex(stage(0).addr) === clearDirtyIndex && clearDirtyWay === tagHitWay
       
       cacheHit_c := isUncached || (tagHit && !addrInFlight && !writeTag)
       cacheMiss := !isUncached && !(tagHit && !addrInFlight && !writeTag)
       needCacheUop := !addrInFlight && !writeTag
 
-      when(!isUncached && !(tagHit && !addrInFlight && !dirtyConflict)) {
+      when(!isUncached && !(tagHit && !addrInFlight)) {
         stageValid(1) := true.B
       }
 
       when(isUncached) {
         storeAck.resp := 0.U
-      }.elsewhen(tagHit && !addrInFlight && !dirtyConflict) {
+      }.elsewhen(tagHit && !addrInFlight) {
         val offset = stage(0).addr(log2Up(CACHE_LINE_B) - 1, 2)
         // * Cache Hit - Write data
         io.OUT_dataWrite.valid := true.B

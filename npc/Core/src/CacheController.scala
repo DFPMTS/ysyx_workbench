@@ -14,6 +14,7 @@ class MemLoadFoward extends CoreBundle {
 }
 
 class L2FastWrite extends CoreBundle {
+  val dirty = Bool()
   val data = UInt((CACHE_LINE_B * 8).W)
 }
 
@@ -21,6 +22,13 @@ class L2FastRead extends CoreBundle {
   val data = Vec(CACHE_LINE_B / (AXI_DATA_WIDTH / 8), UInt(AXI_DATA_WIDTH.W))
   val addr = UInt(XLEN.W)
   val id = UInt(4.W)
+  val dirty = Bool()
+}
+
+class SetDirty extends CoreBundle {
+  val way = UInt(log2Up(DCACHE_WAYS).W)
+  val index = UInt(log2Up(DCACHE_SETS).W)
+  val dirty = Bool()
 }
 
 class CacheControllerIO extends CoreBundle {
@@ -51,6 +59,8 @@ class CacheControllerIO extends CoreBundle {
   // * L2 Fast Path
   val IN_L2FastRead = Flipped(Valid(new L2FastRead))
   val OUT_L2FastWrite = Decoupled(new L2FastWrite)
+
+  val OUT_setDirty = Valid(new SetDirty)
 }
 
 class MSHR extends CoreBundle {
@@ -292,6 +302,8 @@ class CacheController extends CoreModule {
     // ! Must be assign before the MSHR is allocated, or new MSHR will have rCnt =/= 0
   }
 
+  val dirtyTable = WireInit(io.IN_dirty)
+
   when(canAllocateMSHR && uopValid) {
     val newMSHR = Wire(new MSHR)
     mshr(mshrFreeIndex) := newMSHR
@@ -410,6 +422,7 @@ class CacheController extends CoreModule {
   // *                          (2) put Load into LoadResultBuffer 
   // *                          (3) R channel returns data
   // * If there is no latency, the data is forwarded before Load gets into LoadResultBuffer
+  // ! Above statements no longer applies
   io.OUT_memLoadFoward.valid := ShiftRegister(memLoadFowardValidReg, 1)
   io.OUT_memLoadFoward.bits := ShiftRegister(memLoadFowardReg, 1)
 
@@ -440,6 +453,7 @@ class CacheController extends CoreModule {
   // * AXI W channel state machine
 
   val wCacheLineData = Reg(Vec(CACHE_LINE_B / 4, UInt(32.W)))
+  val wCacheLineDirty = Reg(Bool())
   val wCnt = RegInit(0.U(8.W))
 
   val sWIdle :: sWLoaded :: sWWrite :: Nil = Enum(3)
@@ -447,11 +461,13 @@ class CacheController extends CoreModule {
   // * isWCacheLine means writing back a cacheline
   val isWCacheLine = RegInit(false.B)
 
+  val wMSHR = mshr(dataReadRespMSHRIndex)  
+
   when(wState === sWIdle) {    
     when(dataReadRespValid) {    
-      val wMSHR = mshr(dataReadRespMSHRIndex)  
       when(!wMSHR.uncached) {
         wCacheLineData := io.IN_DDataResp.data(wMSHR.way)
+        wCacheLineDirty := dirtyTable(wMSHR.way)(wMSHR.memWriteAddr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B)))
         wIdReg := dataReadRespMSHRIndex
         wStrbReg := Fill(AXI_DATA_WIDTH / 8, 1.U(1.W))
         wLockValid := false.B // ! Order matter, see below assignment of wLockValid
@@ -518,6 +534,11 @@ class CacheController extends CoreModule {
     }
   }
 
+  val setDirty = Reg(Valid(new SetDirty))
+  setDirty.valid := false.B
+
+  io.OUT_setDirty := setDirty
+
   when(io.IN_L2FastRead.valid) {
     val l2FastRead = io.IN_L2FastRead.bits
     val l2FastReadMSHR = mshr(l2FastRead.id)
@@ -529,6 +550,12 @@ class CacheController extends CoreModule {
       io.OUT_DDataWrite.bits.wmask := Fill(CACHE_LINE_B, 1.U(1.W))
       io.OUT_DDataWrite.bits.write := true.B
       io.OUT_DDataWrite.valid := true.B
+
+      setDirty.valid := true.B
+      setDirty.bits.way := l2FastReadMSHR.way
+      setDirty.bits.index := l2FastReadMSHR.memReadAddr(log2Up(CACHE_LINE_B) + log2Up(DCACHE_SETS) - 1, log2Up(CACHE_LINE_B))
+      setDirty.bits.dirty := l2FastRead.dirty
+
     }.elsewhen(l2FastReadMSHR.cacheId === CacheId.ICACHE) {
       io.OUT_IDataWrite.bits.addr := l2FastReadMSHR.memReadAddr
       io.OUT_IDataWrite.bits.data := l2FastRead.data.asTypeOf(io.OUT_IDataWrite.bits.data)
@@ -611,6 +638,7 @@ class CacheController extends CoreModule {
   // ** L2Fast Write
   io.OUT_L2FastWrite.valid := wState === sWLoaded && isWCacheLine
   io.OUT_L2FastWrite.bits.data := wCacheLineData.asUInt
+  io.OUT_L2FastWrite.bits.dirty := wCacheLineDirty
   
   // ** r
   io.OUT_axi.r.ready := true.B

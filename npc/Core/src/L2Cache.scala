@@ -13,15 +13,23 @@ class L2Cache extends CoreModule {
   val io = IO(new L2CacheIO)
 
   // Cache parameters
-  val CACHE_WAYS = 2
-  val CACHE_SETS = 512
-  val CACHE_LINE_BYTES = 64
+  val CACHE_WAYS = L2_CACHE_WAYS
+  val CACHE_SETS = L2_CACHE_SETS
+  val CACHE_LINE_BYTES = CACHE_LINE_B
   val IN_NUM_BEATS = CACHE_LINE_BYTES / (AXI_DATA_WIDTH / 8)
   val INDEX_BITS = log2Ceil(CACHE_SETS)
   val OFFSET_BITS = log2Ceil(CACHE_LINE_BYTES)
   val TAG_BITS = AXI_ADDR_WIDTH - INDEX_BITS - OFFSET_BITS
 
   val CacheLineVec = Vec(IN_NUM_BEATS, UInt(AXI_DATA_WIDTH.W))
+
+  class L2TagEntry extends CoreBundle {
+    val dirty = Bool()
+    val valid = Bool()
+    val tag = UInt(TAG_BITS.W)
+  }
+
+  val L2TAG_ENTRY_BITS = (new L2TagEntry).getWidth
 
   // State machine
   val (sIdle :: sAR :: sAW :: sW :: sLookUp0 :: 
@@ -54,12 +62,13 @@ class L2Cache extends CoreModule {
 
   val inWCnt = RegInit(0.U(8.W))
   val inWCacheLine = Reg(CacheLineVec)
+  val inWCacheLineDirty = Reg(Bool())
 
   val inBValid = RegInit(false.B)
   inBValid := false.B
 
   // Cache arrays - 2-way, 512 sets
-  val tagArray = Seq.fill(CACHE_WAYS)(SyncReadMem(CACHE_SETS, UInt((TAG_BITS + 1).W)))
+  val tagArray = Seq.fill(CACHE_WAYS)(SyncReadMem(CACHE_SETS, UInt((L2TAG_ENTRY_BITS).W)))
   val dataArray = Seq.fill(CACHE_WAYS)(SyncReadMem(CACHE_SETS, UInt((CACHE_LINE_BYTES * 8).W)))
 
   // Address parsing
@@ -83,7 +92,7 @@ class L2Cache extends CoreModule {
   }
 
   // Tag comparison and hit detection
-  val tagRead1 = Reg(Vec(CACHE_WAYS, UInt((TAG_BITS + 1).W)))
+  val tagRead1 = Reg(Vec(CACHE_WAYS, new L2TagEntry))
   val dataRead1 = Reg(Vec(CACHE_WAYS, UInt((CACHE_LINE_BYTES * 8).W)))
   val invalidWayVec1 = Wire(Vec(CACHE_WAYS, Bool()))
   val hitWayOH1 = Wire(Vec(CACHE_WAYS, Bool()))
@@ -93,17 +102,17 @@ class L2Cache extends CoreModule {
   val invalidWay1 = Wire(UInt(CACHE_WAYS.W))
 
   val hitData2 = Reg(CacheLineVec)
-  val hitTag2 = Reg(UInt(TAG_BITS.W))
+  val hitTag2 = Reg(new L2TagEntry)
   val hit2 = Reg(Bool())
   val hitWay2 = Reg(UInt(log2Up(CACHE_WAYS).W))
 
 
   val replaceWay1 = Wire(UInt(log2Up(CACHE_WAYS).W))
   val replaceWay2 = Reg(UInt(log2Up(CACHE_WAYS).W))
-  val replaceTag2 = Reg(UInt((TAG_BITS + 1).W))
+  val replaceTag2 = Reg(new L2TagEntry)
   val replaceData2 = Reg(CacheLineVec)
 
-  val writeTag = Reg(UInt((TAG_BITS + 1).W))
+  val writeTag = Reg(new L2TagEntry)
   val writeData = Reg(UInt((CACHE_LINE_BYTES * 8).W))
 
   val doWriteTag = RegInit(false.B)
@@ -114,10 +123,10 @@ class L2Cache extends CoreModule {
   doFlush := RegNext(state === sFlushActive)
 
   for (way <- 0 until CACHE_WAYS) {
-    tagRead1(way) := tagArray(way).readWrite(lookupIndex, writeTag, true.B, doWriteTag && (replaceWay2 === way.U || doFlush))
+    tagRead1(way) := tagArray(way).readWrite(lookupIndex, writeTag.asUInt, true.B, doWriteTag && (replaceWay2 === way.U || doFlush)).asTypeOf(tagRead1(way))
     dataRead1(way) := dataArray(way).readWrite(lookupIndex, writeData, true.B, doWriteData && (replaceWay2 === way.U || doFlush))
-    invalidWayVec1(way) := !tagRead1(way)(TAG_BITS)
-    hitWayOH1(way) := tagRead1(way)(TAG_BITS) && (tagRead1(way)(TAG_BITS-1, 0) === lookupTag)
+    invalidWayVec1(way) := !tagRead1(way).valid
+    hitWayOH1(way) := tagRead1(way).valid && (tagRead1(way).tag === lookupTag)
   }
   hit1 := hitWayOH1.asUInt.orR
   hitWay1 := OHToUInt(hitWayOH1)
@@ -140,7 +149,7 @@ class L2Cache extends CoreModule {
   replaceData2 := dataRead1(replaceWay1).asTypeOf(replaceData2)
   replaceWay2 := replaceWay1
 
-  hitTag2 := Mux1H(hitWayOH1.asUInt, tagRead1).asTypeOf(hitTag2)
+  hitTag2 := Mux1H(hitWayOH1.asUInt, tagRead1)
   hitData2 := Mux1H(hitWayOH1.asUInt, dataRead1).asTypeOf(hitData2)
   
   hit2 := hitWayOH1.asUInt.orR
@@ -193,7 +202,7 @@ class L2Cache extends CoreModule {
     is(sFlushActive) {
       resetIndex := resetIndex + 1.U
       doWriteTag := true.B
-      writeTag := 0.U
+      writeTag := 0.U.asTypeOf(writeTag)
       lookupAddr := Cat(resetIndex, 0.U(OFFSET_BITS.W))
       when(resetIndex === (CACHE_SETS - 1).U) {
         state := sIdle
@@ -246,6 +255,7 @@ class L2Cache extends CoreModule {
     is(sCollectW) {
       when(io.IN_L2FastWrite.fire) {
         inWCacheLine := io.IN_L2FastWrite.bits.data.asTypeOf(inWCacheLine)
+        inWCacheLineDirty := io.IN_L2FastWrite.bits.dirty
         state := sLookUp1
         inBValid := true.B
       }
@@ -288,6 +298,7 @@ class L2Cache extends CoreModule {
           l2FastRead.data := hitData2
           l2FastRead.id := inArId
           l2FastRead.addr := inArAddr
+          l2FastRead.dirty := hitTag2.dirty
         }.otherwise {
           isOutARCacheLine := true.B
           state := sForwardAR
@@ -401,7 +412,7 @@ class L2Cache extends CoreModule {
       }
     }
     is(sReplacePrepareWriteBack) {
-      when(replaceTag2(TAG_BITS) && !hit2) {
+      when(replaceTag2.valid && replaceTag2.dirty && !hit2) {
         // If the tag is valid, and not the same address, prepare to write back
         replaceState := sReplaceAW
       }.otherwise {
@@ -412,7 +423,7 @@ class L2Cache extends CoreModule {
     is(sReplaceAW) {
       // Send AW request
       outAwValid := true.B
-      outAwAddr := Cat(replaceTag2(TAG_BITS - 1, 0), lookupIndex, 0.U(OFFSET_BITS.W))
+      outAwAddr := Cat(replaceTag2.tag, lookupIndex, 0.U(OFFSET_BITS.W))
       outAwId := inAwId
       outAwLen := (IN_NUM_BEATS - 1).U
       outAwSize := log2Ceil(AXI_DATA_WIDTH / 8).U
@@ -446,7 +457,9 @@ class L2Cache extends CoreModule {
     is(sReplaceWriteNew) {
       doWriteTag := true.B
       doWriteData := true.B
-      writeTag := Cat(true.B, lookupTag)
+      writeTag.dirty := Mux(isOutARCacheLine, false.B, inWCacheLineDirty)
+      writeTag.valid := true.B
+      writeTag.tag := lookupTag
       writeData := Mux(isOutARCacheLine, l2FastRead.data.asUInt, inWCacheLine.asUInt)
 
       replaceState := sReplaceFin

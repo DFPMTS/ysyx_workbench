@@ -440,6 +440,7 @@ class Core extends CoreModule {
   lsu.io.OUT_cacheCtrlUop <> cacheController.io.IN_cacheCtrlUop(0)
   lsu.io.OUT_uncacheUop <> cacheController.io.IN_cacheCtrlUop(1)
   lsu.io.IN_memLoadFoward <> cacheController.io.OUT_memLoadFoward
+  lsu.io.IN_setDirty <> cacheController.io.OUT_setDirty
   lsu.io.IN_uncacheStoreResp := cacheController.io.OUT_uncacheStoreResp
   cacheController.io.IN_dirty := lsu.io.OUT_dirty
 

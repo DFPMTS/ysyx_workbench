@@ -118,6 +118,12 @@ trait HasCoreParameters extends HasDecodeConfig {
   // * ICache Tag Width
   def ICACHE_TAG = XLEN - log2Up(ICACHE_SETS) - log2Up(CACHE_LINE_B)
 
+  // * L2 Cache Ways
+  def L2_CACHE_WAYS = 2;
+  
+  // * L2 Cache Sets
+  def L2_CACHE_SETS = 512;
+
   // * AXI Data Width
   def AXI_DATA_WIDTH = 32
 
