@@ -133,17 +133,29 @@ class Core extends CoreModule {
   // * issue
   val issueUop = Wire(Vec(MACHINE_WIDTH, Decoupled(new RenameUop)))
   dontTouch(issueUop)
-  val aluIssueUop = issueUop.take(NUM_ALU)
-  
+  val aluIssueUop = Wire(Vec(NUM_ALU, Valid(new RenameUop)))
+  aluIssueUop(0) := iq(0).io.OUT_issueUop
+  aluIssueUop(1) := iq(1).io.OUT_issueUop
+  aluIssueUop(2).valid := iq(2).io.OUT_issueUop.valid ||  mul.io.OUT_wakeUp.valid
+  aluIssueUop(2).bits := Mux1H(Seq(
+    iq(2).io.OUT_issueUop.valid -> iq(2).io.OUT_issueUop.bits,
+    mul.io.OUT_wakeUp.valid -> mul.io.OUT_wakeUp.bits
+  ))
+  dontTouch(aluIssueUop)
+
   // * read register
   val readRegUop = Wire(Vec(MACHINE_WIDTH, Decoupled(new ReadRegUop)))
   dontTouch(readRegUop)
 
   // * Zero-Cycle Forward
-  val zeroCycleForward = Wire(Vec(NUM_ALU, Valid(new WritebackUop)))
+  val zeroCycleForward = Wire(Vec(NUM_ALU + 1, Valid(new WritebackUop)))
   zeroCycleForward(0) := alu0.io.OUT_zeroCycleForward
   zeroCycleForward(1) := alu1.io.OUT_zeroCycleForward
-  zeroCycleForward(2) := alu2.io.OUT_zeroCycleForward
+  zeroCycleForward(2) := Mux1H(Seq(
+    alu2.io.OUT_zeroCycleForward.valid -> alu2.io.OUT_zeroCycleForward,
+    mul.io.OUT_zeroCycleForward.valid -> mul.io.OUT_zeroCycleForward
+  ))
+  zeroCycleForward(3) := lsu.io.OUT_zeroCycleForward
 
   // * writeback
   val writebackUop = Wire(Vec(WRITEBACK_WIDTH, Valid(new WritebackUop)))
@@ -276,6 +288,7 @@ class Core extends CoreModule {
       iq(i).io.IN_readRegUop(j).bits := readRegUop(j).bits
     }
     iq(i).io.IN_lsuWakeUp := lsu.io.OUT_wakeUp
+    iq(i).io.IN_lsuSpecWakeUp := lsu.io.OUT_specWakeUp
 
     iq(i).io.IN_writebackUop := writebackUop
     iq(i).io.IN_robTailPtr := rob.io.OUT_robTailPtr

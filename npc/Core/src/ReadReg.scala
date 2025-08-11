@@ -5,7 +5,7 @@ import SrcType.IMM
 
 class ReadRegIO extends CoreBundle {
   val IN_issueUop = Flipped(Vec(MACHINE_WIDTH, Decoupled(new RenameUop)))
-  val IN_zeroCycleForward = Flipped(Vec(NUM_ALU, Valid(new WritebackUop)))
+  val IN_zeroCycleForward = Flipped(Vec(NUM_ALU + 1, Valid(new WritebackUop)))
   val IN_storeDataReadReq = Flipped(Decoupled(new StoreDataReadReq))
   val OUT_storeData = Valid(new StoreData)
   val OUT_readRegIndex = Vec(MACHINE_WIDTH, Vec(2, UInt(PREG_IDX_W)))

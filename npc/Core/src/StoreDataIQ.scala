@@ -47,7 +47,7 @@ class StoreDataIQ extends CoreModule {
   for (j <- 0 until IQ_SIZE) {
     writebackReady(j)(0) := false.B
     writebackReady(j)(1) := false.B
-    for (i <- 0 until WRITEBACK_WIDTH) {
+    for (i <- 0 until MACHINE_WIDTH) {
       val writebackValid = io.IN_writebackUop(i).valid
       val writebackUop = io.IN_writebackUop(i).bits
       when (writebackValid) {
@@ -131,7 +131,7 @@ class StoreDataIQ extends CoreModule {
     queue(enqIndex).ready(0) := false.B
     queue(enqIndex).ready(1) := renameUop.src2Ready
     // * fix srcReady
-    for (i <- 0 until WRITEBACK_WIDTH) {
+    for (i <- 0 until MACHINE_WIDTH) {
       val writebackValid = io.IN_writebackUop(i).valid
       val writebackUop = io.IN_writebackUop(i).bits
       when (writebackValid) {

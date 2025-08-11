@@ -285,12 +285,16 @@ class NewLSUIO extends CoreBundle {
   val IN_uncacheStoreResp = Flipped(Bool())
   val OUT_dirty = Vec(DCACHE_WAYS, Vec(DCACHE_SETS, Bool()))
 
+  val OUT_zeroCycleForward = Valid(new WritebackUop)
   val OUT_writebackUop = Valid(new WritebackUop)
 
   val IN_flushDCache = Flipped(Bool())
   val OUT_flushBusy = Bool()
 
   val IN_L2FastRead = Flipped(Valid(new L2FastRead))
+
+  // * Speculative wake up
+  val OUT_specWakeUp = Valid(new WritebackUop)
 
   // * One cycle before the writeback
   val OUT_wakeUp = Valid(new WritebackUop)
@@ -715,11 +719,16 @@ class NewLSU extends CoreModule with HasLSUOps {
 
   loadResult := hitLoadResult
 
-  // // * Experiment
-  // io.OUT_wakeUp.valid := stageValid(0) && LSUOp.isLoad(stage(0).opcode) && stage1LoadHit_c
-  // io.OUT_wakeUp.bits := DontCare
-  // io.OUT_wakeUp.bits.prd := stage(0).prd
+  // * Speculative Wake Up
+  if(DO_SPEC_WAKEUP) {
+    io.OUT_specWakeUp.valid := stageValid(0) && LSUOp.isLoad(stage(0).opcode)
+  } else {
+    io.OUT_specWakeUp.valid := false.B
+  }
+  io.OUT_specWakeUp.bits := DontCare
+  io.OUT_specWakeUp.bits.prd := stage(0).prd
 
+  // * Wake Up
   io.OUT_wakeUp.valid := stageValid(1) && LSUOp.isLoad(stage(1).opcode) && stage1LoadHit
   io.OUT_wakeUp.bits := DontCare
   io.OUT_wakeUp.bits.prd := stage(1).prd
@@ -963,6 +972,8 @@ class NewLSU extends CoreModule with HasLSUOps {
   io.OUT_amoAck.bits := amoAck
   
   io.OUT_busy := stageValid(0) || stageValid(1) || cacheCtrlUopValid
+
+  io.OUT_zeroCycleForward := loadResultBuffer.io.OUT_zeroCycleForward
 
   // * Output 
   when(loadResultBuffer.io.OUT_writebackUop.valid) {

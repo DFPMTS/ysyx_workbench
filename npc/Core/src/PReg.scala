@@ -34,7 +34,7 @@ class PReg extends CoreModule {
     }
   }
 
-  for (i <- 0 until WRITEBACK_WIDTH) {
+  for (i <- 0 until MACHINE_WIDTH) {
     val writebackValid = io.IN_writebackUop(i).valid
     val writebackUop = io.IN_writebackUop(i).bits
     when (writebackValid && writebackUop.prd =/= ZERO) {

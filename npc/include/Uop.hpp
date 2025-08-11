@@ -308,6 +308,8 @@ struct InstInfo {
   CData executed;
 
   uint64_t konataId;
+
+  uint32_t iqNumber;
 };
 
 struct Uop {

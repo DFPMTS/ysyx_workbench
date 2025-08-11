@@ -5,6 +5,8 @@ import utils._
 
 class MULIO extends CoreBundle {
   val IN_readRegUop  = Flipped(Decoupled(new ReadRegUop))
+  val OUT_wakeUp = Valid(new RenameUop)
+  val OUT_zeroCycleForward = Valid(new WritebackUop)
   val OUT_writebackUop  = Valid(new WritebackUop)
   val IN_flush = Input(Bool())
 }
@@ -64,6 +66,17 @@ class MUL extends CoreModule {
     }
 
     uop(IMUL_DELAY).data := multiplier.io.out
+
+    io.OUT_wakeUp.valid := uopValid(IMUL_DELAY - 2)
+    io.OUT_wakeUp.bits := DontCare
+    io.OUT_wakeUp.bits.prd := uop(IMUL_DELAY - 2).prd
+    io.OUT_wakeUp.bits.fuType := FuType.ALU
+
+    io.OUT_zeroCycleForward.valid := uopValid(IMUL_DELAY - 1)
+    io.OUT_zeroCycleForward.bits := DontCare
+    io.OUT_zeroCycleForward.bits.prd := uop(IMUL_DELAY - 1).prd
+    io.OUT_zeroCycleForward.bits.data := multiplier.io.out
+
 
     when (io.IN_flush) {
       uopValid := VecInit(Seq.fill(IMUL_DELAY + 1)(false.B))

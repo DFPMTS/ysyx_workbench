@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <vector>
 
 class SimState {
 public:
@@ -36,6 +37,14 @@ public:
   bool decodeInstValid[2][ISSUE_WIDTH];
 
   // * LSU
+
+  std::vector<uint64_t> storeWriteBackTimes;
+
+  CData *stqBasePtr_flag = NULL;
+  CData *stqBasePtr_index = NULL;
+
+  CData *stqCommitPtr_flag = NULL;
+  CData *stqCommitPtr_index = NULL;
 
   uint64_t totalLSUWriteback = 0;
   uint64_t totalLSUCacheUopReq = 0;
@@ -92,7 +101,7 @@ public:
 
   FILE *cacheMissFile = nullptr;
 
-  // #define KONATA
+#define KONATA
 
   void konataLogStage(uint64_t instId, const char *stage) {
 #ifdef KONATA
@@ -269,6 +278,16 @@ public:
     REPEAT_1(BIND_FIELDS)
     REPEAT_1(BIND_VALID)
 
+    // * Store Queue Pointers
+    stqBasePtr_flag =
+        &top->rootp->npc_top__DOT__npc__DOT__storeQueue__DOT__stqBasePtr_flag;
+    stqBasePtr_index =
+        &top->rootp->npc_top__DOT__npc__DOT__storeQueue__DOT__stqBasePtr_index;
+    stqCommitPtr_flag =
+        &top->rootp->npc_top__DOT__npc__DOT__rob__DOT__stqCommitPtr_flag;
+    stqCommitPtr_index =
+        &top->rootp->npc_top__DOT__npc__DOT__rob__DOT__stqCommitPtr_index;
+
     // * LSU CacheCtrlUop
     cacheCtrlUopReady =
         &top->rootp
@@ -309,6 +328,15 @@ public:
     }
   }
 
+  uint64_t storeQueueFull = 0;
+
+  void monitorStoreQueue(uint64_t cycle) {
+    if ((*stqBasePtr_flag & 1) != (*stqBasePtr_flag & 1) &&
+        (*stqBasePtr_index) == (*stqCommitPtr_index)) {
+      ++storeQueueFull;
+    }
+  }
+
   void log(uint64_t cycle) {
 
     if (*cacheCtrlUopValid && *cacheCtrlUopReady) {
@@ -318,6 +346,7 @@ public:
       ++totalLSUWriteback;
     }
 
+    monitorStoreQueue(cycle);
     traceL1ToL2(cycle);
 
     perfCycle++;
@@ -454,9 +483,9 @@ public:
                        (inst.flag != FlagOp::BRANCH_NOT_TAKEN);
         if (inst.fuType == FuType::LSU) {
           auto addr = inst.paddr;
-          // if (addr == 0x1c086b6c) {
+          // if (addr == 0x1c082e14) {
           //   printf("LSU Commit: addr = 0x%08x, data = 0x%08x, opcode =
-          //   0x%08x, "
+          //   0x%08x,"
           //          "PC = 0x%08x\n",
           //          addr, inst.result, inst.opcode, inst.pc);
           // }
@@ -585,6 +614,14 @@ public:
           // printf("------------writeback[%d]: kanataId=%lu\n", robIndex,
           //        inst.konataId);
           konataLogWriteback(&inst);
+          // if ((FuType)(inst.fuType) == FuType::LSU) {
+          //   if (inst.opcode & 0x8) {
+          //     // * Store
+          //     storeWriteBackTimes.push_back(cycle);
+          //     printf("LSU Store: addr = 0x%x, cycle = %lu\n", inst.paddr,
+          //            cycle);
+          //   }
+          // }
         }
       }
     }
@@ -609,7 +646,7 @@ public:
         auto &inst = insts[robIndex];
         inst.src1 = *readRegUop[i].src1;
         inst.src2 = *readRegUop[i].src2;
-
+        inst.iqNumber = i;
         konataLogReadReg(&inst);
       }
     }
@@ -709,7 +746,7 @@ public:
   void printInst(InstInfo *inst, int id) {
     char buf[512];
     itrace_generate(buf, inst->pc, inst->inst);
-    printf("[%3d] %s\n", id, buf);
+    printf("ROB[%3d/0x%3X] IQ[%d] %s\n", id, id, inst->iqNumber, buf);
     printf("      rd  = %2d  rs1  = %2d  rs2  = %2d\n", inst->rd, inst->rs1,
            inst->rs2);
     printf("      prd = %2d  prs1 = %2d  prs2 = %2d\n", inst->prd, inst->prs1,
@@ -778,6 +815,12 @@ public:
     printf("Total LSU Cache Uop Req: %lu\n", totalLSUCacheUopReq);
     printf("LSU Cache Uop Req Rate: %.2f%%\n",
            (double)totalLSUCacheUopReq / totalLSUWriteback * 100);
+    // Store Queue
+    printf("------------------------Store Queue------------------------\n");
+    printf("Store Queue Full: %lu\n", storeQueueFull);
+    // Ratio
+    printf("Store Queue Full Rate: %.2f%%\n",
+           (double)storeQueueFull / lastCommit * 100);
     printf("-----------------------Jump--------------------------\n");
     printf("Total Jump: %lu\n", totalJumps);
     printf("Total Jump Mispred: %lu\n", totalJumpMispred);

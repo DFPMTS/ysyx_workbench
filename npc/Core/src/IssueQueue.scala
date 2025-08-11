@@ -13,6 +13,7 @@ class IssueQueueIO extends CoreBundle {
   val IN_flush = Input(Bool())
 
   val IN_lsuWakeUp = Flipped(Valid(new WritebackUop))
+  val IN_lsuSpecWakeUp = Flipped(Valid(new WritebackUop))
   val IN_readRegUop = Flipped(Vec(NUM_ALU, Valid(new ReadRegUop)))
 
   val IN_idivBusy = Input(Bool())
@@ -35,8 +36,16 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
   val uopNext = Wire(new RenameUop)
   val uop = Reg(new RenameUop)
   val uopValid = RegInit(false.B)
+  val uopSpecWakeUp = RegInit(false.B)
+  uopSpecWakeUp := false.B
 
   val queue = Reg(Vec(IQ_SIZE, new RenameUop))
+  val specFailValid = RegInit(false.B)
+  val specFail = Reg(new RenameUop)
+  val specFailPrd = Reg(UInt(PREG_IDX_W))
+  val specFailSrcReady = Reg(Bool())
+  val specPrd = Reg(UInt(PREG_IDX_W))
+  specPrd := io.IN_lsuSpecWakeUp.bits.prd
 
   val headIndex = RegInit(0.U(IQ_IDX_W + 1))
 
@@ -49,10 +58,26 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
 
   // ** Writeback / Wakeup
   val writebackReady = Wire(Vec(IQ_SIZE, Vec(2, Bool())))
+  val specReady = Wire(Vec(IQ_SIZE, Vec(2, Bool())))
+
+  val lsuSpecWakeUpValid = io.IN_lsuSpecWakeUp.valid
+  val lsuSpecWakeUpUop = io.IN_lsuSpecWakeUp.bits
+
+  val lsuWakeUpValid = io.IN_lsuWakeUp.valid
+  val lsuWakeUpUop = io.IN_lsuWakeUp.bits
+
+  when(io.IN_writebackUop(3).valid) {
+    when(specFailPrd === io.IN_writebackUop(3).bits.prd) {
+      specFailSrcReady := true.B
+    }
+  }
+
   for (j <- 0 until IQ_SIZE) {
     writebackReady(j)(0) := false.B
     writebackReady(j)(1) := false.B
-    for (i <- 0 until WRITEBACK_WIDTH) {
+    specReady(j)(0) := false.B
+    specReady(j)(1) := false.B
+    for (i <- 0 until MACHINE_WIDTH) {
       val writebackValid = io.IN_writebackUop(i).valid
       val writebackUop = io.IN_writebackUop(i).bits
       when (writebackValid) {
@@ -66,77 +91,42 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
         }
       }
     }
-    if(!FUs.contains(FuType.LSU)) {
-      for (i <- 0 until NUM_ALU) {
-        // ** For one-cycle Operation, the issued Uop can wake up dependencies now
-        val issueValid = io.IN_issueUops(i).valid
-        val issueUop = io.IN_issueUops(i).bits
-        when (issueValid && FuType.isOneCycle(issueUop.fuType)) {
-          when (queue(j).prs1 === issueUop.prd) {
-            queue(j).src1Ready := true.B
-            writebackReady(j)(0) := true.B
-          }
-          when (queue(j).prs2 === issueUop.prd) {
-            queue(j).src2Ready := true.B
-            writebackReady(j)(1) := true.B
-          }
-        }
-        val lsuWakeUpValid = io.IN_lsuWakeUp.valid
-        val lsuWakeUpUop = io.IN_lsuWakeUp.bits
-        when (lsuWakeUpValid) {
-          when (queue(j).prs1 === lsuWakeUpUop.prd) {
-            queue(j).src1Ready := true.B
-            writebackReady(j)(0) := true.B
-          }
-          when (queue(j).prs2 === lsuWakeUpUop.prd) {
-            queue(j).src2Ready := true.B
-            writebackReady(j)(1) := true.B
-          }
-        }
-      }
-    } else {
-      // ** For LSU, the readRegUop will wake up dependencies
-      for (i <- 0 until NUM_ALU) {
-      //   val readRegValid = io.IN_readRegUop(i).valid
-      //   val readRegUop = io.IN_readRegUop(i).bits
-      //   when (readRegValid && FuType.isOneCycle(readRegUop.fuType)) {
-      //     when (queue(j).prs1 === readRegUop.prd) {
-      //       queue(j).src1Ready := true.B
-      //       writebackReady(j)(0) := true.B
-      //     }
-      //     when (queue(j).prs2 === readRegUop.prd) {
-      //       queue(j).src2Ready := true.B
-      //       writebackReady(j)(1) := true.B
-      //     }
-      //   }
-      // }
-        val issueValid = io.IN_issueUops(i).valid
-        val issueUop = io.IN_issueUops(i).bits
-        when (issueValid && FuType.isOneCycle(issueUop.fuType)) {
-          when (queue(j).prs1 === issueUop.prd) {
-            queue(j).src1Ready := true.B
-            writebackReady(j)(0) := true.B
-          }
-          when (queue(j).prs2 === issueUop.prd) {
-            queue(j).src2Ready := true.B
-            writebackReady(j)(1) := true.B
-          }
-        }
-      }
-      val lsuWakeUpValid = io.IN_lsuWakeUp.valid
-      val lsuWakeUpUop = io.IN_lsuWakeUp.bits
-      when (lsuWakeUpValid) {
-        when (queue(j).prs1 === lsuWakeUpUop.prd) {
+    
+    for (i <- 0 until NUM_ALU) {
+      // ** For one-cycle Operation, the issued Uop can wake up dependencies now
+      val issueValid = io.IN_issueUops(i).valid
+      val issueUop = io.IN_issueUops(i).bits
+      when (issueValid && FuType.isOneCycle(issueUop.fuType)) {
+        when (queue(j).prs1 === issueUop.prd) {
           queue(j).src1Ready := true.B
           writebackReady(j)(0) := true.B
         }
-        when (queue(j).prs2 === lsuWakeUpUop.prd) {
+        when (queue(j).prs2 === issueUop.prd) {
           queue(j).src2Ready := true.B
           writebackReady(j)(1) := true.B
         }
-      }      
+      }
     }
-  }  
+    when (lsuWakeUpValid) {
+      when (queue(j).prs1 === lsuWakeUpUop.prd) {
+        queue(j).src1Ready := true.B
+        writebackReady(j)(0) := true.B
+      }
+      when (queue(j).prs2 === lsuWakeUpUop.prd) {
+        queue(j).src2Ready := true.B
+        writebackReady(j)(1) := true.B
+      }
+    }
+      
+    when (lsuSpecWakeUpValid && !specFailValid) {
+      when (queue(j).prs1 === lsuSpecWakeUpUop.prd) {
+        specReady(j)(0) := true.B
+      }
+      when (queue(j).prs2 === lsuSpecWakeUpUop.prd) {
+        specReady(j)(1) := true.B
+      }
+    }
+  }
 
   val ldqLimitPtr = Wire(RingBufferPtr(LDQ_SIZE))
   val stqLimitPtr = Wire(RingBufferPtr(STQ_SIZE))
@@ -154,8 +144,8 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
   dontTouch(stqBeforeVec)
 
   val readyVec = (0 until IQ_SIZE).map(i => {
-    (i.U < headIndex && (queue(i).src1Ready || writebackReady(i)(0)) && 
-                        (queue(i).src2Ready || writebackReady(i)(1))) &&
+    (i.U < headIndex && (queue(i).src1Ready || writebackReady(i)(0) || specReady(i)(0)) && 
+                        (queue(i).src2Ready || writebackReady(i)(1) || specReady(i)(1))) &&
     // * Load ops should also check for stqPtr since it needs to make sure every store before it is committed
     (!hasFU(FuType.LSU).B || queue(i).fuType =/= FuType.LSU || !LSUOp.isLoad(queue(i).opcode) || (queue(i).ldqPtr.isBefore(ldqLimitPtr) && queue(i).stqPtr.isBefore(stqLimitPtr))) &&
     (!hasFU(FuType.LSU).B || queue(i).fuType =/= FuType.LSU || !LSUOp.isStore(queue(i).opcode) || (queue(i).stqPtr.isBefore(stqLimitPtr))) &&
@@ -164,7 +154,9 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
     (queue(i).fuType =/= FuType.DIV || !io.IN_idivBusy)
   })
   
-  val hasReady = readyVec.reduce(_ || _)
+  val specFailReady = specFailValid && specFailSrcReady && ((specFail.fuType =/= FuType.ALU && specFail.fuType =/= FuType.BRU) || !wbReserved(0))
+
+  val hasReady = !specFailReady && readyVec.reduce(_ || _)
   val deqIndex = PriorityEncoder(readyVec)
  
   val updateValid = io.OUT_issueUop.fire || !uopValid
@@ -188,8 +180,9 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
   }
 
   // ** Update output Registers
-  uopNext := queue(deqIndex)
-  when (doDeq) {
+  uopNext := Mux(specFailReady, specFail, queue(deqIndex))
+
+  when(updateValid && (specFailReady || hasReady)) {
     uop := uopNext
     when(uopNext.fuType === FuType.MUL) {
       if(IMUL_DELAY != 0) {
@@ -199,6 +192,12 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
     when(uopNext.fuType === FuType.DIV) {
       wbReserved(IDIV_DELAY - 1) := true.B      
     }
+    when(specFailReady) {
+      specFailValid := false.B  
+    }
+  }
+
+  when (doDeq) {
     for (i <- 0 until IQ_SIZE - 1) {
       when (i.U >= deqIndex) {
         queue(i) := queue(i + 1)
@@ -213,7 +212,7 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
     val renameUop = io.IN_renameUop.bits
     queue(enqIndex) := renameUop
     // * fix srcReady
-    for (i <- 0 until WRITEBACK_WIDTH) {
+    for (i <- 0 until MACHINE_WIDTH) {
       val writebackValid = io.IN_writebackUop(i).valid
       val writebackUop = io.IN_writebackUop(i).bits
       when (writebackValid) {
@@ -233,13 +232,33 @@ class IssueQueue(FUs: Seq[UInt]) extends CoreModule {
     }
   }
 
-  when (io.IN_flush) {
+
+  when(uopValid && uopSpecWakeUp) {
+    when(!lsuWakeUpValid || (specPrd =/= lsuWakeUpUop.prd)) {
+      specFailValid := true.B
+      specFail := uop
+      specFailPrd := specPrd
+      specFailSrcReady := false.B
+      uopValid := false.B
+    }
+  }
+
+  when (updateValid) {
+    uopValid := specFailReady || hasReady
+    uopSpecWakeUp := !specFailReady && specReady(deqIndex).reduce(_ || _)
+  }
+
+  when(io.IN_flush) {
     uopValid := false.B
-  }.elsewhen (updateValid) {
-    uopValid := hasReady
+    specFailValid := false.B
   }
 
   // ** Output
-  io.OUT_issueUop.valid := uopValid
+  io.OUT_issueUop.valid := uopValid && (!uopSpecWakeUp || (lsuWakeUpValid && specPrd === lsuWakeUpUop.prd))
   io.OUT_issueUop.bits := uop
+
+  if(!DO_SPEC_WAKEUP) {
+    specFailValid := false.B
+    uopSpecWakeUp := false.B
+  }
 }
