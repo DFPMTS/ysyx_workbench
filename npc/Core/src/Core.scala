@@ -434,6 +434,12 @@ class Core extends CoreModule {
   lsu.io.IN_storeBufferBypassResp <> storeBuffer.io.OUT_storeBypassResp
   storeBuffer.io.IN_storeBypassReq <> lsu.io.OUT_storeBypassReq
 
+  lsu.io.IN_storeQueueEmpty := storeQueue.io.OUT_storeQueueEmpty
+  lsu.io.IN_storeBufferEmpty := storeBuffer.io.OUT_storeBufferEmpty
+
+  loadQueue.io.IN_storeQueueEmpty := storeQueue.io.OUT_storeQueueEmpty
+  loadQueue.io.IN_storeBufferEmpty := storeBuffer.io.OUT_storeBufferEmpty
+
   // ** Amo Unit
   amoUnit.io.IN_AGUUop <> aguUop
   amoUnit.io.OUT_amoUop <> lsu.io.IN_amoUop
@@ -477,6 +483,7 @@ class Core extends CoreModule {
   cacheController.io.IN_L2FastRead <> l2cache.io.OUT_L2FastRead
   lsu.io.IN_L2FastRead <> l2cache.io.OUT_L2FastRead
   l2cache.io.IN_L2FastWrite <> cacheController.io.OUT_L2FastWrite
+  l2cache.io.IN_L2InvReq <> lsu.io.OUT_L2InvReq
 
   val l2Out = Wire(new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH))
   dontTouch(l2Out)

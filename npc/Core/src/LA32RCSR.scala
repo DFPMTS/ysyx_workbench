@@ -400,22 +400,28 @@ class LA32RCSR extends CoreModule {
     }.elsewhen(cpucfgIndex === 0x10.U) {
       val cpucfg0x10 = WireInit(0.U.asTypeOf(new CPUCFG0x10))
       cpucfg0x10.L2U_Inclusive := 0.U
-      cpucfg0x10.L2U_Present := 0.U
+      cpucfg0x10.L2U_Present := "b11".U
       cpucfg0x10.L1D_Present := 1.U
       cpucfg0x10.L1I_Present := 1.U
       rdata := cpucfg0x10.asUInt
     }.elsewhen(cpucfgIndex === 0x11.U) {
       val cpucfg0x11 = WireInit(0.U.asTypeOf(new CPUCFG0x11))
-      cpucfg0x11.Linesize := 5.U
-      cpucfg0x11.Index := 7.U
+      cpucfg0x11.Linesize := 6.U
+      cpucfg0x11.Index := 6.U
       cpucfg0x11.Way := 1.U
       rdata := cpucfg0x11.asUInt
     }.elsewhen(cpucfgIndex === 0x12.U) {
       val cpucfg0x12 = WireInit(0.U.asTypeOf(new CPUCFG0x11))
-      cpucfg0x12.Linesize := 5.U
-      cpucfg0x12.Index := 7.U
+      cpucfg0x12.Linesize := 6.U
+      cpucfg0x12.Index := 6.U
       cpucfg0x12.Way := 1.U
       rdata := cpucfg0x12.asUInt
+    }.elsewhen(cpucfgIndex === 0x13.U) {
+      val cpucfg0x13 = WireInit(0.U.asTypeOf(new CPUCFG0x11))
+      cpucfg0x13.Linesize := 6.U
+      cpucfg0x13.Index := 9.U
+      cpucfg0x13.Way := 1.U
+      rdata := cpucfg0x13.asUInt
     }
   }.elsewhen(isRdcntID) {
     rdata := tid

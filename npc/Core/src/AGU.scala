@@ -155,15 +155,16 @@ class AGU extends CoreModule {
   val inUop = io.IN_readRegUop.bits
   val inValid = io.IN_readRegUop.fire
 
-  val memLen = Mux(inUop.fuType === FuType.AMO, 2.U, uopNext.opcode(2, 1))
+  val memLen = Mux(inUop.fuType === FuType.AMO, 
+                   Mux(inUop.opcode === AMOOp.L2CACOP, 0.U, 2.U),
+                   uopNext.opcode(2, 1))
   
   val doTranslate = io.IN_VMCSR.doTranslate()
   // * calculate addr
   val addr = uopNext.addr;
 
   val isStore = (uopNext.fuType === FuType.LSU && LSUOp.isStore(uopNext.opcode)) || 
-                (uopNext.fuType === FuType.AMO && uopNext.opcode =/= AMOOp.LR_W)
-
+                (uopNext.fuType === FuType.AMO && uopNext.opcode === AMOOp.SC_W)
 
   // * TLB access    
   io.OUT_TLBReq.valid := uopNextValid && doTranslate

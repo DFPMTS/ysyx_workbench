@@ -30,182 +30,6 @@ trait HasLSUOps {
   def SW = BitPat("b1100")
 }
 
-class LSUIO extends CoreBundle {
-  val IN_AGUUop = Flipped(Decoupled(new AGUUop))
-  val OUT_writebackUop = Valid(new WritebackUop)
-  val master = new AXI4(32, 32)
-}
-
-class LSU extends CoreModule with HasLSUOps {
-  val io = IO(new LSUIO)
-
-  val amoALU = Module(new AMOALU)
-
-  val sIdle :: sWaitResp :: sWaitAmoSave :: Nil = Enum(3)
-  val state = RegInit(sIdle)
-
-  val respValid = Wire(Bool())
-  val insert1 = (state === sIdle && io.IN_AGUUop.valid)
-  val insert2 = (state === sWaitResp && respValid)
-  val insert = insert1 || insert2
-  val inUop = RegEnable(io.IN_AGUUop.bits, insert1)
-  val opcode = inUop.opcode
-  val isLr = inUop.fuType === FuType.AMO && opcode === AMOOp.LR_W
-  val isSc = inUop.fuType === FuType.AMO && opcode === AMOOp.SC_W
-
-  // * reservation station
-  val reservation = Reg(UInt(XLEN.W))
-  val reservationValid = RegInit(false.B)
-  val scFail = inUop.addr =/= reservation || !reservationValid
-  respValid := (io.master.r.fire || io.master.b.fire) || (isSc && scFail)
-  
-  io.IN_AGUUop.ready := state === sIdle
-
-  state := MuxLookup(state, sIdle)(
-    Seq(
-      sIdle -> Mux(io.IN_AGUUop.valid, sWaitResp, sIdle),
-      sWaitResp -> Mux(respValid, 
-      Mux(inUop.fuType === FuType.LSU || isLr || isSc, 
-        sIdle, sWaitAmoSave), sWaitResp),
-      sWaitAmoSave -> Mux(io.master.b.fire, sIdle, sWaitAmoSave)
-    )
-  )
-  
-  val uopRead  = state === sWaitResp && ((inUop.fuType === FuType.LSU && opcode(3) === R) || (inUop.fuType === FuType.AMO && opcode =/= AMOOp.SC_W))
-  val uopWrite = (state === sWaitResp && ((inUop.fuType === FuType.LSU && opcode(3) === W) || (isSc && !scFail))) || 
-                 (state === sWaitAmoSave && inUop.fuType === FuType.AMO)
-
-  val memLen     = Mux(inUop.fuType === FuType.LSU, opcode(2, 1), 2.U)
-  val loadU      = opcode(0)
-
-  val addr        = inUop.addr
-  val addr_offset = addr(1, 0)
-
-  // ar_valid/aw_valid/w_valid 当一个valid请求进入时置为true,在相应通道握手后为false
-  val ar_valid = RegInit(false.B)
-  ar_valid := Mux(
-    insert,
-    true.B,
-    Mux(io.master.ar.fire, false.B, ar_valid)
-  )
-  io.master.ar.valid      := ar_valid && uopRead
-  io.master.ar.bits.addr  := addr
-  io.master.ar.bits.id    := 0.U
-  io.master.ar.bits.len   := 0.U
-  io.master.ar.bits.size  := memLen
-  io.master.ar.bits.burst := "b01".U
-
-  val rdata = io.master.r.bits.data
-  val rdataReg = RegEnable(rdata, io.master.r.fire)
-  io.master.r.ready := true.B
-
-  amoALU.io.IN_src1 := rdataReg
-  amoALU.io.IN_src2 := inUop.wdata
-  amoALU.io.IN_opcode := opcode
-
-  val aw_valid = RegInit(false.B)
-  aw_valid := Mux(
-    insert,
-    true.B,
-    Mux(io.master.aw.fire, false.B, aw_valid)
-  )
-  io.master.aw.valid      := aw_valid && uopWrite
-  io.master.aw.bits.addr  := addr
-  io.master.aw.bits.id    := 0.U
-  io.master.aw.bits.len   := 0.U
-  io.master.aw.bits.size  := memLen
-  io.master.aw.bits.burst := "b01".U
-
-  val w_valid = RegInit(false.B)
-  w_valid := Mux(
-    insert,
-    true.B,
-    Mux(io.master.w.fire, false.B, w_valid)
-  )
-  val wData = Mux(
-    state === sWaitResp,
-    inUop.wdata << (addr_offset << 3.U),
-    amoALU.io.OUT_res
-  )
-  io.master.w.valid     := w_valid && uopWrite
-  io.master.w.bits.data := wData
-  io.master.w.bits.strb := MuxLookup(memLen, 0.U(4.W))(
-    Seq(
-      0.U(2.W) -> "b0001".U,
-      1.U(2.W) -> "b0011".U,
-      2.U(2.W) -> "b1111".U
-    )
-  ) << addr_offset
-  io.master.w.bits.last := true.B
-
-  io.master.b.ready := true.B
-
-  val raw_data      = rdata >> (addr_offset << 3.U)
-  val sign_ext_data = WireDefault(raw_data)
-  when(memLen === BYTE) {
-    sign_ext_data := Cat(Fill(24, ~loadU & raw_data(7)), raw_data(7, 0))
-  }.elsewhen(memLen === HALF) {
-    sign_ext_data := Cat(Fill(16, ~loadU & raw_data(15)), raw_data(15, 0))
-  }
-
-  val uop = Reg(new WritebackUop)
-  val uopValid = RegInit(false.B)
-  
-  uopValid := state === sWaitResp && respValid
-  
-  uop.data := Mux(isSc, scFail, sign_ext_data)
-  uop.prd := inUop.prd
-  uop.robPtr := inUop.robPtr
-  uop.flag := 0.U
-  uop.target := 0.U
-  uop.dest := inUop.dest
-  when(uopValid) {
-    when(isLr) {
-      reservation := addr
-      reservationValid := true.B
-    }.elsewhen(isSc) {
-      reservationValid := false.B
-    }
-  }
-
-  io.OUT_writebackUop.bits := uop
-  io.OUT_writebackUop.valid := uopValid
-}
-
-class AMOALUIO extends CoreBundle {
-  val IN_src1 = Flipped(UInt(XLEN.W))
-  val IN_src2 = Flipped(UInt(XLEN.W))
-  val IN_opcode = Flipped(UInt(OpcodeWidth.W))
-  val OUT_res = UInt(XLEN.W)
-}
-
-class AMOALU extends CoreModule {
-  val io = IO(new AMOALUIO)
-
-  val src1 = io.IN_src1
-  val src2 = io.IN_src2
-  val opcode = io.IN_opcode
-
-  val res = Wire(UInt(XLEN.W))
-  res := 0.U
-
-  res := MuxLookup(opcode, src2)(
-    Seq(
-      AMOOp.SWAP_W -> src2,
-      AMOOp.ADD_W  -> (src1 + src2),
-      AMOOp.AND_W  -> (src1 & src2),
-      AMOOp.OR_W   -> (src1 | src2),
-      AMOOp.XOR_W  -> (src1 ^ src2),
-      AMOOp.MIN_W  -> Mux(src1.asSInt < src2.asSInt, src1, src2),
-      AMOOp.MAX_W  -> Mux(src1.asSInt > src2.asSInt, src1, src2),
-      AMOOp.MINU_W -> Mux(src1 < src2, src1, src2),
-      AMOOp.MAXU_W -> Mux(src1 > src2, src1, src2)      
-    )
-  )
-
-  io.OUT_res := res
-}
-
 class DTagReq extends CoreBundle {
   val addr = UInt(XLEN.W)
   val write = Bool()
@@ -289,9 +113,13 @@ class NewLSUIO extends CoreBundle {
   val OUT_writebackUop = Valid(new WritebackUop)
 
   val IN_flushDCache = Flipped(Bool())
+  val IN_storeQueueEmpty = Flipped(Bool())
+  val IN_storeBufferEmpty = Flipped(Bool())
   val OUT_flushBusy = Bool()
 
   val IN_L2FastRead = Flipped(Valid(new L2FastRead))
+
+  val OUT_L2InvReq = Decoupled(new L2InvReq)
 
   // * Speculative wake up
   val OUT_specWakeUp = Valid(new WritebackUop)
@@ -343,7 +171,6 @@ class NewLSU extends CoreModule with HasLSUOps {
   // * Submodules
   val loadResultBuffer = Module(new LoadResultBuffer)
   val uncachedLSU = Module(new UncachedLSU)
-  val amoALU = Module(new AMOALU)
 
   io.OUT_cacheCtrlUop.valid := false.B
   io.OUT_cacheCtrlUop.bits := DontCare
@@ -389,7 +216,7 @@ class NewLSU extends CoreModule with HasLSUOps {
   val replaceOpcode = Reg(UInt(OpcodeWidth.W))
 
   // * Amo State Machine
-  val sAmoIdle :: sAmoLoad :: sAmoALU :: sAmoStore :: sAmoWriteback :: Nil = Enum(5)
+  val sAmoIdle :: sAmoLoad :: sAmoL2CACOP :: sAmoStore :: sAmoWriteback :: Nil = Enum(5)
   val amoState = RegInit(sAmoIdle)
   val amoUopReg = Reg(new AGUUop)
 
@@ -500,6 +327,7 @@ class NewLSU extends CoreModule with HasLSUOps {
 
   // * Amo 
   val inAmoUop = io.IN_amoUop.bits
+  val inAmoIsL2CACOP = inAmoUop.opcode === AMOOp.L2CACOP
   val inAmoIsLr = inAmoUop.opcode === AMOOp.LR_W
   val inAmoIsSc = inAmoUop.opcode === AMOOp.SC_W
   val amoUop = io.IN_amoUop.valid && serveAmo
@@ -786,7 +614,6 @@ class NewLSU extends CoreModule with HasLSUOps {
   val amoIsLr = amoUopReg.opcode === AMOOp.LR_W
   val amoIsSc = amoUopReg.opcode === AMOOp.SC_W  
   val amoLoadData = Reg(UInt(XLEN.W))
-  val amoStoreData = Reg(UInt(XLEN.W))
   val amoHitWayReg = Reg(UInt(log2Up(DCACHE_WAYS).W))
   val amoSuccess = WireInit(false.B)
   val scFail = RegInit(false.B)
@@ -805,25 +632,27 @@ class NewLSU extends CoreModule with HasLSUOps {
   amoWriteback.target := 0.U
   amoWriteback.dest := amoUopReg.dest
 
-  amoALU.io.IN_opcode := amoUopReg.opcode
-  amoALU.io.IN_src1 := amoLoadData
-  amoALU.io.IN_src2 := amoUopReg.wdata
-  when(amoState === sAmoALU) {
-    amoStoreData := amoALU.io.OUT_res
-  }
-
   val inScFail =  !reservationValid || io.IN_amoUop.bits.addr =/= reservation
 
   switch(amoState) {
     is(sAmoIdle) {
       when(amoUop) {        
-        when(inAmoIsSc && inScFail) {
+        when(inAmoIsL2CACOP) {
+          amoState := sAmoL2CACOP
+        }.elsewhen(inAmoIsSc && inScFail) {
           scFail := true.B
           amoState := sAmoWriteback
         }.otherwise {
           scFail := false.B
           amoState := sAmoLoad
         }
+      }
+    }
+    is(sAmoL2CACOP) {
+      when(io.OUT_L2InvReq.fire) {
+        amoState := sAmoWriteback
+        amoAckValid := true.B
+        amoAck.resp := 0.U
       }
     }
     is(sAmoLoad) {
@@ -855,10 +684,7 @@ class NewLSU extends CoreModule with HasLSUOps {
       amoHitWayReg := amoTagHitWay
       val amoHitCacheline = Mux1H(amoTagHitOH, dataResp)
       amoLoadData := amoHitCacheline(amoUopReg.addr(log2Up(CACHE_LINE_B) - 1, 2))
-      amoState := Mux(!amoLoadFailed, Mux(amoIsSc, sAmoStore, Mux(amoIsLr, sAmoWriteback, sAmoALU)), sAmoIdle)
-    }
-    is(sAmoALU) {
-      amoState := sAmoStore
+      amoState := Mux(!amoLoadFailed, Mux(amoIsSc, sAmoStore, sAmoWriteback), sAmoIdle)
     }
     is(sAmoStore) {
       val offset = amoUopReg.addr(log2Up(CACHE_LINE_B) - 1, 2)
@@ -867,7 +693,7 @@ class NewLSU extends CoreModule with HasLSUOps {
       io.OUT_dataWrite.bits.write := true.B
       io.OUT_dataWrite.bits.way := amoHitWayReg
       io.OUT_dataWrite.bits.wmask := "b1111".U << (offset * 4.U)
-      io.OUT_dataWrite.bits.data := Mux(amoIsSc, amoUopReg.wdata, amoStoreData) << (offset * 32.U)
+      io.OUT_dataWrite.bits.data := amoUopReg.wdata << (offset * 32.U)
 
       amoSuccess := io.OUT_dataWrite.ready
       
@@ -936,7 +762,7 @@ class NewLSU extends CoreModule with HasLSUOps {
       // * Wait for all MSHR & cacheCtrlUop to be idle
       val hasActiveMSHR = io.IN_mshrs.map(_.valid).reduce(_ || _)
       
-      when(!hasActiveMSHR && !io.OUT_cacheCtrlUop.valid) {
+      when(!hasActiveMSHR && !io.OUT_cacheCtrlUop.valid && io.IN_storeQueueEmpty && io.IN_storeBufferEmpty) {
         flushState := sFlushRead
       }
     }
@@ -983,6 +809,10 @@ class NewLSU extends CoreModule with HasLSUOps {
     io.OUT_writebackUop.valid := amoState === sAmoWriteback
     io.OUT_writebackUop.bits := amoWriteback
   }
+
+  io.OUT_L2InvReq.valid := amoState === sAmoL2CACOP
+  io.OUT_L2InvReq.bits.addr := amoUopReg.addr
+  io.OUT_L2InvReq.bits.op := CACOP.HIT
 
   when(io.IN_flush) {
     when(LSUOp.isLoad(stage(0).opcode) && stage(0).dest =/= Dest.PTW) {

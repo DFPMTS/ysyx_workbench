@@ -2,11 +2,17 @@ import chisel3._
 import chisel3.util._
 import utils._
 
+class L2InvReq extends CoreBundle {
+  val addr = UInt(AXI_ADDR_WIDTH.W)
+  val op = UInt(2.W)
+}
+
 class L2CacheIO extends CoreBundle {
   val IN_axi = Flipped(new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH))
   val OUT_axi = new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)
   val OUT_L2FastRead = Valid(new L2FastRead)
   val IN_L2FastWrite = Flipped(Decoupled(new L2FastWrite))
+  val IN_L2InvReq = Flipped(Decoupled(new L2InvReq))
 }
 
 class L2Cache extends CoreModule {
@@ -33,7 +39,7 @@ class L2Cache extends CoreModule {
 
   // State machine
   val (sIdle :: sAR :: sAW :: sW :: sLookUp0 :: 
-       sLookUp1 :: sLookUp2 :: sLookUpFin :: sReturnDataToL1 :: sForwardAR :: 
+       sLookUp1 :: sINV :: sLookUpFin :: sReturnDataToL1 :: sForwardAR :: 
        sForwardWaitR :: sFlushActive :: sForwardAW :: sForwardWaitB :: sCollectW :: 
        sWaitReplaceFin :: Nil) = Enum(16)
   val state = RegInit(sFlushActive)
@@ -58,6 +64,7 @@ class L2Cache extends CoreModule {
 
   val READ = 0.U(2.W)
   val WRITE = 1.U(2.W)
+  val INV   = 2.U(2.W)
   val inOp = RegInit(0.U(2.W))
 
   val inWCnt = RegInit(0.U(8.W))
@@ -230,6 +237,10 @@ class L2Cache extends CoreModule {
         inAwId := io.IN_axi.aw.bits.id
         inOp := WRITE
         state := sAW
+      }.elsewhen(io.IN_L2InvReq.valid) {
+        lookupAddr := io.IN_L2InvReq.bits.addr
+        inOp := INV
+        state := sINV
       }
     }
     is(sAR) {
@@ -281,9 +292,8 @@ class L2Cache extends CoreModule {
       // Calculate tagRead / dataRead
       state := sLookUpFin
     }
-    is(sLookUp2) {
-      // Calculate hitData2/hit2/hitWayOH2
-      state := sLookUpFin
+    is(sINV) {
+      state := sLookUp1
     }
     is(sLookUpFin) {
       isOutARCacheLine := false.B
@@ -412,12 +422,20 @@ class L2Cache extends CoreModule {
       }
     }
     is(sReplacePrepareWriteBack) {
-      when(replaceTag2.valid && replaceTag2.dirty && !hit2) {
-        // If the tag is valid, and not the same address, prepare to write back
-        replaceState := sReplaceAW
+      when(inOp === INV) {
+        when(hit2) {
+          replaceState := sReplaceAW
+        }.otherwise {
+          replaceState := sReplaceFin
+        }
       }.otherwise {
-        // If the tag is invalid or is the same cacheline, directly write new data
-        replaceState := sReplaceWriteNew
+        when(replaceTag2.valid && replaceTag2.dirty && !hit2) {
+          // If the tag is valid, and not the same address, prepare to write back
+          replaceState := sReplaceAW
+        }.otherwise {
+          // If the tag is invalid or is the same cacheline, directly write new data
+          replaceState := sReplaceWriteNew
+        }
       }
     }
     is(sReplaceAW) {
@@ -458,7 +476,7 @@ class L2Cache extends CoreModule {
       doWriteTag := true.B
       doWriteData := true.B
       writeTag.dirty := Mux(isOutARCacheLine, false.B, inWCacheLineDirty)
-      writeTag.valid := true.B
+      writeTag.valid := Mux(inOp === INV, false.B, true.B)
       writeTag.tag := lookupTag
       writeData := Mux(isOutARCacheLine, l2FastRead.data.asUInt, inWCacheLine.asUInt)
 
@@ -468,6 +486,9 @@ class L2Cache extends CoreModule {
       replaceState := sReplaceIdle
     }
   }
+
+  // * L2InvReq
+  io.IN_L2InvReq.ready := state === sINV
 
   // * IN 
   // ** AR

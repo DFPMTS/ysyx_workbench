@@ -236,7 +236,9 @@ class LA32RDecode extends CoreModule {
   def csrop      = BitPat("b00000100 ?????????????? ????? ?????") // rj=0 -> CSRRD, rj=1 -> CSRWR, rj!=0,1 -> CSRXCHG
 
   // Cache and TLB instructions
-  def cacop      = BitPat("b0000011000 ??????? ????? ????? ?????") // CACOP code, rj, si12
+  def icacop     = BitPat("b0000011000 ??????? ????? ????? ??000") // CACOP code, rj, si12
+  def dcacop     = BitPat("b0000011000 ??????? ????? ????? ??001") // CACOP code, rj, si12
+  def l2cacop    = BitPat("b0000011000 ??????? ????? ????? ??010") // CACOP code, rj, si12
   def tlbsrch    = BitPat("b0000011001 0010000 01010 00000 00000") // TLBSRCH
   def tlbrd      = BitPat("b0000011001 0010000 01011 00000 00000") // TLBRD
   def tlbwr      = BitPat("b0000011001 0010000 01100 00000 00000") // TLBWR
@@ -304,8 +306,8 @@ div_w      -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.DIV,  DIVOp.DIV,    
 mod_w      -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.DIV,  DIVOp.REM,             LA32RImmType.X,      N),
 div_wu     -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.DIV,  DIVOp.DIVU,            LA32RImmType.X,      N),
 mod_wu     -> List(N, Y, SrcType.REG,  SrcType.REG,  FuType.DIV,  DIVOp.REMU,            LA32RImmType.X,      N),
-break      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.BRK,      LA32RImmType.X,      N),
-syscall    -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.SYS,      LA32RImmType.X,      N),
+break      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.BRK,      LA32RImmType.X,      Y),
+syscall    -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.SYS,      LA32RImmType.X,      Y),
 slli_w     -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.LEFT,            LA32RImmType.UI5,    N),
 srli_w     -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.RIGHT,           LA32RImmType.UI5,    N),
 srai_w     -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.ARITH,           LA32RImmType.UI5,    N),
@@ -316,7 +318,9 @@ andi       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.AND,    
 ori        -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.OR,              LA32RImmType.UI12,   N),
 xori       -> List(N, Y, SrcType.REG,  SrcType.IMM,  FuType.ALU,  ALUOp.XOR,             LA32RImmType.UI12,   N),
 csrop      -> List(N, Y, SrcType.REG,  SrcType.ZERO, FuType.CSR,  CSROp.CSRXCHG,         LA32RImmType.CSR,    Y),
-cacop      -> List(N, N, SrcType.REG,  SrcType.IMM,  FuType.FLAG, DecodeFlagOp.NONE,     LA32RImmType.SI12,   N), // TODO
+icacop     -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.FENCE_I,  LA32RImmType.SI12,   Y), // TODO
+dcacop     -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.FENCE_I,  LA32RImmType.SI12,   Y), // TODO
+l2cacop    -> List(N, N, SrcType.REG,  SrcType.IMM,  FuType.AMO,  AMOOp.L2CACOP,         LA32RImmType.SI12,   Y), // TODO
 tlbsrch    -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.TLBSRCH,  LA32RImmType.X,      Y), // TODO
 tlbrd      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.TLBRD,    LA32RImmType.X,      Y), // TODO
 tlbwr      -> List(N, N, SrcType.ZERO, SrcType.ZERO, FuType.FLAG, DecodeFlagOp.TLBWR,    LA32RImmType.X,      Y), // TODO

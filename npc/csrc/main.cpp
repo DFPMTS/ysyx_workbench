@@ -99,7 +99,7 @@ int main(int argc, char *argv[]) {
     //   running.store(false);
     //   // begin_wave = true;
     // }
-    // if (totalCycles > 200000 && totalCycles < 220000) {
+    // if (totalCycles > 100000 && totalCycles < 130000) {
     //   begin_wave = true;
     // } else {
     //   begin_wave = false;

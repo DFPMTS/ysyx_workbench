@@ -33,6 +33,9 @@ class LoadQueueIO extends CoreBundle {
   val OUT_ldUop = Decoupled(new AGUUop)
   val IN_retireStqPtr = Flipped(RingBufferPtr(STQ_SIZE))
 
+  val IN_storeQueueEmpty = Flipped(Bool())
+  val IN_storeBufferEmpty = Flipped(Bool())
+
   val IN_flush = Flipped(Bool())
 }
 
@@ -74,7 +77,8 @@ class LoadQueue extends CoreModule {
 
   val ldqReady = VecInit(ldq.zipWithIndex.map{ 
     case (uop, index) => 
-      storeCommited(uop.stqPtr, io.IN_commitStqPtr) && (!uop.isUncached || (io.IN_robTailPtr.index === uop.robPtr.index && io.IN_retireStqPtr === uop.stqPtr))
+      storeCommited(uop.stqPtr, io.IN_commitStqPtr) && (!uop.isUncached || (io.IN_robTailPtr.index === uop.robPtr.index && 
+      io.IN_storeQueueEmpty && io.IN_storeBufferEmpty))
   })
   // * choose
   val issueReady = ldqValid.asUInt & ~(ldqIssued.asUInt) & ldqReady.asUInt

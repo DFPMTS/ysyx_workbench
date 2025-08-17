@@ -7,8 +7,10 @@ import scala.util.Random
 class SRAM extends CoreModule {
   val io = IO(Flipped(new AXI4(AXI_DATA_WIDTH, AXI_ADDR_WIDTH)))
 
-  val read_lat  = random.LFSR(6, true.B, Some(3))
-  val write_lat = random.LFSR(5, true.B, Some(1))
+  // val read_lat  = random.LFSR(3, true.B, Some(3))
+  // val write_lat = random.LFSR(2, true.B, Some(1))
+  val read_lat  = 0.U
+  val write_lat = 0.U
   val counter   = RegInit(0.U(10.W))
 
   val out_data_buffer = Reg(UInt(AXI_DATA_WIDTH.W))
