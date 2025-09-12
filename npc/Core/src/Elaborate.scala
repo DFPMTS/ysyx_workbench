@@ -25,10 +25,11 @@ object Elaborate_npc extends App {
       // make yosys happy
       // see https://github.com/llvm/circt/blob/main/docs/VerilogGeneration.md
       "disallowLocalVariables",
-      "disallowPackedArrays",
+      // "disallowPackedArrays",
       "locationInfoStyle=wrapInAtSquareBracket"
     ).reduce(_ + "," + _)
   )
+  println("firtool version", chisel3.BuildInfo.firtoolVersion, chisel3.BuildInfo.version, chisel3.BuildInfo.scalaVersion )
   circt.stage.ChiselStage.emitSystemVerilogFile(new npc_top, Array("-td", "./vsrc", "--split-verilog"), firtoolOptions)
 }
 

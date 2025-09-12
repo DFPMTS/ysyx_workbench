@@ -1,5 +1,6 @@
 import chisel3._
 import chisel3.util._
+import utils.CoreBundle
 
 trait HasALUFuncs {
   def ALU_X = BitPat("b????")
@@ -28,25 +29,34 @@ trait HasALUFuncs {
   def ALU_GEU = "b1111".U(4.W)
 }
 
+class ALUIO extends CoreBundle {
+  val IN_readRegUop = Flipped(Decoupled(new ReadRegUop))
+  val OUT_writebackUop = Valid(new WritebackUop)
+  val IN_flush = Input(Bool())
+}
+
 class ALU extends Module with HasALUFuncs {
-  val io = IO(new Bundle {
-    val op1        = Input(UInt(32.W))
-    val op2        = Input(UInt(32.W))
-    val aluFunc    = Input(UInt(4.W))
-    val out        = Output(UInt(32.W))
-    val cmpOut     = Output(Bool())
-    val jumpTarget = Output(UInt(32.W))
-  })
+  val io = IO(new ALUIO)
+
+  val op1        = io.IN_readRegUop.bits.src1
+  val op2        = io.IN_readRegUop.bits.src2
+  val imm        = io.IN_readRegUop.bits.imm
+  val pc         = io.IN_readRegUop.bits.pc
+  val fuType     = io.IN_readRegUop.bits.fuType
+  val aluFunc    = io.IN_readRegUop.bits.opcode
+  val out        = Wire(UInt(32.W))
+  val cmpOut     = out(0)
+  val jumpTarget = Wire(UInt(32.W))
 
   // [adder] add / sub
-  val isSub    = ~(io.aluFunc === ALU_ADD) // for cmp
-  val op2Adder = Mux(isSub, ~io.op2, io.op2)
-  val addRes   = io.op1 + op2Adder + isSub
+  val isSub    = ~(aluFunc === ALUOp.ADD || aluFunc === BRUOp.JAL || aluFunc === BRUOp.JALR) // for cmp
+  val op2Adder = Mux(isSub, ~op2, op2)
+  val addRes   = op1 + op2Adder + isSub
 
   // [shift] left / right / arith
-  val shamt = io.op2(4, 0)
+  val shamt = op2(4, 0)
   // [logic] and / or / xor
-  val xorRes = io.op1 ^ io.op2
+  val xorRes = op1 ^ op2
   // [cmp] eq / ne / lt / ge
   val eqRes = xorRes === 0.U
   val neRes = ~eqRes
@@ -57,39 +67,76 @@ class ALU extends Module with HasALUFuncs {
         0         1        1       0
         1         0        0       1
    */
-  val op1MSB = io.op1(31);
-  val op2MSB = io.op2(31);
+  val op1MSB = op1(31);
+  val op2MSB = op2(31);
   val subMSB = addRes(31);
-  val ltRes  = Mux(op1MSB === op2MSB, subMSB, Mux(io.aluFunc(0), op2MSB, op1MSB))
+  val ltRes  = Mux(op1MSB === op2MSB, subMSB, Mux(aluFunc(0), op2MSB, op1MSB))
   val geRes  = ~ltRes
 
-  io.out := MuxLookup(io.aluFunc, addRes)(
+  // ** ALU's default out should be add
+  out := MuxLookup(aluFunc, addRes)(
     Seq(
-      ALU_LEFT -> (io.op1 << shamt),
-      ALU_RIGHT -> (io.op1 >> shamt),
-      ALU_EQ -> eqRes,
-      ALU_NE -> neRes,
-      ALU_AND -> (io.op1 & io.op2),
-      ALU_OR -> (io.op1 | io.op2),
-      ALU_XOR -> xorRes,
-      ALU_ARITH -> (io.op1.asSInt >> shamt).asUInt,
-      ALU_LT -> ltRes,
-      ALU_LTU -> ltRes,
-      ALU_GE -> geRes,
-      ALU_GEU -> geRes
+      ALUOp.LEFT -> (op1 << shamt),
+      ALUOp.RIGHT -> (op1 >> shamt),
+      ALUOp.EQ -> eqRes,
+      ALUOp.NE -> neRes,
+      ALUOp.AND -> (op1 & op2),
+      ALUOp.OR -> (op1 | op2),
+      ALUOp.XOR -> xorRes,
+      ALUOp.ARITH -> (op1.asSInt >> shamt).asUInt,
+      ALUOp.LT -> ltRes,
+      ALUOp.LTU -> ltRes,
+      ALUOp.GE -> geRes,
+      ALUOp.GEU -> geRes
     )
-  )
-  io.cmpOut := MuxLookup(io.aluFunc, eqRes)(
-    Seq(
-      ALU_EQ -> eqRes,
-      ALU_NE -> neRes,
-      ALU_LT -> ltRes,
-      ALU_LTU -> ltRes,
-      ALU_GE -> geRes,
-      ALU_GEU -> geRes
-    )
-  )
-  io.jumpTarget := addRes
+  )  
+  
+  val aluUop = Wire(new WritebackUop)
+  aluUop.dest := Dest.ROB
+  aluUop.data := out
+  aluUop.prd := io.IN_readRegUop.bits.prd
+  aluUop.robPtr := io.IN_readRegUop.bits.robPtr
+  aluUop.flag := 0.U
+  aluUop.target := 0.U
+
+  // ** BRU
+  // ** Branch's result is calculated in ALU (Branch Opcode is same as corresponding ALU Opcode)
+  // ** BRUOp.JAL and BRUOp.JALR's target are also calculated in ALU  
+  // ** AUIPC's result is calculated in ALU  
+  val isBRU = fuType === FuType.BRU
+  val isAUIPC = aluFunc === BRUOp.AUIPC
+  val isJump = aluFunc === BRUOp.JAL || aluFunc === BRUOp.JALR
+  val isBranch = aluFunc === BRUOp.BEQ || aluFunc === BRUOp.BNE || aluFunc === BRUOp.BLT || aluFunc === BRUOp.BGE || aluFunc === BRUOp.BLTU || aluFunc === BRUOp.BGEU
+
+  val mispredict = (jumpTarget =/= io.IN_readRegUop.bits.predTarget) && !isAUIPC
+  val branchJump = pc + imm
+  val nextInstPC = pc + 4.U  
+  val branchTarget = Mux(cmpOut, branchJump, nextInstPC)
+  jumpTarget := Mux(isJump, out, branchTarget)
+
+  val bruUop = Wire(new WritebackUop)
+  bruUop.dest := Dest.ROB
+  bruUop.target := jumpTarget
+  bruUop.data := Mux(isJump, nextInstPC, out)
+  bruUop.prd := io.IN_readRegUop.bits.prd
+  bruUop.robPtr := io.IN_readRegUop.bits.robPtr
+  bruUop.flag := Mux(mispredict, FlagOp.MISPREDICT, FlagOp.NONE)
+
+  val uop = Reg(new WritebackUop)
+  val uopValid = RegInit(false.B)
+
+  io.IN_readRegUop.ready := true.B
+
+  uopValid := io.IN_readRegUop.valid
+  when(io.IN_flush) {
+    uopValid := false.B
+  }
+
+  uop := Mux(isBRU, bruUop, aluUop)
+
+  // ** Output
+  io.OUT_writebackUop.valid := uopValid
+  io.OUT_writebackUop.bits := uop
 }
 
 // class testALU extends Module {

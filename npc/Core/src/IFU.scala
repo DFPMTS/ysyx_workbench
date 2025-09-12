@@ -2,51 +2,105 @@ import chisel3._
 import chisel3.util._
 import chisel3.SpecifiedDirection.Flip
 
-class IFU extends Module with HasPerfCounters {
-  val io = IO(new Bundle {
-    val flushICache = Input(Bool())
-    val in          = Flipped(new dnpcSignal)
-    val out         = Decoupled(new IFU_Message)
-    val master      = new AXI4(32, 32)
-  })
-  val pc          = RegInit(UInt(32.W), Config.resetPC)
-  val flushBuffer = RegInit(false.B)
-  val icache      = Module(new ICache)
-  val validBuffer = RegInit(true.B)
-  val arValidNext = Wire(Bool())
-  val arValid     = RegInit(true.B)
+class IFUIO extends Bundle {
+  // * Invalidate whole ICache
+  val flushICache = Input(Bool())
+  // * Redirect PC
+  val redirect = Input(new RedirectSignal)
+  // * Output, inst + pc
+  val out = Decoupled(new InstSignal)
 
+  //* VM
+  val OUT_TLBReq = Valid(new TLBReq)
+  val IN_TLBResp = Flipped(Valid(new TLBResp))
+  val OUT_PTWReq = Decoupled(new PTWReq)
+  val IN_PTWResp = Flipped(Valid(new PTWResp))
+  val IN_VMCSR   = Flipped(new VMCSR)
+
+  // * AXI master interface
+  val master = new AXI4(32, 32)
+}
+
+// * PTW Request id = 0
+class IFU extends Module with HasPerfCounters {
+  val io = IO(new IFUIO)
+
+  val icache      = Module(new ICache)
+
+  val vpc      = RegInit(UInt(32.W), Config.resetPC)
+
+  val pcNext      = Wire(UInt(32.W))
+  val pcValidNext = WireInit(false.B)
+
+  val pc          = Reg(UInt(32.W))
+  val vpc1        = Reg(UInt(32.W))
+  val pageFault   = Reg(Bool())
+  val flushBuffer = RegInit(false.B)
+  val validBuffer = RegInit(false.B)
+  val arValid     = RegInit(false.B)
+  val insert   = Wire(Bool())
+  val flush    = flushBuffer || io.redirect.valid
+  val flushNow = io.redirect.valid && (!validBuffer || arValid || icache.io.out.valid)
+  val flushFin = flushNow || (flushBuffer && icache.io.out.fire)
   flushBuffer := Mux(
-    io.in.valid && !arValid && !icache.io.out.valid,
+    io.redirect.valid && !arValid && !icache.io.out.valid,
     true.B,
     Mux(icache.io.out.fire, false.B, flushBuffer)
-  )
-  val flush    = flushBuffer || io.in.valid
-  val flushNow = io.in.valid && (arValid || icache.io.out.valid)
-  val flushFin = flushNow || (flushBuffer && icache.io.out.fire)
-  val insert   = Wire(Bool())
-  // val dnpcBuffer  = RegEnable(io.in.pc, insert)
-  // pc := Mux(insert && io.valid, Mux(io.in.valid, io.in.pc, pc + 4.U), pc)
-  val flushPCBuffer = RegEnable(io.in.pc, io.in.valid)
-  val flushPC       = Mux(io.in.valid, io.in.pc, flushPCBuffer)
-  pc := Mux(flushFin, flushPC, Mux(io.out.fire, pc + 4.U, pc))
+  )  
+  val flushPCBuffer = RegEnable(io.redirect.pc, io.redirect.valid)
+  val flushPC       = Mux(io.redirect.valid, io.redirect.pc, flushPCBuffer)
 
+  // * vpc -> (pcNext, pcValidNext) => (pc, arValid/validBuffer)
+  val doTranslate = io.IN_VMCSR.mode === 1.U && io.IN_VMCSR.priv < Priv.M
+  io.OUT_TLBReq.valid := doTranslate
+  io.OUT_TLBReq.bits.vpn := vpc(31, 12)
+  pcValidNext := !doTranslate || io.IN_TLBResp.valid
+  pcNext := Mux(doTranslate, io.IN_TLBResp.bits.vaddrToPaddr(vpc), vpc)    
+
+  when(flushFin) {
+    vpc := flushPC
+    validBuffer := false.B
+    arValid := false.B
+    pageFault := false.B
+  }.otherwise {
+    vpc := Mux(pcValidNext && insert, vpc + 4.U, vpc)
+    validBuffer := Mux(insert, pcValidNext, validBuffer)
+    arValid := Mux(insert, pcValidNext, Mux(icache.io.in.fire, false.B, arValid))
+    pageFault := Mux(insert, doTranslate && io.IN_TLBResp.valid && io.IN_TLBResp.bits.executePermFail(io.IN_VMCSR), pageFault)
+  }
+
+  // ** PTW Req logic
+  val ptwReqValid = RegInit(false.B)
+  val ptwReq      = Reg(new PTWReq)
+
+  ptwReqValid := doTranslate && !io.IN_TLBResp.valid
+  when(io.IN_PTWResp.valid && io.IN_PTWResp.bits.id === 0.U) {
+    ptwReqValid := false.B
+  }
+  ptwReq.vpn := vpc(31, 12)
+
+  io.OUT_PTWReq.valid := ptwReqValid
+  io.OUT_PTWReq.bits  := ptwReq
+
+  // * pc -> icache
   insert := (~validBuffer || io.out.fire) || flushFin
+  
+  pc := Mux(insert && pcValidNext, pcNext, pc)
+  vpc1 := Mux(insert, vpc, vpc1)
 
   io.master <> icache.io.master
-  arValidNext := Mux(insert, true.B, Mux(icache.io.in.fire, false.B, arValid))
-  arValid     := arValidNext
 
-  icache.io.in.valid    := arValid && ~reset.asBool && !flush
+  icache.io.in.valid    := arValid && ~reset.asBool && !flush && !pageFault
   icache.io.in.bits     := pc
   icache.io.flushICache := io.flushICache
 
   val addrOffset = pc(2)
   val retData    = icache.io.out.bits
-  io.out.valid             := icache.io.out.valid && !flush
-  io.out.bits.pc           := pc
+  io.out.valid             := validBuffer && (icache.io.out.valid || pageFault) && !flush
+  io.out.bits.pc           := vpc1
   io.out.bits.inst         := retData
   io.out.bits.access_fault := false.B
+  io.out.bits.pageFault    := pageFault
 
   icache.io.out.ready := io.out.ready || flush
 
@@ -137,6 +191,8 @@ class ICache extends Module with HasPerfCounters {
   })
   val numCacheLine = 4
 
+  val validBuffer = RegInit(false.B)
+
   val data     = Reg(Vec(numCacheLine, Vec(4, UInt(32.W))))
   val tag      = Reg(Vec(numCacheLine, UInt(26.W)))
   val valid    = RegInit(VecInit(Seq.fill(numCacheLine)(false.B)))
@@ -166,6 +222,13 @@ class ICache extends Module with HasPerfCounters {
     )
   )
 
+  when(state === sIdle && io.in.valid) {
+    validBuffer := true.B
+  }
+  when(io.out.fire) {
+    validBuffer := false.B
+  }
+
   when(io.flushICache) {
     valid.foreach(_ := false.B)
   }
@@ -187,7 +250,7 @@ class ICache extends Module with HasPerfCounters {
   // io.out.bits := line(inOffset)
   io.out.bits := data(inIndex)(inOffset)
 
-  io.out.valid := hit
+  io.out.valid := (io.in.valid || validBuffer) && hit
 
   monitorEvent(icacheMiss, state === sIdle && !hit)
 }

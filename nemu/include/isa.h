@@ -51,6 +51,7 @@ vaddr_t isa_raise_intr(word_t NO, vaddr_t epc);
 #define INTR_EMPTY ((word_t)-1)
 #define INTR_MTI (0x80000007)
 #define INTR_STI (0x80000005)
+#define INTR_SSI (0x80000001)
 word_t isa_query_intr();
 word_t isa_mret();
 word_t isa_sret();

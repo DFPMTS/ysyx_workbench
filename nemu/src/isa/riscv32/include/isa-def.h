@@ -54,11 +54,13 @@ typedef union {
 
 typedef union {
   struct {
-    uint32_t _ZERO_0 : 5;
+    uint32_t _ZERO_0 : 1;
+    uint32_t SSI : 1;
+    uint32_t _ZERO_1 : 3;
     uint32_t STI : 1;
-    uint32_t _ZERO_1 : 1;
+    uint32_t _ZERO_2 : 1;
     uint32_t MTI : 1;
-    uint32_t _ZERO_2 : 24;
+    uint32_t _ZERO_3 : 24;
   };
   uint32_t val;
 } Mipe;

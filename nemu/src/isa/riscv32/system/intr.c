@@ -26,7 +26,7 @@ word_t isa_raise_intr(word_t NO, vaddr_t epc) {
    * Then return the address of the interrupt/exception vector.
    */  
   assert(NO);  
-  // Log("NO: 0x%x epc: 0x%x mtvec: 0x%x",NO, epc, cpu.mtvec);
+  // Log("priv: %d NO: 0x%x epc: 0x%x mtvec: 0x%x",cpu.priv, NO, epc, cpu.mtvec);
   //// always trap to M for now
   // check delegation
   bool delegate = false;
@@ -84,7 +84,7 @@ uint64_t read_mtime();
 uint64_t read_mtimecmp();
 
 word_t isa_query_intr() {
-
+  return INTR_EMPTY;
   // set mip/mie
   if (read_mtime() >= read_mtimecmp()) {
     cpu.mip.MTI = 1;
@@ -102,17 +102,21 @@ word_t isa_query_intr() {
       // supervisor timer interrupt
       return INTR_STI;
     }
+    if (((Mipe)(cpu.mie.val & cpu.mip.val)).SSI && !BIT(cpu.mideleg, 1)) {
+      // supervisor software interrupt
+      return INTR_SSI;
+    }
   }
 
   // trap to S
-  if(cpu.priv < PRIV_S || (cpu.priv == PRIV_S && cpu.mstatus.SIE)){    
-    if (((Mipe)(cpu.mie.val & cpu.mip.val)).MTI && BIT(cpu.mideleg, 7)) {
-      // machine timer interrupt
-      return INTR_MTI;
-    }
+  if(cpu.priv < PRIV_S || (cpu.priv == PRIV_S && cpu.mstatus.SIE)){
     if (((Mipe)(cpu.mie.val & cpu.mip.val)).STI && BIT(cpu.mideleg, 5)) {
       // supervisor timer interrupt
       return INTR_STI;
+    }
+    if (((Mipe)(cpu.mie.val & cpu.mip.val)).SSI && BIT(cpu.mideleg, 1)) {
+      // supervisor software interrupt
+      return INTR_SSI;
     }
   }
 

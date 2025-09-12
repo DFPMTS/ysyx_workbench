@@ -72,7 +72,7 @@ int isa_mmu_translate(vaddr_t vaddr, int len, int type, paddr_t *paddr) {
 
   // use VPN[1] to address in to flpt to get slpt
   PTE = paddr_read(flpt | (VPN_1 << 2), 4);
-  // Log("flpt: 0x%x",flpt);
+  // Log("flpt: 0x%x - 0x%x",flpt, flpt | (VPN_1 << 2));
   // Assert(BIT(flpte, PTE_V), "Invalid First Level PTE for vaddr: 0x%x\n", vaddr);
 
 #define TRANSLATE_EXCEPTION                                                    \
@@ -123,8 +123,8 @@ int isa_mmu_translate(vaddr_t vaddr, int len, int type, paddr_t *paddr) {
   bool X = BIT(PTE, PTE_X);
   // bool U = BIT(PTE, PTE_U);
   // bool G = BIT(PTE, PTE_G);
-  bool A = BIT(PTE, PTE_A);
-  bool D = BIT(PTE, PTE_D);
+  // bool A = BIT(PTE, PTE_A);
+  // bool D = BIT(PTE, PTE_D);
 
   // Assert(V, "vaddr: 0x%x -> paddr: 0x%x is not Valid", vaddr, paddr);
   if(!V) {
@@ -156,20 +156,20 @@ int isa_mmu_translate(vaddr_t vaddr, int len, int type, paddr_t *paddr) {
     break;
   }
 
-  // A D check (Svade)
-  if (!A || (!D && type == MEM_TYPE_WRITE)) {
-    TRANSLATE_EXCEPTION;
-  }
+  // // A D check (Svade)
+  // if (!A || (!D && type == MEM_TYPE_WRITE)) {
+  //   TRANSLATE_EXCEPTION;
+  // }
 
   // TODO SUM 
 
 done:
   if (translate_succ) {
     *paddr = translated_paddr;
-    // Log("paddr: %x\n", translated_paddr);
+    // Log("vaddr: %x paddr: %x\n", vaddr, translated_paddr);
     return 0;
   } else {
-    // Log("paddr: ERROR in translation\n");
+    Log("vaddr: %x paddr: ERROR in translation\n", vaddr);
     return -1;
   }
 }

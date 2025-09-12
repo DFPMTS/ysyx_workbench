@@ -1,7 +1,9 @@
 #include "mem.hpp"
 #include "cpu.hpp"
 #include "debug.hpp"
+#include "status.hpp"
 #include <cassert>
+#include <cstdint>
 #include <cstring>
 #include <ctime>
 #include <iostream>
@@ -13,13 +15,33 @@
 
 #define RTC_ADDR (DEVICE_BASE + 0x0000048)
 #define SERIAL_PORT (DEVICE_BASE + 0x00003f8)
+#define UART_BASE 0x10000000
 
 static uint32_t image[128] = {
-    0x00000297, // auipc t0,0
-    0x00028823, // sb  zero,16(t0)
-    0x0102c503, // lbu a0,16(t0)
-    0x00100073, // ebreak (used as nemu_trap)
-    0xdeadbeef, // some data
+    0x00200113, // addi x2 x0 2
+    0x00300193, // addi x3 x0 3
+    0x00400213, // addi x4 x0 4
+    0x00700393, // addi x7 x0 7
+    0x00500413, // addi x8 x0 5
+    0x002183B3, // add x7 x3 x2
+    0x00720233, // add x4 x4 x7
+    0x00338133, // add x2 x7 x3
+    0xFFF10193, // addi x3 x2 -1
+    0xFFF40413, // addi x8 x8 -1
+    0xFE0416E3, // bne x8 x0 -20
+    0x800002B7, // lui x5 524288
+    0x00028293, // addi x5 x5 0
+    0x0002A303, // lw x6 0(x5)
+    0x0042A383, // lw x7 4(x5)
+    0x0082AE03, // lw x28 8(x5)
+    0x00C2AE83, // lw x29 12(x5)
+    0x300012F3, // csrrw x5 768 x0
+    0x00100073, // ebreak
+                // 0x00000297, // auipc t0,0
+                // 0x00028823, // sb  zero,16(t0)
+                // 0x0102c503, // lbu a0,16(t0)
+                // 0x00100073, // ebreak (used as nemu_trap)
+                // 0xdeadbeef, // some data
 };
 
 bool access_device = false;
@@ -37,6 +59,9 @@ static bool in_clock(paddr_t addr) {
   return addr == RTC_ADDR || addr == RTC_ADDR + 4;
 }
 static bool in_serial(paddr_t addr) { return addr == SERIAL_PORT; }
+
+uint8_t uart_io_handler(uint32_t offset, int len, uint8_t wdata, bool is_write);
+bool in_uart(uint32_t addr);
 
 static uint8_t *guest_to_host(paddr_t addr) { return mem + addr - MEM_BASE; }
 static mem_word_t clock_read(paddr_t offset) {
@@ -110,8 +135,11 @@ void host_write(uint8_t *addr, mem_word_t wdata, unsigned char wmask) {
 extern "C" {
 mem_word_t mem_read(paddr_t addr) {
 #ifdef MTRACE
-  log_write("(%lu)read:  0x%08x : ", eval_time, addr);
+  if (begin_wave) {
+    log_write("(%lu)read:  0x%08x : ", eval_time, addr);
+  }
 #endif
+  auto raw_addr = addr;
   addr &= ADDR_MASK;
   bool valid = false;
   mem_word_t retval = 0;
@@ -122,32 +150,45 @@ mem_word_t mem_read(paddr_t addr) {
   if (in_clock(addr)) {
     access_device = true;
 #ifdef MTRACE
-    log_write("|clock| %u", addr);
+    log_write("|clock| ");
 #endif
     valid = true;
     retval = clock_read(addr - RTC_ADDR);
   }
+  if (in_uart(raw_addr)) {
+    access_device = true;
+    valid = true;
+    retval = uart_io_handler(raw_addr - UART_BASE, 1, 0, false);
+    retval <<= (raw_addr - addr) * 8;
+  }
 #ifdef MTRACE
-  if (valid)
-    log_write("0x%08x / %lu\n", retval, retval);
-  else
-    log_write("NOT VALID / NOT VALID\n");
+  if (begin_wave) {
+    if (valid)
+      log_write("<0x%08x / %lu>\n", retval, retval);
+    else
+      log_write("NOT VALID / NOT VALID\n");
+  }
 #endif
   if (valid) {
     return retval;
   }
-  if (running)
-    assert(0);
+  if (running) {
+    running = false;
+    Log("Invalid read to 0x%08x\n", raw_addr);
+  }
   return 0;
 }
 
 void mem_write(paddr_t addr, mem_word_t wdata, unsigned char wmask) {
   if (!running)
     return;
+  auto raw_addr = addr;
   addr &= ADDR_MASK;
 #ifdef MTRACE
-  log_write("(%lu)write: 0x%08x - %x : 0x%08x / %lu\n", eval_time, addr, wmask,
-            wdata, wdata);
+  if (begin_wave) {
+    log_write("(%lu)write: 0x%08x - %x : 0x%08x / %lu\n", eval_time, addr,
+              wmask, wdata, wdata);
+  }
 #endif
   if (in_pmem(addr)) {
     host_write(guest_to_host(addr), wdata, wmask);
@@ -161,7 +202,14 @@ void mem_write(paddr_t addr, mem_word_t wdata, unsigned char wmask) {
     serial_write(addr - SERIAL_PORT, wdata);
     return;
   }
-  assert(0);
+  if (in_uart(raw_addr)) {
+    access_device = true;
+    wdata >>= (raw_addr - addr) * 8;
+    uart_io_handler(raw_addr - UART_BASE, 1, (uint8_t)wdata, true);
+    return;
+  }
+  Log("Invalid write to 0x%08x\n", raw_addr);
+  running = false;
 }
 
 mem_word_t inst_fetch(paddr_t pc) { return mem_read(pc); }

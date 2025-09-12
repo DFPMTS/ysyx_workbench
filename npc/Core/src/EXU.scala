@@ -19,7 +19,7 @@ class EXU extends Module with HasDecodeConstants {
     val in   = Flipped(Decoupled(new IDU_Message))
     val out  = Decoupled(new EXU_Message)
     val wb   = new WBSignal
-    val dnpc = new dnpcSignal
+    val dnpc = new RedirectSignal
   })
   val insert      = Wire(Bool())
   val ctrlBuffer  = RegEnable(io.in.bits.ctrl, insert)
@@ -35,7 +35,7 @@ class EXU extends Module with HasDecodeConstants {
   val ctrlOut = WireInit(ctrlBuffer)
   val dataOut = WireInit(dataBuffer)
   val wbOut   = Wire(new WBSignal)
-  val dnpcOut = Wire(new dnpcSignal)
+  val dnpcOut = Wire(new RedirectSignal)
 
   // -------------------- Function Units ---------------------
 
@@ -52,15 +52,15 @@ class EXU extends Module with HasDecodeConstants {
   val csrPCValid = Wire(Bool())
 
   // -------------------------- ALU --------------------------
-  val alu = Module(new ALU)
-  alu.io.aluFunc := ctrlBuffer.aluFunc
-  // alu.io.op1     := MuxLookup(ctrlBuffer.src1Type, 0.U)(Seq(REG -> dataBuffer.src1, PC -> dataBuffer.pc, ZERO -> 0.U))
-  // alu.io.op2     := MuxLookup(ctrlBuffer.src2Type, 0.U)(Seq(REG -> dataBuffer.src2, IMM -> dataBuffer.imm, ZERO -> 0.U))
-  alu.io.op1    := dataBuffer.src1
-  alu.io.op2    := dataBuffer.src2
-  aluOut        := alu.io.out
-  aluCmpOut     := alu.io.cmpOut
-  aluJumpTarget := alu.io.jumpTarget
+  // val alu = Module(new ALU)
+  // alu.io.aluFunc := ctrlBuffer.aluFunc
+  // // alu.io.op1     := MuxLookup(ctrlBuffer.src1Type, 0.U)(Seq(REG -> dataBuffer.src1, PC -> dataBuffer.pc, ZERO -> 0.U))
+  // // alu.io.op2     := MuxLookup(ctrlBuffer.src2Type, 0.U)(Seq(REG -> dataBuffer.src2, IMM -> dataBuffer.imm, ZERO -> 0.U))
+  // alu.io.op1    := dataBuffer.src1
+  // alu.io.op2    := dataBuffer.src2
+  // aluOut        := alu.io.out
+  // aluCmpOut     := alu.io.cmpOut
+  // aluJumpTarget := alu.io.jumpTarget
 
   // -------------------------- BRU --------------------------
   val isBRU  = ctrlBuffer.fuType === BRU
@@ -82,16 +82,16 @@ class EXU extends Module with HasDecodeConstants {
   val isEBREAK  = isCSR && ctrlBuffer.fuOp === EBREAK
   val isFENCE_I = isCSR && ctrlBuffer.fuOp === FENCE_I
 
-  csr.io.ren   := isCSRS && rd =/= 0.U && validBuffer
-  csr.io.addr  := dataBuffer.imm(11, 0)
-  csr.io.wen   := isCSRW && rs1 =/= 0.U && validBuffer
-  csr.io.wdata := dataBuffer.src1
-  csr.io.ecall := isECALL && validBuffer
-  csr.io.pc    := dataBuffer.pc
+  // csr.io.ren   := isCSRS && rd =/= 0.U && validBuffer
+  // csr.io.addr  := dataBuffer.imm(11, 0)
+  // csr.io.wen   := isCSRW && rs1 =/= 0.U && validBuffer
+  // csr.io.wdata := dataBuffer.src1
+  // csr.io.ecall := isECALL && validBuffer
+  // csr.io.pc    := dataBuffer.pc
 
-  csrOut     := csr.io.rdata
-  csrPCValid := isECALL || isMRET
-  csrPC      := Mux(isECALL, csr.io.mtvec, csr.io.mepc)
+  // csrOut     := csr.io.rdata
+  // csrPCValid := isECALL || isMRET
+  // csrPC      := Mux(isECALL, csr.io.mtvec, csr.io.mepc)
 
   val error = Module(new Error)
   error.io.ebreak       := validBuffer && isEBREAK

@@ -16,7 +16,7 @@ class WBU extends Module with HasDecodeConstants {
   val io = IO(new Bundle {
     val in          = Flipped(Decoupled(new MEM_Message))
     val wb          = new WBSignal
-    val dnpc        = new dnpcSignal
+    val dnpc        = new RedirectSignal
     val valid       = Output(Bool())
     val flushICache = Output(Bool())
   })
@@ -43,16 +43,16 @@ class WBU extends Module with HasDecodeConstants {
   val isEBREAK  = isCSR && ctrlBuffer.fuOp === EBREAK
   val isFENCE_I = isCSR && ctrlBuffer.fuOp === FENCE_I
 
-  csr.io.ren   := isCSRS && rd =/= 0.U && validBuffer
-  csr.io.addr  := dataBuffer.imm(11, 0)
-  csr.io.wen   := isCSRW && rs1 =/= 0.U && validBuffer
-  csr.io.wdata := dataBuffer.out
-  csr.io.ecall := isECALL && validBuffer
-  csr.io.pc    := dataBuffer.pc
+  // csr.io.ren   := isCSRS && rd =/= 0.U && validBuffer
+  // csr.io.addr  := dataBuffer.imm(11, 0)
+  // csr.io.wen   := isCSRW && rs1 =/= 0.U && validBuffer
+  // csr.io.wdata := dataBuffer.out
+  // csr.io.ecall := isECALL && validBuffer
+  // csr.io.pc    := dataBuffer.pc
 
-  csrOut     := csr.io.rdata
-  csrPCValid := isECALL || isMRET
-  csrPC      := Mux(isECALL, csr.io.mtvec, csr.io.mepc)
+  // csrOut     := csr.io.rdata
+  // csrPCValid := isECALL || isMRET
+  // csrPC      := Mux(isECALL, csr.io.mtvec, csr.io.mepc)
 
   val error = Module(new Error)
   error.io.ebreak       := validBuffer && isEBREAK

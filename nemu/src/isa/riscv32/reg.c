@@ -14,7 +14,9 @@
 ***************************************************************************************/
 
 #include <isa.h>
+#include <stdio.h>
 #include "local-include/reg.h"
+#include "cpu/decode.h"
 
 const char *regs[] = {
   "$0", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
@@ -36,6 +38,7 @@ static void print_csr(const char*name, word_t val)
 }
 
 void isa_reg_display() {
+  printf("pc\t%08X\n", cpu.pc);
   for (int i = 0; i < MUXDEF(CONFIG_RVE, 16, 32); ++i) {
     printf("%s\t%08X\t%d\n",reg_name(i),gpr(i),gpr(i));
   }
@@ -43,9 +46,11 @@ void isa_reg_display() {
   printf("mtvec\t%x\n", cpu.mtvec);
   printf("mtval\t%x\n", cpu.mtval);
   printf("mepc\t%x\n", cpu.mepc);
+  printf("mscratch\t%x\n", cpu.mscratch);
+  printf("satp\t%x\n", cpu.satp);
   printf("stvec\t%x\n", cpu.stvec);  
   printf("stval\t%x\n", cpu.stval);
-  printf("sepc\t%x\n", cpu.sepc);
+  printf("sepc\t%x\n", cpu.sepc);  
 }
 
 word_t isa_reg_str2val(const char *s, bool *success) {

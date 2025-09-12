@@ -223,13 +223,21 @@ void csr_write(word_t csr_addr, word_t value, word_t *csr)
     xstatus_update_SD(csr);
     break;
   
-  case CSR_MENVCFG_WMASK:
+  case CSR_MENVCFG:
     write_with_mask(csr, value, CSR_MENVCFG_WMASK);
     break;    
-  case CSR_MENVCFGH_WMASK:
+  case CSR_MENVCFGH:
     write_with_mask(csr, value, CSR_MENVCFGH_WMASK);
     break;
   
+  case CSR_MIDELEG:
+    write_with_mask(csr, value, 0x222);
+    break;
+
+  case CSR_MEDELEG:
+    write_with_mask(csr, value, 0xb7ff);
+    break;
+
   default:
     *csr = value;
     break;
@@ -283,7 +291,9 @@ word_t csrr_(word_t csr_addr, uint32_t rd, uint32_t rs1, word_t value, CSR_OP op
     panic("Unknown op: %d\n", op);
     break;
   }
-
+  if (csr_addr == CSR_MSCRATCH) {
+    Log("mscratch: 0x%x", csr_write_val);
+  }
   if (write) {
     csr_write(csr_addr, csr_write_val, csr);
   }

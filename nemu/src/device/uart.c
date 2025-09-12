@@ -97,6 +97,7 @@ static void uart_io_handler(uint32_t offset, int len, bool is_write) {
       break;
     case UART_LS:
       uart_base[UART_LS] = UART_LS_TFE_FLAG | UART_LS_TE_FLAG | uart_key_ready();
+      // printf("uart_key_ready: %d\n", uart_key_ready());
       break;
     case UART_SCR:
       // scratch register, do nothing
@@ -135,5 +136,5 @@ void init_uart() {
   uart_base = new_space(9);
   memset(uart_base, 0, 9);
   add_mmio_map("uart", CONFIG_UART_ADDR, uart_base, 9, uart_io_handler);
-  CaptureKeyboardInput();
+  // CaptureKeyboardInput();
 }

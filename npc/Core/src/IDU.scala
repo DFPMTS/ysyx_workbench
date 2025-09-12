@@ -1,96 +1,103 @@
 import chisel3._
 import chisel3.util._
 import scala.reflect.internal.Mode
+import java.util.concurrent.Future
 
-class IDU extends Module with HasDecodeConstants with HasPerfCounters {
-  val io = IO(new Bundle {
-    val in       = Flipped(Decoupled(new IFU_Message))
-    val EXBypass = Input(new WBSignal)
-    val wb       = Input(new WBSignal)
-    val out      = Decoupled(new IDU_Message)
-    val flush    = Input(Bool())
-  })
-  val counter = RegInit(0.U(3.W))
-  val insert  = Wire(Bool())
-  // val inBuffer = RegEnable(io.in.bits, insert)
-  val inBuffer = io.in.bits
-  // val validBuffer = RegEnable(io.in.valid, insert)
-  val validBuffer = io.in.valid
-  counter := Mux(
-    io.in.fire,
-    0.U,
-    Mux(counter === 0.U, 0.U, counter - 1.U)
-  )
-  insert := ~validBuffer || (counter === 0.U && io.out.ready)
-
-  // io.in.ready  := insert
-  io.in.ready  := io.out.ready
-  io.out.valid := validBuffer && counter === 0.U && !io.flush
-
-  val ctrl = Wire(new ControlSignal)
-  val data = Wire(new DataSignal)
-  data.out := DontCare
-  val decodeSignal = Wire(new DecodeSignal)
-  data.pc := inBuffer.pc
-
-  val regfile = Module(new RegFile)
-  regfile.io.wb     := io.wb
-  regfile.io.rs1Sel := ctrl.rs1
-  regfile.io.rs2Sel := ctrl.rs2
-  val rs1Val = io.EXBypass.tryBypass(ctrl.rs1, regfile.io.rs1)
-  val rs2Val = io.EXBypass.tryBypass(ctrl.rs2, regfile.io.rs2)
-  data.src1   := MuxLookup(ctrl.src1Type, 0.U)(Seq(REG -> rs1Val, PC -> inBuffer.pc, ZERO -> 0.U))
-  data.src2   := MuxLookup(ctrl.src2Type, 0.U)(Seq(REG -> rs2Val, IMM -> data.imm, ZERO -> 0.U))
-  data.rs2Val := rs2Val
-
-  val immgen = Module(new ImmGen)
-  immgen.io.inst      := inBuffer.inst
-  immgen.io.inst_type := decodeSignal.instType
-  data.imm            := immgen.io.imm
-
-  val decode = Module(new Decode)
-  decodeSignal   := decode.io.signals
-  decode.io.inst := inBuffer.inst
-  ctrl.inst      := inBuffer.inst
-  ctrl.invalid   := decodeSignal.invalid
-  ctrl.regWe     := decodeSignal.regWe
-  ctrl.aluFunc   := decodeSignal.aluFunc
-  ctrl.fuType    := decodeSignal.fuType
-  ctrl.fuOp      := decodeSignal.fuOp
-  ctrl.src1Type  := decodeSignal.src1Type
-  ctrl.src2Type  := decodeSignal.src2Type
-  ctrl.rs1       := inBuffer.inst(19, 15)
-  ctrl.rs2       := inBuffer.inst(24, 20)
-  ctrl.rd        := inBuffer.inst(11, 7)
-
-  io.out.bits.ctrl := ctrl
-  io.out.bits.data := data
-
-  monitorEvent(iduAluInst, io.out.fire && ctrl.fuType === ALU)
-  monitorEvent(iduMemInst, io.out.fire && ctrl.fuType === MEM)
-  monitorEvent(iduBruInst, io.out.fire && ctrl.fuType === BRU)
-  monitorEvent(iduCsrInst, io.out.fire && ctrl.fuType === CSR)
+class IDUIO extends Bundle {
+  val IN_inst       = Flipped(Decoupled(new InstSignal))
+  val OUT_decodeUop = Decoupled(new DecodeUop)
+  val IN_flush    = Input(Bool())
 }
 
-class testIDU extends Module with HasDecodeConstants {
-  val io = IO(new Bundle {
-    val out = UInt(32.W)
-  })
+class IDU extends Module with HasDecodeConstants with HasPerfCounters {
+  val io = IO(new IDUIO)
 
-  val r   = Reg(UInt(32.W))
-  val idu = Module(new IDU)
-  idu.io.in.bits.inst         := r
-  idu.io.in.bits.pc           := r
-  idu.io.in.bits.access_fault := true.B
-  idu.io.in.valid             := true.B
+  // * Submodules
+  val immgenModule = Module(new ImmGen)
+  val decodeModule = Module(new Decode)
 
-  idu.io.wb.data := 0.U
-  idu.io.wb.rd   := 0.U
-  idu.io.wb.wen  := 0.U
+  // * Main Signals
+  val uopValid = RegInit(false.B)
+  val uopReg = Reg(new DecodeUop)
+  val uopNext = Wire(new DecodeUop)
 
-  r := idu.io.out.bits.ctrl.aluFunc & idu.io.out.bits.data.imm & idu.io.out.bits.data.src1 & idu.io.out.bits.data.pc
+  // * Dataflow
+  // ** Input
+  val inst = io.IN_inst.bits.inst
+  val pc = io.IN_inst.bits.pc
+  val rd = inst(11, 7)
+  val rs1 = inst(19, 15)
+  val rs2 = inst(24, 20)
+    
+  // *** Control Signals Generation  
+  decodeModule.io.inst := io.IN_inst.bits.inst
+  val decodeSignal     = decodeModule.io.signals
+  val illegalInst      = decodeSignal.invalid
 
-  idu.io.out.ready := true.B
+  // *** Immediate Generation  
+  immgenModule.io.inst      := io.IN_inst.bits.inst
+  immgenModule.io.inst_type := decodeSignal.immType
+  val imm = immgenModule.io.imm
 
-  io.out := r
+  // *** Filling uopNext
+  uopNext.rd        := Mux(decodeSignal.regWe, rd, ZERO)
+  uopNext.rs1       := Mux(decodeSignal.src1Type === REG, rs1, 0.U)
+  uopNext.rs2       := Mux(decodeSignal.src2Type === REG, rs2, 0.U)
+
+  uopNext.src1Type  := decodeSignal.src1Type
+  uopNext.src2Type  := decodeSignal.src2Type
+
+  uopNext.fuType    := Mux(illegalInst, FuType.FLAG,         decodeSignal.fuType)
+  uopNext.opcode    := Mux(illegalInst, FlagOp.ILLEGAL_INST, decodeSignal.opcode)
+  
+  when (decodeSignal.fuType === FuType.CSR && (decodeSignal.opcode === CSROp.CSRRS || decodeSignal.opcode === CSROp.CSRRC || 
+  decodeSignal.opcode === CSROp.CSRRSI || decodeSignal.opcode === CSROp.CSRRCI) && rs1 === 0.U) {
+    uopNext.opcode := CSROp.CSRR
+  }
+
+  uopNext.predTarget := pc + 4.U
+  uopNext.pc        := pc
+
+  uopNext.imm       := imm
+  when (decodeSignal.fuType === FuType.CSR && (decodeSignal.opcode === CSROp.CSRRWI || 
+  decodeSignal.opcode === CSROp.CSRRSI || decodeSignal.opcode === CSROp.CSRRCI)) {
+    uopNext.imm := Cat(rs1, imm(11, 0))
+  }
+  
+  uopNext.compressed := false.B
+
+  uopNext.inst      := inst
+
+  when(io.IN_inst.bits.pageFault) {
+    uopNext.fuType := FuType.FLAG
+    uopNext.opcode := FlagOp.INST_PAGE_FAULT
+    uopNext.rd     := ZERO
+  }
+  
+  // * Control
+  // ** Input
+  val inValid = io.IN_inst.valid  
+  val inFire = io.IN_inst.fire
+  val outReady = io.OUT_decodeUop.ready  
+
+  // ** IN ready generation
+  val inReady = !uopValid || outReady
+
+  // ** Update Logic
+  when (io.IN_flush) {
+    uopValid := false.B
+  }.otherwise{
+    uopValid := Mux(inReady, inValid, uopValid)  
+  }  
+  uopReg := Mux(inFire, uopNext, uopReg)
+
+  // * Output Logic
+  io.IN_inst.ready := inReady
+  io.OUT_decodeUop.valid := uopValid
+  io.OUT_decodeUop.bits := uopReg
+
+  // monitorEvent(iduAluInst, io.out.fire && ctrl.fuType === ALU)
+  // monitorEvent(iduMemInst, io.out.fire && ctrl.fuType === MEM)
+  // monitorEvent(iduBruInst, io.out.fire && ctrl.fuType === BRU)
+  // monitorEvent(iduCsrInst, io.out.fire && ctrl.fuType === CSR)
 }

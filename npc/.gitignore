@@ -18,6 +18,7 @@
 !decode.csv
 !single_cycle.circ
 !xmake.lua
+!*.py
 build/
 vsrc/
 # xmake config

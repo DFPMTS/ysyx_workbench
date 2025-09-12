@@ -1,10 +1,15 @@
 #include "EventMonitor.hpp"
+#include "SimState.hpp"
+#include "Uop.hpp"
+#include "cpu.hpp"
 #include "debug.hpp"
 #include "difftest.hpp"
 #include "mem.hpp"
 #include "monitor.hpp"
 #include "status.hpp"
+#include <chrono>
 #include <cstdint>
+#include <cstdlib>
 
 void nvboard_update();
 void nvboard_quit();
@@ -47,9 +52,14 @@ public:
   }
 };
 
+SimState state;
+
 int main(int argc, char *argv[]) {
   Verilated::commandArgs(argc, argv);
+  gpr = [&](int index) { return state.getReg(index); };
+  PC = [&]() { return state.getPC(); };
   init_monitor(argc, argv);
+  state.bindUops();
   SimulationSpeed sim_speed;
   bool commit = false;
   bool booted = false;
@@ -57,7 +67,7 @@ int main(int argc, char *argv[]) {
   nvboard_init(1);
 #endif
   Log("Simulation begin");
-  begin_wave = true;
+  // begin_wave = true;
   // int T = 1000000;
   // while (true) {
   //   trace_pc();
@@ -65,47 +75,62 @@ int main(int argc, char *argv[]) {
   // return 0;
   // begin_wave = true;
   sim_speed.initTimer();
+  int T = 400;
+  atexit([]() {
+    state.printInsts();
+#ifdef WAVE
+    fst->close();
+#endif
+  });
   while (running) {
     cpu_step();
+    state.log(totalCycles);
     ++totalCycles;
-#ifdef NVBOARD
-    nvboard_update();
-#endif
-    if (commit) {
-      // check the comments of PC / INST
-#ifdef DIFFTEST
-      difftest();
-#endif
-      commit = false;
-    }
-    if (isCommit()) {
-      commit = true;
-      trace(PC, INST);
-      if (PC == 0xa0000000) {
-        begin_wave = true;
-        printPerfCounters();
-        clearAllEventCount();
-        totalCycles = 0;
-        booted = true;
-      }
-    }
-    if (totalCycles % 10000000 == 0) {
-      std::cerr << "Total cycles: " << totalCycles << std::endl;
-      printPerfCounters();
-    }
+    // if (totalCycles > 23100000) {
+    //   begin_wave = true;
+    // }
+    //     ++totalCycles;
+    // #ifdef NVBOARD
+    //     nvboard_update();
+    // #endif
+    //     if (commit) {
+    //       // check the comments of PC / INST
+    // #ifdef DIFFTEST
+    //       difftest();
+    // #endif
+    //       commit = false;
+    //     }
+    //     if (isCommit()) {
+    //       commit = true;
+    //       trace(PC, INST);
+    //       if (PC == 0xa0000000) {
+    //         begin_wave = true;
+    //         printPerfCounters();
+    //         clearAllEventCount();
+    //         totalCycles = 0;
+    //         booted = true;
+    //       }
+    //     }
+    //     if (totalCycles % 10000000 == 0) {
+    //       std::cerr << "Total cycles: " << totalCycles << std::endl;
+    //       printPerfCounters();
+    //     }
   }
+  std::cerr << "Simulation End" << std::endl;
+  printf("Total cycles: %lu\n", totalCycles);
+  state.printInsts();
   ++totalCycles;
   // a0
-  int retval = gpr(10);
+  int retval = state.getReg(10);
 
 #ifdef WAVE
   fst->close();
 #endif
 
   if (retval == 0) {
-    Log("Hit GOOD trap.\n");
+    Log("\033[32mHit GOOD trap.\033[0m\n");
   } else {
-    Log("Hit BAD trap.\n");
+    Log("\033[31mHit  BAD trap.\033[0m\n");
   }
 #ifdef NVBOARD
   nvboard_quit();

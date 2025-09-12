@@ -3,7 +3,7 @@ import chisel3.util._
 import chisel3.experimental.dataview._
 
 class npc_top extends Module {
-  val npc  = Module(new multi)
+  val npc  = Module(new Core)
   val sram = Module(new SRAM)
 
   npc.io.master.viewAs[AXI4] <> sram.io
